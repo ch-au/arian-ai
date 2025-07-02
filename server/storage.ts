@@ -8,6 +8,8 @@ import {
   tactics,
   analyticsSessions,
   performanceMetrics,
+  influencingTechniques,
+  negotiationTactics,
   type User,
   type InsertUser,
   type Agent,
@@ -26,6 +28,10 @@ import {
   type InsertAnalyticsSession,
   type PerformanceMetric,
   type InsertPerformanceMetric,
+  type InfluencingTechnique,
+  type InsertInfluencingTechnique,
+  type NegotiationTactic,
+  type InsertNegotiationTactic,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, asc, and, gte, lte, avg, count, sum } from "drizzle-orm";
@@ -99,6 +105,20 @@ export interface IStorage {
   }>;
   getSuccessRateTrends(days: number): Promise<Array<{ date: string; successRate: number }>>;
   getTopPerformingAgents(limit?: number): Promise<Array<{ agent: Agent; successRate: number }>>;
+
+  // Influencing techniques methods
+  getInfluencingTechnique(id: string): Promise<InfluencingTechnique | undefined>;
+  getAllInfluencingTechniques(): Promise<InfluencingTechnique[]>;
+  createInfluencingTechnique(technique: InsertInfluencingTechnique): Promise<InfluencingTechnique>;
+  updateInfluencingTechnique(id: string, technique: Partial<InsertInfluencingTechnique>): Promise<InfluencingTechnique>;
+  deleteInfluencingTechnique(id: string): Promise<void>;
+
+  // Negotiation tactics methods
+  getNegotiationTactic(id: string): Promise<NegotiationTactic | undefined>;
+  getAllNegotiationTactics(): Promise<NegotiationTactic[]>;
+  createNegotiationTactic(tactic: InsertNegotiationTactic): Promise<NegotiationTactic>;
+  updateNegotiationTactic(id: string, tactic: Partial<InsertNegotiationTactic>): Promise<NegotiationTactic>;
+  deleteNegotiationTactic(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -461,6 +481,60 @@ export class DatabaseStorage implements IStorage {
         ? (parseFloat(result.successfulNegotiations || "0") / result.totalNegotiations) * 100 
         : 0,
     }));
+  }
+
+  // Influencing techniques methods
+  async getInfluencingTechnique(id: string): Promise<InfluencingTechnique | undefined> {
+    const [technique] = await db.select().from(influencingTechniques).where(eq(influencingTechniques.id, id));
+    return technique || undefined;
+  }
+
+  async getAllInfluencingTechniques(): Promise<InfluencingTechnique[]> {
+    return await db.select().from(influencingTechniques).orderBy(asc(influencingTechniques.name));
+  }
+
+  async createInfluencingTechnique(technique: InsertInfluencingTechnique): Promise<InfluencingTechnique> {
+    const [created] = await db.insert(influencingTechniques).values(technique).returning();
+    return created;
+  }
+
+  async updateInfluencingTechnique(id: string, technique: Partial<InsertInfluencingTechnique>): Promise<InfluencingTechnique> {
+    const [updated] = await db.update(influencingTechniques)
+      .set(technique)
+      .where(eq(influencingTechniques.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteInfluencingTechnique(id: string): Promise<void> {
+    await db.delete(influencingTechniques).where(eq(influencingTechniques.id, id));
+  }
+
+  // Negotiation tactics methods
+  async getNegotiationTactic(id: string): Promise<NegotiationTactic | undefined> {
+    const [tactic] = await db.select().from(negotiationTactics).where(eq(negotiationTactics.id, id));
+    return tactic || undefined;
+  }
+
+  async getAllNegotiationTactics(): Promise<NegotiationTactic[]> {
+    return await db.select().from(negotiationTactics).orderBy(asc(negotiationTactics.name));
+  }
+
+  async createNegotiationTactic(tactic: InsertNegotiationTactic): Promise<NegotiationTactic> {
+    const [created] = await db.insert(negotiationTactics).values(tactic).returning();
+    return created;
+  }
+
+  async updateNegotiationTactic(id: string, tactic: Partial<InsertNegotiationTactic>): Promise<NegotiationTactic> {
+    const [updated] = await db.update(negotiationTactics)
+      .set(tactic)
+      .where(eq(negotiationTactics.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteNegotiationTactic(id: string): Promise<void> {
+    await db.delete(negotiationTactics).where(eq(negotiationTactics.id, id));
   }
 }
 

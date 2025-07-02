@@ -237,6 +237,16 @@ export const insertPerformanceMetricSchema = createInsertSchema(performanceMetri
   timestamp: true,
 });
 
+export const insertInfluencingTechniqueSchema = createInsertSchema(influencingTechniques).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertNegotiationTacticSchema = createInsertSchema(negotiationTactics).omit({
+  id: true,
+  createdAt: true,
+});
+
 // Types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -264,6 +274,12 @@ export type InsertAnalyticsSession = z.infer<typeof insertAnalyticsSessionSchema
 
 export type PerformanceMetric = typeof performanceMetrics.$inferSelect;
 export type InsertPerformanceMetric = z.infer<typeof insertPerformanceMetricSchema>;
+
+export type InfluencingTechnique = typeof influencingTechniques.$inferSelect;
+export type InsertInfluencingTechnique = z.infer<typeof insertInfluencingTechniqueSchema>;
+
+export type NegotiationTactic = typeof negotiationTactics.$inferSelect;
+export type InsertNegotiationTactic = z.infer<typeof insertNegotiationTacticSchema>;
 
 // Personality profile schema
 export const personalityProfileSchema = z.object({

@@ -377,6 +377,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // System status
+  // Influencing techniques
+  app.get("/api/influencing-techniques", async (req, res) => {
+    try {
+      const techniques = await storage.getAllInfluencingTechniques();
+      res.json(techniques);
+    } catch (error) {
+      console.error("Failed to get influencing techniques:", error);
+      res.status(500).json({ error: "Failed to get influencing techniques" });
+    }
+  });
+
+  app.post("/api/influencing-techniques", async (req, res) => {
+    try {
+      const techniqueData = insertInfluencingTechniqueSchema.parse(req.body);
+      const technique = await storage.createInfluencingTechnique(techniqueData);
+      res.status(201).json(technique);
+    } catch (error) {
+      console.error("Failed to create influencing technique:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid technique data", details: error.errors });
+      }
+      res.status(500).json({ error: "Failed to create influencing technique" });
+    }
+  });
+
+  // Negotiation tactics  
+  app.get("/api/negotiation-tactics", async (req, res) => {
+    try {
+      const tactics = await storage.getAllNegotiationTactics();
+      res.json(tactics);
+    } catch (error) {
+      console.error("Failed to get negotiation tactics:", error);
+      res.status(500).json({ error: "Failed to get negotiation tactics" });
+    }
+  });
+
+  app.post("/api/negotiation-tactics", async (req, res) => {
+    try {
+      const tacticData = insertNegotiationTacticSchema.parse(req.body);
+      const tactic = await storage.createNegotiationTactic(tacticData);
+      res.status(201).json(tactic);
+    } catch (error) {
+      console.error("Failed to create negotiation tactic:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid tactic data", details: error.errors });
+      }
+      res.status(500).json({ error: "Failed to create negotiation tactic" });
+    }
+  });
+
   app.get("/api/system/status", async (req, res) => {
     try {
       const status = {
