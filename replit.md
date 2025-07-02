@@ -93,7 +93,8 @@ The application follows a modern full-stack architecture:
 - **WebSocket Support**: Real-time communication in hosted environment
 
 ## Changelog
-- July 02, 2025. Initial setup
+- July 02, 2025: Initial setup
+- July 02, 2025: Added Langfuse tracing integration and YAML prompt management system
 
 ## User Preferences
 

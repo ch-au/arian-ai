@@ -364,6 +364,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Prompt management routes
+  app.get("/api/prompts/reload", async (req, res) => {
+    try {
+      const { langfuseService } = await import("./services/langfuse");
+      langfuseService.reloadPrompts();
+      res.json({ message: "Prompts reloaded successfully" });
+    } catch (error) {
+      console.error("Failed to reload prompts:", error);
+      res.status(500).json({ error: "Failed to reload prompts" });
+    }
+  });
+
   // System status
   app.get("/api/system/status", async (req, res) => {
     try {
