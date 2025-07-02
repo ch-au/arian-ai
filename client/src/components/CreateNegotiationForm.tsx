@@ -99,26 +99,32 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
 
   const createMutation = useMutation({
     mutationFn: async (data: CreateNegotiationForm) => {
+      console.log("Form data before sending:", data);
+      
+      const payload = {
+        contextId: data.contextId,
+        buyerAgentId: data.buyerAgentId,
+        sellerAgentId: data.sellerAgentId,
+        maxRounds: data.maxRounds,
+        simulationRuns: data.simulationRuns,
+        selectedTechniques: data.selectedTechniques,
+        selectedTactics: data.selectedTactics,
+        userRole: data.userRole,
+        userZopaVolumen: data.userZopaVolumen || { min: 100, max: 1000, target: 500 },
+        userZopaPreis: data.userZopaPreis || { min: 10, max: 100, target: 50 },
+        userZopaLaufzeit: data.userZopaLaufzeit || { min: 12, max: 36, target: 24 },
+        userZopaZahlungskonditionen: data.userZopaZahlungskonditionen || { min: 30, max: 90, target: 60 },
+        counterpartDistanceVolumen: data.counterpartDistanceVolumen || 0,
+        counterpartDistancePreis: data.counterpartDistancePreis || 0,
+        counterpartDistanceLaufzeit: data.counterpartDistanceLaufzeit || 0,
+        counterpartDistanceZahlungskonditionen: data.counterpartDistanceZahlungskonditionen || 0,
+        sonderinteressen: data.sonderinteressen || "",
+      };
+      
+      console.log("Sending payload:", payload);
+      
       const response = await apiRequest("POST", "/api/negotiations", {
-        body: JSON.stringify({
-          contextId: data.contextId,
-          buyerAgentId: data.buyerAgentId,
-          sellerAgentId: data.sellerAgentId,
-          maxRounds: data.maxRounds,
-          simulationRuns: data.simulationRuns,
-          selectedTechniques: data.selectedTechniques,
-          selectedTactics: data.selectedTactics,
-          userRole: data.userRole,
-          userZopaVolumen: data.userZopaVolumen,
-          userZopaPreis: data.userZopaPreis,
-          userZopaLaufzeit: data.userZopaLaufzeit,
-          userZopaZahlungskonditionen: data.userZopaZahlungskonditionen,
-          counterpartDistanceVolumen: data.counterpartDistanceVolumen,
-          counterpartDistancePreis: data.counterpartDistancePreis,
-          counterpartDistanceLaufzeit: data.counterpartDistanceLaufzeit,
-          counterpartDistanceZahlungskonditionen: data.counterpartDistanceZahlungskonditionen,
-          sonderinteressen: data.sonderinteressen,
-        }),
+        body: JSON.stringify(payload),
       });
       return response.json();
     },
