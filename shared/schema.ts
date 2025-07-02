@@ -51,9 +51,9 @@ export const negotiations = pgTable("negotiations", {
   status: text("status").notNull().default("pending"), // pending, running, completed, failed
   userRole: text("user_role").notNull(), // "buyer" or "seller" - which role the user is interested in
   maxRounds: integer("max_rounds").default(10),
-  // Selected techniques and tactics for this negotiation (UUIDs)
-  selectedTechniques: uuid("selected_techniques").array().default([]).notNull(),
-  selectedTactics: uuid("selected_tactics").array().default([]).notNull(),
+  // Selected techniques and tactics for this negotiation (names/identifiers)
+  selectedTechniques: text("selected_techniques").array().default([]).notNull(),
+  selectedTactics: text("selected_tactics").array().default([]).notNull(),
   // User's ZOPA configuration (consolidated)
   userZopa: jsonb("user_zopa").notNull(), // {volumen: {min,max,target}, preis: {min,max,target}, laufzeit: {min,max,target}, zahlungskonditionen: {min,max,target}}
   // Counterpart positioning relative to user (-1: far, 0: neutral, 1: close)

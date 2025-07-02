@@ -284,7 +284,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/negotiations", async (req, res) => {
     try {
       console.log("Received negotiation data:", JSON.stringify(req.body, null, 2));
-      const negotiationData = insertNegotiationSchema.parse(req.body);
+      
+      // Create a custom validation schema for negotiation creation
+      const createNegotiationSchema = z.object({
+        contextId: z.string().uuid(),
+        buyerAgentId: z.string().uuid(),
+        sellerAgentId: z.string().uuid(),
+        userRole: z.enum(["buyer", "seller"]),
+        maxRounds: z.number().int().min(1).max(100),
+        selectedTechniques: z.array(z.string()),
+        selectedTactics: z.array(z.string()),
+        userZopa: z.object({
+          volumen: z.object({
+            min: z.number(),
+            max: z.number(),
+            target: z.number(),
+          }),
+          preis: z.object({
+            min: z.number(),
+            max: z.number(),
+            target: z.number(),
+          }),
+          laufzeit: z.object({
+            min: z.number(),
+            max: z.number(),
+            target: z.number(),
+          }),
+          zahlungskonditionen: z.object({
+            min: z.number(),
+            max: z.number(),
+            target: z.number(),
+          }),
+        }),
+        counterpartDistance: z.object({
+          volumen: z.number().min(-1).max(1),
+          preis: z.number().min(-1).max(1),
+          laufzeit: z.number().min(-1).max(1),
+          zahlungskonditionen: z.number().min(-1).max(1),
+        }),
+        sonderinteressen: z.string().optional(),
+      });
+
+      const validatedData = createNegotiationSchema.parse(req.body);
+      
+      // Transform data to match database schema
+      const negotiationData = {
+        contextId: validatedData.contextId,
+        buyerAgentId: validatedData.buyerAgentId,
+        sellerAgentId: validatedData.sellerAgentId,
+        userRole: validatedData.userRole,
+        maxRounds: validatedData.maxRounds,
+        selectedTechniques: validatedData.selectedTechniques, // Keep as string array for now
+        selectedTactics: validatedData.selectedTactics, // Keep as string array for now
+        userZopa: validatedData.userZopa,
+        counterpartDistance: validatedData.counterpartDistance,
+        sonderinteressen: validatedData.sonderinteressen || null,
+        status: "pending" as const,
+      };
+
       const negotiation = await storage.createNegotiation(negotiationData);
       res.status(201).json(negotiation);
     } catch (error) {
