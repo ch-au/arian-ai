@@ -58,8 +58,8 @@ export default function Negotiations() {
     },
     onError: (error) => {
       toast({
-        title: "Error",
-        description: "Failed to start negotiation. Please try again.",
+        title: "Failed to start negotiation",
+        description: error instanceof Error ? error.message : "An unknown error occurred",
         variant: "destructive",
       });
     },
@@ -79,90 +79,77 @@ export default function Negotiations() {
     },
     onError: (error) => {
       toast({
-        title: "Error",
-        description: "Failed to stop negotiation. Please try again.",
+        title: "Failed to stop negotiation",
+        description: error instanceof Error ? error.message : "An unknown error occurred",
         variant: "destructive",
       });
     },
   });
 
   // WebSocket connection for real-time updates
-  useWebSocket('/ws', {
-    onMessage: (data) => {
-      if (data.type === 'negotiation_started' || data.type === 'round_completed' || data.type === 'negotiation_completed') {
-        queryClient.invalidateQueries({ queryKey: ["/api/negotiations"] });
-        
-        if (data.type === 'negotiation_completed') {
-          toast({
-            title: "Negotiation Completed",
-            description: `Negotiation ${data.negotiationId} has completed with a success score of ${data.data.successScore}%.`,
-          });
-        }
+  useWebSocket((message) => {
+    if (message.type === 'negotiation_started' || message.type === 'round_completed' || message.type === 'negotiation_completed') {
+      queryClient.invalidateQueries({ queryKey: ["/api/negotiations"] });
+      
+      if (message.type === 'negotiation_completed') {
+        toast({
+          title: "Negotiation Completed",
+          description: `Negotiation ${message.negotiationId} has finished.`,
+        });
       }
-    },
-  });
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case "pending":
-        return <Clock className="h-4 w-4 text-gray-500" />;
-      case "active":
-        return <Play className="h-4 w-4 text-blue-500" />;
-      case "completed":
-        return <CheckCircle className="h-4 w-4 text-green-500" />;
-      case "failed":
-        return <XCircle className="h-4 w-4 text-red-500" />;
-      default:
-        return <Clock className="h-4 w-4 text-gray-500" />;
     }
-  };
+  });
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "pending":
-        return "gray";
-      case "active":
-        return "blue";
-      case "completed":
-        return "green";
-      case "failed":
-        return "red";
-      default:
-        return "gray";
+      case "active": return "bg-green-500";
+      case "completed": return "bg-blue-500";
+      case "failed": return "bg-red-500";
+      default: return "bg-gray-500";
     }
   };
 
-  const getAgentName = (agentId: string) => {
-    return agents?.find((agent: any) => agent.id === agentId)?.name || "Unknown Agent";
-  };
-
-  const getContextName = (contextId: string) => {
-    return contexts?.find((context: any) => context.id === contextId)?.name || "Unknown Context";
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case "active": return <Clock className="h-4 w-4" />;
+      case "completed": return <CheckCircle className="h-4 w-4" />;
+      case "failed": return <XCircle className="h-4 w-4" />;
+      default: return <Clock className="h-4 w-4" />;
+    }
   };
 
   const formatDuration = (startedAt: string, completedAt?: string) => {
-    if (!startedAt) return "Not started";
-    
     const start = new Date(startedAt);
     const end = completedAt ? new Date(completedAt) : new Date();
-    const duration = Math.floor((end.getTime() - start.getTime()) / 1000 / 60); // minutes
+    const diffMs = end.getTime() - start.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
     
-    return `${duration}m`;
+    if (diffMins < 60) {
+      return `${diffMins}m`;
+    }
+    const diffHours = Math.floor(diffMins / 60);
+    return `${diffHours}h ${diffMins % 60}m`;
   };
 
-  if (isLoading) {
-    return (
-      <div className="p-6">
-        <div className="animate-pulse space-y-4">
-          <div className="h-8 bg-gray-200 rounded w-1/4"></div>
-          <div className="grid grid-cols-1 gap-4">
-            {[...Array(5)].map((_, i) => (
-              <div key={i} className="h-32 bg-gray-200 rounded-lg"></div>
-            ))}
-          </div>
+  const LoadingSkeleton = () => (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <Skeleton className="h-8 w-48" />
+          <Skeleton className="h-4 w-72 mt-2" />
         </div>
+        <Skeleton className="h-10 w-36" />
       </div>
-    );
+      <div className="space-y-4">
+        {[1, 2, 3, 4].map((i) => (
+          <Skeleton key={i} className="h-24 w-full" />
+        ))}
+      </div>
+    </div>
+  );
+
+  if (isLoading) {
+    return <LoadingSkeleton />;
   }
 
   return (
@@ -184,10 +171,11 @@ export default function Negotiations() {
             <DialogHeader>
               <DialogTitle>Create New Negotiation</DialogTitle>
             </DialogHeader>
-            <div className="p-4">
-              <p>Create negotiation form will be implemented here</p>
-              <Button onClick={() => setShowCreateDialog(false)} className="mt-4">Close</Button>
-            </div>
+            <CreateNegotiationForm
+              onSuccess={() => setShowCreateDialog(false)}
+              agents={agents || []}
+              contexts={contexts || []}
+            />
           </DialogContent>
         </Dialog>
       </div>
@@ -338,18 +326,37 @@ export default function Negotiations() {
 
       {/* Negotiation Detail Modal */}
       {selectedNegotiation && (
-        <Dialog open={true} onOpenChange={() => setSelectedNegotiation(null)}>
-          <DialogContent className="max-w-4xl">
-            <DialogHeader>
-              <DialogTitle>Negotiation Details</DialogTitle>
-            </DialogHeader>
-            <div className="p-4">
-              <p>Negotiation details for {selectedNegotiation} will be shown here</p>
-              <Button onClick={() => setSelectedNegotiation(null)} className="mt-4">Close</Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+        <NegotiationDetailModal 
+          negotiationId={selectedNegotiation}
+          onClose={() => setSelectedNegotiation(null)}
+        />
       )}
     </div>
+  );
+}
+
+// Placeholder components - these would be implemented separately
+function CreateNegotiationForm({ onSuccess, agents, contexts }: { onSuccess: () => void; agents: any[]; contexts: any[] }) {
+  return (
+    <div className="p-4">
+      <p>Create negotiation form will be implemented here</p>
+      <Button onClick={onSuccess} className="mt-4">Create Negotiation</Button>
+    </div>
+  );
+}
+
+function NegotiationDetailModal({ negotiationId, onClose }: { negotiationId: string; onClose: () => void }) {
+  return (
+    <Dialog open={true} onOpenChange={() => onClose()}>
+      <DialogContent className="max-w-4xl">
+        <DialogHeader>
+          <DialogTitle>Negotiation Details</DialogTitle>
+        </DialogHeader>
+        <div className="p-4">
+          <p>Negotiation details for {negotiationId} will be shown here</p>
+          <Button onClick={onClose} className="mt-4">Close</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
