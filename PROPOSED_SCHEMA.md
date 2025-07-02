@@ -19,11 +19,10 @@ CREATE TABLE negotiations (
   -- Configuration
   user_role TEXT NOT NULL CHECK (user_role IN ('buyer', 'seller')),
   max_rounds INTEGER DEFAULT 10,
-  simulation_runs INTEGER DEFAULT 1,
   
-  -- Selected techniques and tactics for this negotiation
-  selected_techniques TEXT[] DEFAULT '{}',
-  selected_tactics TEXT[] DEFAULT '{}',
+  -- Selected techniques and tactics for this negotiation (UUIDs)
+  selected_techniques UUID[] DEFAULT '{}',
+  selected_tactics UUID[] DEFAULT '{}',
   
   -- User's ZOPA configuration (what the user wants to achieve)
   user_zopa JSONB NOT NULL, -- {volumen: {min,max,target}, preis: {min,max,target}, laufzeit: {min,max,target}, zahlungskonditionen: {min,max,target}}
@@ -50,7 +49,11 @@ CREATE TABLE negotiations (
 CREATE TABLE simulation_runs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   negotiation_id UUID REFERENCES negotiations(id) ON DELETE CASCADE,
-  run_number INTEGER NOT NULL, -- 1, 2, 3... for multiple simulation runs
+  run_number INTEGER NOT NULL, -- Sequential number for this negotiation
+  
+  -- Specific technique/tactic combination being tested
+  technique_id UUID REFERENCES influencing_techniques(id),
+  tactic_id UUID REFERENCES negotiation_tactics(id),
   
   -- Status and timing
   status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'completed', 'failed')),
@@ -68,11 +71,12 @@ CREATE TABLE simulation_runs (
   
   -- Performance metrics
   avg_response_time_ms INTEGER,
-  technique_effectiveness JSONB, -- {technique_id: score, ...}
-  tactic_effectiveness JSONB, -- {tactic_id: score, ...}
+  technique_effectiveness_score DECIMAL(5,2), -- How effective was this technique
+  tactic_effectiveness_score DECIMAL(5,2), -- How effective was this tactic
   
   -- Constraints
-  UNIQUE(negotiation_id, run_number)
+  UNIQUE(negotiation_id, run_number),
+  UNIQUE(negotiation_id, technique_id, tactic_id) -- Prevent duplicate combinations
 );
 ```
 
@@ -107,6 +111,71 @@ CREATE TABLE negotiation_rounds (
 - `performance_metrics` ✓
 - `influencing_techniques` ✓
 - `negotiation_tactics` ✓
+
+## Combinatorial Simulation Logic
+
+When a negotiation is created with:
+- 3 selected techniques: [A, B, C]  
+- 3 selected tactics: [X, Y, Z]
+
+The system automatically creates 9 simulation runs:
+1. Technique A + Tactic X
+2. Technique A + Tactic Y  
+3. Technique A + Tactic Z
+4. Technique B + Tactic X
+5. Technique B + Tactic Y
+6. Technique B + Tactic Z
+7. Technique C + Tactic X
+8. Technique C + Tactic Y
+9. Technique C + Tactic Z
+
+This allows precise measurement of how each technique-tactic combination performs in the same negotiation scenario.
+
+### Server Logic for Creating Simulation Runs
+
+When a negotiation is created, the server will:
+
+```javascript
+// Example: Creating simulation runs for technique-tactic combinations
+async function createNegotiationWithRuns(negotiationData) {
+  // 1. Create the main negotiation record
+  const negotiation = await db.insert(negotiations).values({
+    contextId: negotiationData.contextId,
+    buyerAgentId: negotiationData.buyerAgentId,
+    sellerAgentId: negotiationData.sellerAgentId,
+    userRole: negotiationData.userRole,
+    maxRounds: negotiationData.maxRounds,
+    selected_techniques: negotiationData.selectedTechniques, // [uuid1, uuid2, uuid3]
+    selected_tactics: negotiationData.selectedTactics, // [uuid4, uuid5, uuid6]
+    user_zopa: negotiationData.userZopa,
+    counterpart_distance: negotiationData.counterpartDistance,
+    sonderinteressen: negotiationData.sonderinteressen
+  }).returning();
+
+  // 2. Create simulation runs for each technique-tactic combination
+  const simulationRuns = [];
+  let runNumber = 1;
+  
+  for (const techniqueId of negotiationData.selectedTechniques) {
+    for (const tacticId of negotiationData.selectedTactics) {
+      simulationRuns.push({
+        negotiationId: negotiation.id,
+        runNumber: runNumber++,
+        techniqueId: techniqueId,
+        tacticId: tacticId,
+        status: 'pending'
+      });
+    }
+  }
+  
+  // 3. Insert all simulation runs
+  await db.insert(simulationRuns).values(simulationRuns);
+  
+  return negotiation;
+}
+```
+
+The total number of simulation runs = `selected_techniques.length × selected_tactics.length`
 
 ## Key Changes Summary
 
