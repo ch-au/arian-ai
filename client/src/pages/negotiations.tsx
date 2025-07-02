@@ -11,6 +11,7 @@ import { Play, Square, Eye, Plus, Clock, CheckCircle, XCircle, Users, BarChart3 
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useWebSocket } from "@/hooks/use-websocket";
+import CreateNegotiationForm from "@/components/CreateNegotiationForm";
 
 interface Negotiation {
   id: string;
@@ -169,10 +170,11 @@ export default function Negotiations() {
             <DialogHeader>
               <DialogTitle>Create New Negotiation</DialogTitle>
             </DialogHeader>
-            <div className="p-4">
-              <p>Create negotiation form will be implemented here</p>
-              <Button onClick={() => setShowCreateDialog(false)} className="mt-4">Close</Button>
-            </div>
+            <CreateNegotiationForm
+              agents={agents || []}
+              contexts={contexts || []}
+              onSuccess={() => setShowCreateDialog(false)}
+            />
           </DialogContent>
         </Dialog>
       </div>
