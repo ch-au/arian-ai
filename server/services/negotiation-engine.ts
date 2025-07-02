@@ -156,7 +156,8 @@ export class NegotiationEngine {
             buyerZopa,
             negotiationHistory,
             currentRound,
-            negotiation.maxRounds
+            negotiation.maxRounds,
+            negotiation.id
           );
 
           await this.recordNegotiationRound(
@@ -201,7 +202,8 @@ export class NegotiationEngine {
             sellerZopa,
             negotiationHistory,
             currentRound,
-            negotiation.maxRounds
+            negotiation.maxRounds || 10,
+            negotiation.id
           );
 
           await this.recordNegotiationRound(
@@ -286,7 +288,8 @@ export class NegotiationEngine {
     zopaBoundaries: ZopaBoundaries,
     negotiationHistory: NegotiationMessage[],
     roundNumber: number,
-    maxRounds: number
+    maxRounds: number,
+    negotiationId: string
   ) {
     const startTime = Date.now();
 
@@ -298,7 +301,8 @@ export class NegotiationEngine {
         zopaBoundaries,
         negotiationHistory,
         roundNumber,
-        maxRounds
+        maxRounds,
+        negotiationId
       );
 
       // Record performance metrics

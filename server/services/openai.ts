@@ -207,7 +207,7 @@ Respond with JSON in this exact format:
       const response = await openai.chat.completions.create({
         model: "gpt-4o",
         messages: [
-          { role: "system", content: systemPrompt },
+          { role: "system", content: fullSystemPrompt },
           ...conversationHistory,
           { role: "user", content: `Please provide your response for round ${roundNumber}.` }
         ],
@@ -216,10 +216,53 @@ Respond with JSON in this exact format:
         max_tokens: 1000,
       });
 
-      const responseTime = Date.now() - startTime;
+      const endTime = new Date();
+      const responseTime = endTime.getTime() - startTime.getTime();
       const tokensUsed = response.usage?.total_tokens || 0;
       
       const result = JSON.parse(response.choices[0].message.content || "{}");
+      
+      // Log to Langfuse if trace is available
+      if (trace) {
+        const generation = langfuseService.createGeneration(trace, {
+          name: `negotiation-round-${roundNumber}`,
+          model: "gpt-4o",
+          input: {
+            systemPrompt: fullSystemPrompt,
+            conversationHistory,
+            roundNumber,
+            agentId: agent.id,
+            role
+          },
+          output: result,
+          usage: {
+            promptTokens: response.usage?.prompt_tokens || 0,
+            completionTokens: response.usage?.completion_tokens || 0,
+            totalTokens: tokensUsed
+          },
+          startTime,
+          endTime,
+          metadata: {
+            personalityType,
+            zopaSituation,
+            confidence: result.confidence || 0.5
+          }
+        });
+
+        // Score the generation based on confidence and ZOPA compliance
+        langfuseService.scoreGeneration(generation.id, [
+          {
+            name: "confidence",
+            value: result.confidence || 0.5,
+            comment: "Agent's confidence in their response"
+          },
+          {
+            name: "zopa_compliance",
+            value: zopaSituation === 'within_range' ? 1 : zopaSituation === 'near_limits' ? 0.7 : 0.3,
+            comment: `ZOPA situation: ${zopaSituation}`
+          }
+        ]);
+      }
       
       return {
         message: result.message || "I'm ready to negotiate.",
