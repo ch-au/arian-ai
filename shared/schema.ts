@@ -106,6 +106,28 @@ export const performanceMetrics = pgTable("performance_metrics", {
   timestamp: timestamp("timestamp").defaultNow(),
 });
 
+// Influencing techniques for negotiations
+export const influencingTechniques = pgTable("influencing_techniques", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  beschreibung: text("beschreibung").notNull(),
+  anwendung: text("anwendung").notNull(),
+  wichtigeAspekte: jsonb("wichtige_aspekte").notNull(),
+  keyPhrases: jsonb("key_phrases").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Negotiation tactics for strategic approaches
+export const negotiationTactics = pgTable("negotiation_tactics", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  beschreibung: text("beschreibung").notNull(),
+  anwendung: text("anwendung").notNull(),
+  wichtigeAspekte: jsonb("wichtige_aspekte").notNull(),
+  keyPhrases: jsonb("key_phrases").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Relations
 export const agentRelations = relations(agents, ({ many }) => ({
   buyerNegotiations: many(negotiations, { relationName: "buyerAgent" }),
