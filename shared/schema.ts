@@ -49,6 +49,7 @@ export const negotiations = pgTable("negotiations", {
   buyerAgentId: uuid("buyer_agent_id").references(() => agents.id),
   sellerAgentId: uuid("seller_agent_id").references(() => agents.id),
   status: text("status").notNull().default("pending"), // pending, active, completed, failed
+  userRole: text("user_role").notNull(), // "buyer" or "seller" - which role the user is interested in
   startedAt: timestamp("started_at"),
   completedAt: timestamp("completed_at"),
   totalRounds: integer("total_rounds").default(0),
@@ -56,9 +57,42 @@ export const negotiations = pgTable("negotiations", {
   selectedTechniques: text("selected_techniques").array().default([]).notNull(),
   selectedTactics: text("selected_tactics").array().default([]).notNull(),
   simulationRuns: integer("simulation_runs").default(1).notNull(),
-  finalAgreement: jsonb("final_agreement"),
-  successScore: decimal("success_score", { precision: 5, scale: 2 }),
+  // User ZOPA configuration for all dimensions
+  userZopaVolumen: jsonb("user_zopa_volumen").notNull(), // {min, max, target}
+  userZopaPreis: jsonb("user_zopa_preis").notNull(), // {min, max, target}
+  userZopaLaufzeit: jsonb("user_zopa_laufzeit").notNull(), // {min, max, target}
+  userZopaZahlungskonditionen: jsonb("user_zopa_zahlungskonditionen").notNull(), // {min, max, target}
+  // Counterpart distance settings (-1: far, 0: neutral, 1: close)
+  counterpartDistanceVolumen: integer("counterpart_distance_volumen").default(0),
+  counterpartDistancePreis: integer("counterpart_distance_preis").default(0),
+  counterpartDistanceLaufzeit: integer("counterpart_distance_laufzeit").default(0),
+  counterpartDistanceZahlungskonditionen: integer("counterpart_distance_zahlungskonditionen").default(0),
+  sonderinteressen: text("sonderinteressen"), // Special interests/requirements
   metadata: jsonb("metadata"), // additional tracking data
+});
+
+// Simulation Results - individual simulation runs for each negotiation
+export const simulationResults = pgTable("simulation_results", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  negotiationId: uuid("negotiation_id").references(() => negotiations.id, { onDelete: "cascade" }),
+  simulationNumber: integer("simulation_number").notNull(), // 1, 2, 3... for multiple runs
+  status: text("status").notNull().default("pending"), // pending, running, completed, failed
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  totalRounds: integer("total_rounds").default(0),
+  finalAgreement: jsonb("final_agreement"), // Final negotiated terms
+  zopaAchieved: boolean("zopa_achieved").default(false), // Whether user's ZOPA was met
+  successScore: decimal("success_score", { precision: 5, scale: 2 }),
+  // Final negotiated values for each dimension
+  finalVolumen: decimal("final_volumen", { precision: 15, scale: 2 }),
+  finalPreis: decimal("final_preis", { precision: 15, scale: 2 }),
+  finalLaufzeit: integer("final_laufzeit"), // in months
+  finalZahlungskonditionen: integer("final_zahlungskonditionen"), // payment terms in days
+  // Performance metrics
+  avgResponseTime: decimal("avg_response_time", { precision: 8, scale: 2 }),
+  techniqueEffectiveness: jsonb("technique_effectiveness"), // effectiveness scores per technique
+  tacticEffectiveness: jsonb("tactic_effectiveness"), // effectiveness scores per tactic
+  metadata: jsonb("metadata"),
 });
 
 // Negotiation rounds - individual turns in a negotiation
@@ -156,7 +190,15 @@ export const negotiationRelations = relations(negotiations, ({ one, many }) => (
     relationName: "sellerAgent",
   }),
   rounds: many(negotiationRounds),
+  simulationResults: many(simulationResults),
   performanceMetrics: many(performanceMetrics),
+}));
+
+export const simulationResultRelations = relations(simulationResults, ({ one }) => ({
+  negotiation: one(negotiations, {
+    fields: [simulationResults.negotiationId],
+    references: [negotiations.id],
+  }),
 }));
 
 export const negotiationContextRelations = relations(negotiationContexts, ({ many }) => ({
@@ -220,6 +262,12 @@ export const insertNegotiationSchema = createInsertSchema(negotiations).omit({
   completedAt: true,
 });
 
+export const insertSimulationResultSchema = createInsertSchema(simulationResults).omit({
+  id: true,
+  startedAt: true,
+  completedAt: true,
+});
+
 export const insertNegotiationRoundSchema = createInsertSchema(negotiationRounds).omit({
   id: true,
   timestamp: true,
@@ -265,6 +313,9 @@ export type InsertZopaConfiguration = z.infer<typeof insertZopaConfigurationSche
 
 export type Negotiation = typeof negotiations.$inferSelect;
 export type InsertNegotiation = z.infer<typeof insertNegotiationSchema>;
+
+export type SimulationResult = typeof simulationResults.$inferSelect;
+export type InsertSimulationResult = z.infer<typeof insertSimulationResultSchema>;
 
 export type NegotiationRound = typeof negotiationRounds.$inferSelect;
 export type InsertNegotiationRound = z.infer<typeof insertNegotiationRoundSchema>;
@@ -316,3 +367,28 @@ export const zopaBoundariesSchema = z.object({
 });
 
 export type ZopaBoundaries = z.infer<typeof zopaBoundariesSchema>;
+
+// Enhanced ZOPA schemas for German business negotiations
+export const zopaDimensionSchema = z.object({
+  min: z.number(),
+  max: z.number(),
+  target: z.number(),
+});
+
+export const userZopaConfigSchema = z.object({
+  volumen: zopaDimensionSchema, // Volume/quantity
+  preis: zopaDimensionSchema, // Price
+  laufzeit: zopaDimensionSchema, // Contract duration (months)
+  zahlungskonditionen: zopaDimensionSchema, // Payment terms (days)
+});
+
+export const counterpartDistanceSchema = z.object({
+  volumen: z.number().min(-1).max(1), // -1: far, 0: neutral, 1: close
+  preis: z.number().min(-1).max(1),
+  laufzeit: z.number().min(-1).max(1),
+  zahlungskonditionen: z.number().min(-1).max(1),
+});
+
+export type ZopaDimension = z.infer<typeof zopaDimensionSchema>;
+export type UserZopaConfig = z.infer<typeof userZopaConfigSchema>;
+export type CounterpartDistance = z.infer<typeof counterpartDistanceSchema>;
