@@ -108,6 +108,16 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
           simulationRuns: data.simulationRuns,
           selectedTechniques: data.selectedTechniques,
           selectedTactics: data.selectedTactics,
+          userRole: data.userRole,
+          userZopaVolumen: data.userZopaVolumen,
+          userZopaPreis: data.userZopaPreis,
+          userZopaLaufzeit: data.userZopaLaufzeit,
+          userZopaZahlungskonditionen: data.userZopaZahlungskonditionen,
+          counterpartDistanceVolumen: data.counterpartDistanceVolumen,
+          counterpartDistancePreis: data.counterpartDistancePreis,
+          counterpartDistanceLaufzeit: data.counterpartDistanceLaufzeit,
+          counterpartDistanceZahlungskonditionen: data.counterpartDistanceZahlungskonditionen,
+          sonderinteressen: data.sonderinteressen,
         }),
       });
       return response.json();
