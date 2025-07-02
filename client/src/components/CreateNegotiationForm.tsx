@@ -1,17 +1,18 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation } from "@tanstack/react-query";
 import { z } from "zod";
-import { Button } from "@/components/ui/button";
+import { useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Users, Settings, Target, Play } from "lucide-react";
+import { Settings, Users, Target, Play, ArrowLeft, ArrowRight, Brain, Zap } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -20,6 +21,9 @@ const createNegotiationSchema = z.object({
   buyerAgentId: z.string().min(1, "Please select a buyer agent"),
   sellerAgentId: z.string().min(1, "Please select a seller agent"),
   maxRounds: z.number().min(1).max(50),
+  selectedTechniques: z.array(z.string()).min(1, "Select at least one influencing technique"),
+  selectedTactics: z.array(z.string()).min(1, "Select at least one negotiation tactic"),
+  simulationRuns: z.number().min(1).max(100).default(1),
   autoStart: z.boolean().default(false),
 });
 
@@ -31,6 +35,25 @@ interface Props {
   onSuccess: () => void;
 }
 
+// Sample data for techniques and tactics (will be replaced with API data)
+const sampleTechniques = [
+  { id: "scarcity", name: "Scarcity Technique", description: "Creates urgency by emphasizing limited availability" },
+  { id: "social_proof", name: "Social Proof", description: "Use examples of others to influence decisions" },
+  { id: "reciprocity", name: "Reciprocity", description: "Create obligation through giving first" },
+  { id: "authority", name: "Authority", description: "Leverage expertise and credibility" },
+  { id: "commitment", name: "Commitment & Consistency", description: "Build on previous commitments" },
+  { id: "liking", name: "Liking", description: "Build rapport and connection" },
+];
+
+const sampleTactics = [
+  { id: "competitive_pricing", name: "Competitive Pricing", description: "Focus on price-based negotiations" },
+  { id: "value_creation", name: "Value Creation", description: "Look for win-win opportunities" },
+  { id: "time_pressure", name: "Time Pressure", description: "Use urgency to drive decisions" },
+  { id: "relationship_building", name: "Relationship Building", description: "Focus on long-term partnerships" },
+  { id: "anchoring", name: "Anchoring", description: "Set initial reference points" },
+  { id: "concession_strategy", name: "Concession Strategy", description: "Strategic give-and-take approach" },
+];
+
 export default function CreateNegotiationForm({ agents, contexts, onSuccess }: Props) {
   const [step, setStep] = useState(1);
   const { toast } = useToast();
@@ -39,6 +62,9 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
     resolver: zodResolver(createNegotiationSchema),
     defaultValues: {
       maxRounds: 10,
+      selectedTechniques: [],
+      selectedTactics: [],
+      simulationRuns: 1,
       autoStart: false,
     },
   });
@@ -46,24 +72,27 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
   const createMutation = useMutation({
     mutationFn: async (data: CreateNegotiationForm) => {
       const response = await apiRequest("POST", "/api/negotiations", {
-        contextId: data.contextId,
-        buyerAgentId: data.buyerAgentId,
-        sellerAgentId: data.sellerAgentId,
-        maxRounds: data.maxRounds,
-        status: "pending",
+        body: JSON.stringify({
+          contextId: data.contextId,
+          buyerAgentId: data.buyerAgentId,
+          sellerAgentId: data.sellerAgentId,
+          maxRounds: data.maxRounds,
+          simulationRuns: data.simulationRuns,
+          selectedTechniques: data.selectedTechniques,
+          selectedTactics: data.selectedTactics,
+        }),
       });
       return response.json();
     },
     onSuccess: async (negotiation) => {
       queryClient.invalidateQueries({ queryKey: ["/api/negotiations"] });
       
-      // Auto-start if requested
       if (form.getValues().autoStart) {
         try {
           await apiRequest("POST", `/api/negotiations/${negotiation.id}/start`);
           toast({
             title: "Negotiation Created & Started",
-            description: "Your negotiation has been created and started successfully.",
+            description: "Your negotiation simulation has been created and started successfully.",
           });
         } catch (error) {
           toast({
@@ -75,16 +104,16 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
       } else {
         toast({
           title: "Negotiation Created",
-          description: "Your negotiation has been created successfully.",
+          description: "Your negotiation simulation has been created successfully.",
         });
       }
       
       onSuccess();
     },
-    onError: (error) => {
+    onError: () => {
       toast({
-        title: "Failed to create negotiation",
-        description: error instanceof Error ? error.message : "An unknown error occurred",
+        title: "Error",
+        description: "Failed to create negotiation. Please try again.",
         variant: "destructive",
       });
     },
@@ -94,51 +123,71 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
     createMutation.mutate(data);
   };
 
-  const selectedContext = contexts.find(c => c.id === form.watch("contextId"));
-  const selectedBuyer = agents.find(a => a.id === form.watch("buyerAgentId"));
-  const selectedSeller = agents.find(a => a.id === form.watch("sellerAgentId"));
+  const nextStep = () => {
+    if (step < 4) setStep(step + 1);
+  };
+
+  const prevStep = () => {
+    if (step > 1) setStep(step - 1);
+  };
 
   const canProceedToStep2 = form.watch("contextId");
   const canProceedToStep3 = canProceedToStep2 && form.watch("buyerAgentId") && form.watch("sellerAgentId");
+  const canProceedToStep4 = canProceedToStep3 && form.watch("selectedTechniques")?.length > 0 && form.watch("selectedTactics")?.length > 0;
+
+  const stepTitles = [
+    "Define Basic Parameters",
+    "Select Agents", 
+    "Choose Negotiation Style",
+    "Review & Configure"
+  ];
+
+  const stepIcons = [Settings, Users, Brain, Play];
 
   return (
     <div className="space-y-6">
       {/* Progress Steps */}
       <div className="flex items-center justify-center space-x-4 mb-8">
-        {[1, 2, 3].map((stepNum) => (
-          <div key={stepNum} className="flex items-center">
-            <div
-              className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                step >= stepNum
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-200 text-gray-600"
-              }`}
-            >
-              {stepNum}
+        {[1, 2, 3, 4].map((stepNum) => {
+          const StepIcon = stepIcons[stepNum - 1];
+          return (
+            <div key={stepNum} className="flex items-center">
+              <div className="text-center">
+                <div
+                  className={`w-12 h-12 rounded-full flex items-center justify-center text-sm font-medium ${
+                    step >= stepNum
+                      ? "bg-blue-600 text-white"
+                      : "bg-gray-200 text-gray-600"
+                  }`}
+                >
+                  <StepIcon className="w-5 h-5" />
+                </div>
+                <p className="text-xs mt-2 text-gray-600">{stepTitles[stepNum - 1]}</p>
+              </div>
+              {stepNum < 4 && (
+                <div
+                  className={`w-16 h-1 mx-4 ${
+                    step > stepNum ? "bg-blue-600" : "bg-gray-200"
+                  }`}
+                />
+              )}
             </div>
-            {stepNum < 3 && (
-              <div
-                className={`w-16 h-1 mx-2 ${
-                  step > stepNum ? "bg-blue-600" : "bg-gray-200"
-                }`}
-              />
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-          {/* Step 1: Context Selection */}
+          {/* Step 1: Basic Parameters */}
           {step === 1 && (
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Target className="h-5 w-5" />
-                  Step 1: Choose Negotiation Context
+                <CardTitle className="flex items-center">
+                  <Settings className="w-5 h-5 mr-2" />
+                  Define Basic Parameters
                 </CardTitle>
                 <CardDescription>
-                  Select the type of negotiation scenario you want to simulate
+                  Choose the negotiation context and set basic parameters for your simulation.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -167,43 +216,48 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
                   )}
                 />
 
-                {selectedContext && (
-                  <div className="mt-4 p-4 bg-blue-50 rounded-lg">
-                    <h4 className="font-medium text-blue-900 mb-2">{selectedContext.name}</h4>
-                    <p className="text-sm text-blue-700">{selectedContext.description}</p>
-                    {selectedContext.productInfo && (
-                      <div className="mt-2">
-                        <p className="text-xs text-blue-600">
-                          Product: {JSON.stringify(selectedContext.productInfo)}
-                        </p>
-                      </div>
-                    )}
+                <FormField
+                  control={form.control}
+                  name="maxRounds"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Maximum Rounds</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          min={1}
+                          max={50}
+                          {...field}
+                          onChange={(e) => field.onChange(parseInt(e.target.value))}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {form.watch("contextId") && (
+                  <div className="p-4 bg-blue-50 rounded-lg">
+                    <h4 className="font-medium text-blue-900 mb-2">Selected Context</h4>
+                    <p className="text-blue-700 text-sm">
+                      {contexts.find(c => c.id === form.watch("contextId"))?.description}
+                    </p>
                   </div>
                 )}
-
-                <div className="flex justify-end">
-                  <Button
-                    type="button"
-                    onClick={() => setStep(2)}
-                    disabled={!canProceedToStep2}
-                  >
-                    Next: Select Agents
-                  </Button>
-                </div>
               </CardContent>
             </Card>
           )}
 
-          {/* Step 2: Agent Selection */}
+          {/* Step 2: Select Agents */}
           {step === 2 && (
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Users className="h-5 w-5" />
-                  Step 2: Choose Negotiation Agents
+                <CardTitle className="flex items-center">
+                  <Users className="w-5 h-5 mr-2" />
+                  Select Negotiation Agents
                 </CardTitle>
                 <CardDescription>
-                  Select the AI agents that will represent the buyer and seller
+                  Choose the AI agents that will participate in the negotiation.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -259,127 +313,321 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
                   />
                 </div>
 
-                {selectedBuyer && selectedSeller && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
-                    <div className="p-4 bg-blue-50 rounded-lg">
-                      <h4 className="font-medium text-blue-900 mb-2">Buyer: {selectedBuyer.name}</h4>
-                      <p className="text-sm text-blue-700 mb-2">{selectedBuyer.description}</p>
-                      <div className="flex gap-1">
-                        <Badge variant="secondary">Power: {selectedBuyer.powerLevel}</Badge>
-                      </div>
+                {/* Show selected agents info */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {form.watch("buyerAgentId") && (
+                    <div className="p-4 border rounded-lg">
+                      <h4 className="font-medium text-green-700 mb-2">Buyer Agent</h4>
+                      <p className="text-sm">{agents.find(a => a.id === form.watch("buyerAgentId"))?.name}</p>
+                      <Badge variant="secondary" className="mt-2">
+                        Power: {agents.find(a => a.id === form.watch("buyerAgentId"))?.powerLevel}/10
+                      </Badge>
                     </div>
-                    <div className="p-4 bg-green-50 rounded-lg">
-                      <h4 className="font-medium text-green-900 mb-2">Seller: {selectedSeller.name}</h4>
-                      <p className="text-sm text-green-700 mb-2">{selectedSeller.description}</p>
-                      <div className="flex gap-1">
-                        <Badge variant="secondary">Power: {selectedSeller.powerLevel}</Badge>
-                      </div>
-                    </div>
-                  </div>
-                )}
+                  )}
 
-                <div className="flex justify-between">
-                  <Button type="button" variant="outline" onClick={() => setStep(1)}>
-                    Back
-                  </Button>
-                  <Button
-                    type="button"
-                    onClick={() => setStep(3)}
-                    disabled={!canProceedToStep3}
-                  >
-                    Next: Configure Settings
-                  </Button>
+                  {form.watch("sellerAgentId") && (
+                    <div className="p-4 border rounded-lg">
+                      <h4 className="font-medium text-blue-700 mb-2">Seller Agent</h4>
+                      <p className="text-sm">{agents.find(a => a.id === form.watch("sellerAgentId"))?.name}</p>
+                      <Badge variant="secondary" className="mt-2">
+                        Power: {agents.find(a => a.id === form.watch("sellerAgentId"))?.powerLevel}/10
+                      </Badge>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
           )}
 
-          {/* Step 3: Configuration & Review */}
+          {/* Step 3: Choose Negotiation Style */}
           {step === 3 && (
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Settings className="h-5 w-5" />
-                  Step 3: Configure & Create
+                <CardTitle className="flex items-center">
+                  <Brain className="w-5 h-5 mr-2" />
+                  Choose Negotiation Style
                 </CardTitle>
                 <CardDescription>
-                  Set negotiation parameters and review your configuration
+                  Select the influencing techniques and negotiation tactics to test in this simulation.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                <FormField
-                  control={form.control}
-                  name="maxRounds"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Maximum Rounds</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          min={1}
-                          max={50}
-                          {...field}
-                          onChange={(e) => field.onChange(parseInt(e.target.value))}
-                        />
-                      </FormControl>
-                      <FormDescription>
-                        Maximum number of negotiation rounds (1-50)
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                {/* Influencing Techniques */}
+                <div>
+                  <FormField
+                    control={form.control}
+                    name="selectedTechniques"
+                    render={() => (
+                      <FormItem>
+                        <div className="mb-4">
+                          <FormLabel className="text-base">Influencing Techniques</FormLabel>
+                          <p className="text-sm text-gray-600">Select psychological techniques that agents should use</p>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {sampleTechniques.map((technique) => (
+                            <FormField
+                              key={technique.id}
+                              control={form.control}
+                              name="selectedTechniques"
+                              render={({ field }) => (
+                                <FormItem
+                                  key={technique.id}
+                                  className="flex flex-row items-start space-x-3 space-y-0 border rounded-lg p-4"
+                                >
+                                  <FormControl>
+                                    <Checkbox
+                                      checked={field.value?.includes(technique.id)}
+                                      onCheckedChange={(checked) => {
+                                        return checked
+                                          ? field.onChange([...field.value, technique.id])
+                                          : field.onChange(
+                                              field.value?.filter(
+                                                (value) => value !== technique.id
+                                              )
+                                            )
+                                      }}
+                                    />
+                                  </FormControl>
+                                  <div className="space-y-1 leading-none">
+                                    <FormLabel className="text-sm font-medium">
+                                      {technique.name}
+                                    </FormLabel>
+                                    <p className="text-xs text-gray-600">
+                                      {technique.description}
+                                    </p>
+                                  </div>
+                                </FormItem>
+                              )}
+                            />
+                          ))}
+                        </div>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
 
                 <Separator />
 
-                <div className="space-y-4">
-                  <h4 className="font-medium">Review Configuration</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <p className="text-sm font-medium">Context</p>
-                      <p className="text-sm text-muted-foreground">{selectedContext?.name}</p>
-                    </div>
-                    <div className="space-y-2">
-                      <p className="text-sm font-medium">Max Rounds</p>
-                      <p className="text-sm text-muted-foreground">{form.watch("maxRounds")}</p>
-                    </div>
-                    <div className="space-y-2">
-                      <p className="text-sm font-medium">Buyer Agent</p>
-                      <p className="text-sm text-muted-foreground">{selectedBuyer?.name}</p>
-                    </div>
-                    <div className="space-y-2">
-                      <p className="text-sm font-medium">Seller Agent</p>
-                      <p className="text-sm text-muted-foreground">{selectedSeller?.name}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex justify-between">
-                  <Button type="button" variant="outline" onClick={() => setStep(2)}>
-                    Back
-                  </Button>
-                  <div className="flex gap-2">
-                    <Button
-                      type="submit"
-                      variant="outline"
-                      disabled={createMutation.isPending}
-                      onClick={() => form.setValue("autoStart", false)}
-                    >
-                      Create Negotiation
-                    </Button>
-                    <Button
-                      type="submit"
-                      disabled={createMutation.isPending}
-                      onClick={() => form.setValue("autoStart", true)}
-                    >
-                      <Play className="w-4 h-4 mr-2" />
-                      Create & Start
-                    </Button>
-                  </div>
+                {/* Negotiation Tactics */}
+                <div>
+                  <FormField
+                    control={form.control}
+                    name="selectedTactics"
+                    render={() => (
+                      <FormItem>
+                        <div className="mb-4">
+                          <FormLabel className="text-base">Negotiation Tactics</FormLabel>
+                          <p className="text-sm text-gray-600">Select strategic approaches for the negotiation</p>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {sampleTactics.map((tactic) => (
+                            <FormField
+                              key={tactic.id}
+                              control={form.control}
+                              name="selectedTactics"
+                              render={({ field }) => (
+                                <FormItem
+                                  key={tactic.id}
+                                  className="flex flex-row items-start space-x-3 space-y-0 border rounded-lg p-4"
+                                >
+                                  <FormControl>
+                                    <Checkbox
+                                      checked={field.value?.includes(tactic.id)}
+                                      onCheckedChange={(checked) => {
+                                        return checked
+                                          ? field.onChange([...field.value, tactic.id])
+                                          : field.onChange(
+                                              field.value?.filter(
+                                                (value) => value !== tactic.id
+                                              )
+                                            )
+                                      }}
+                                    />
+                                  </FormControl>
+                                  <div className="space-y-1 leading-none">
+                                    <FormLabel className="text-sm font-medium">
+                                      {tactic.name}
+                                    </FormLabel>
+                                    <p className="text-xs text-gray-600">
+                                      {tactic.description}
+                                    </p>
+                                  </div>
+                                </FormItem>
+                              )}
+                            />
+                          ))}
+                        </div>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 </div>
               </CardContent>
             </Card>
           )}
+
+          {/* Step 4: Review & Configure */}
+          {step === 4 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Play className="w-5 h-5 mr-2" />
+                  Review & Configure Simulation
+                </CardTitle>
+                <CardDescription>
+                  Review your configuration and set simulation parameters.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Configuration Summary */}
+                <div className="space-y-4">
+                  <div className="p-4 bg-gray-50 rounded-lg">
+                    <h4 className="font-medium mb-3">Simulation Summary</h4>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <span className="text-gray-600">Context:</span>
+                        <p className="font-medium">{contexts.find(c => c.id === form.watch("contextId"))?.name}</p>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">Max Rounds:</span>
+                        <p className="font-medium">{form.watch("maxRounds")}</p>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">Buyer Agent:</span>
+                        <p className="font-medium">{agents.find(a => a.id === form.watch("buyerAgentId"))?.name}</p>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">Seller Agent:</span>
+                        <p className="font-medium">{agents.find(a => a.id === form.watch("sellerAgentId"))?.name}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="p-4 border rounded-lg">
+                      <h4 className="font-medium text-blue-700 mb-2">Selected Techniques</h4>
+                      <div className="flex flex-wrap gap-2">
+                        {form.watch("selectedTechniques")?.map(id => {
+                          const technique = sampleTechniques.find(t => t.id === id);
+                          return <Badge key={id} variant="secondary">{technique?.name}</Badge>;
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="p-4 border rounded-lg">
+                      <h4 className="font-medium text-green-700 mb-2">Selected Tactics</h4>
+                      <div className="flex flex-wrap gap-2">
+                        {form.watch("selectedTactics")?.map(id => {
+                          const tactic = sampleTactics.find(t => t.id === id);
+                          return <Badge key={id} variant="secondary">{tactic?.name}</Badge>;
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <Separator />
+
+                {/* Simulation Settings */}
+                <div className="space-y-4">
+                  <h4 className="font-medium">Simulation Settings</h4>
+                  
+                  <FormField
+                    control={form.control}
+                    name="simulationRuns"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Number of Simulation Runs</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={100}
+                            {...field}
+                            onChange={(e) => field.onChange(parseInt(e.target.value))}
+                          />
+                        </FormControl>
+                        <p className="text-xs text-gray-600">
+                          Run multiple simulations for statistical analysis and comparison
+                        </p>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="autoStart"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-row items-start space-x-3 space-y-0">
+                        <FormControl>
+                          <Checkbox
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                          />
+                        </FormControl>
+                        <div className="space-y-1 leading-none">
+                          <FormLabel>
+                            Auto-start simulation after creation
+                          </FormLabel>
+                          <p className="text-xs text-gray-600">
+                            Automatically begin negotiations once the setup is complete
+                          </p>
+                        </div>
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Navigation Buttons */}
+          <div className="flex justify-between pt-6">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={prevStep}
+              disabled={step === 1}
+            >
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Previous
+            </Button>
+
+            {step < 4 ? (
+              <Button
+                type="button"
+                onClick={nextStep}
+                disabled={
+                  (step === 1 && !canProceedToStep2) ||
+                  (step === 2 && !canProceedToStep3) ||
+                  (step === 3 && !canProceedToStep4)
+                }
+              >
+                Next
+                <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            ) : (
+              <Button
+                type="submit"
+                disabled={createMutation.isPending}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                {createMutation.isPending ? (
+                  <div className="flex items-center">
+                    <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-2" />
+                    Creating...
+                  </div>
+                ) : (
+                  <div className="flex items-center">
+                    <Zap className="w-4 h-4 mr-2" />
+                    Create Simulation
+                  </div>
+                )}
+              </Button>
+            )}
+          </div>
         </form>
       </Form>
     </div>
