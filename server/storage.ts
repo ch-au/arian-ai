@@ -391,10 +391,13 @@ export class DatabaseStorage implements IStorage {
     const completedNegotiations = await db
       .select({ 
         total: count(),
-        successful: sum(negotiations.successScore)
+        successful: count(negotiations.successScore)
       })
       .from(negotiations)
-      .where(eq(negotiations.status, "completed"));
+      .where(and(
+        eq(negotiations.status, "completed"),
+        gte(negotiations.successScore, 70) // Consider success as score >= 70
+      ));
 
     // Average duration for completed negotiations today
     const avgDurationResult = await db
@@ -466,13 +469,16 @@ export class DatabaseStorage implements IStorage {
       .select({
         agent: agents,
         totalNegotiations: count(negotiations.id),
-        successfulNegotiations: sum(negotiations.successScore),
+        successfulNegotiations: count(negotiations.successScore),
       })
       .from(agents)
       .leftJoin(negotiations, eq(agents.id, negotiations.buyerAgentId))
-      .where(eq(negotiations.status, "completed"))
+      .where(and(
+        eq(negotiations.status, "completed"),
+        gte(negotiations.successScore, 70)
+      ))
       .groupBy(agents.id)
-      .orderBy(desc(sum(negotiations.successScore)))
+      .orderBy(desc(count(negotiations.successScore)))
       .limit(limit);
 
     return results.map((result) => ({
