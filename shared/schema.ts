@@ -213,9 +213,9 @@ export const negotiationContextRelations = relations(negotiationContexts, ({ man
 }));
 
 export const negotiationRoundRelations = relations(negotiationRounds, ({ one }) => ({
-  negotiation: one(negotiations, {
-    fields: [negotiationRounds.negotiationId],
-    references: [negotiations.id],
+  simulationRun: one(simulationRuns, {
+    fields: [negotiationRounds.simulationRunId],
+    references: [simulationRuns.id],
   }),
   agent: one(agents, {
     fields: [negotiationRounds.agentId],
@@ -320,8 +320,8 @@ export type InsertZopaConfiguration = z.infer<typeof insertZopaConfigurationSche
 export type Negotiation = typeof negotiations.$inferSelect;
 export type InsertNegotiation = z.infer<typeof insertNegotiationSchema>;
 
-export type SimulationResult = typeof simulationResults.$inferSelect;
-export type InsertSimulationResult = z.infer<typeof insertSimulationResultSchema>;
+export type SimulationRun = typeof simulationRuns.$inferSelect;
+export type InsertSimulationRun = z.infer<typeof insertSimulationRunSchema>;
 
 export type NegotiationRound = typeof negotiationRounds.$inferSelect;
 export type InsertNegotiationRound = z.infer<typeof insertNegotiationRoundSchema>;

@@ -99,6 +99,8 @@ The application follows a modern full-stack architecture:
 - July 02, 2025: Implemented fully functional negotiation creation form with 3-step wizard
 - July 02, 2025: Added database tables for influencing techniques and negotiation tactics
 - July 02, 2025: Created agent configuration interface with personality trait management
+- July 02, 2025: Redesigned database schema with combinatorial simulation system - each technique-tactic combination gets its own simulation run
+- July 02, 2025: Added simulation confirmation screen to show user the matrix of runs before starting
 
 ## User Preferences
 
