@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, jsonb, decimal, uuid } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, jsonb, decimal, uuid, unique } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -48,62 +48,59 @@ export const negotiations = pgTable("negotiations", {
   contextId: uuid("context_id").references(() => negotiationContexts.id),
   buyerAgentId: uuid("buyer_agent_id").references(() => agents.id),
   sellerAgentId: uuid("seller_agent_id").references(() => agents.id),
-  status: text("status").notNull().default("pending"), // pending, active, completed, failed
+  status: text("status").notNull().default("pending"), // pending, running, completed, failed
   userRole: text("user_role").notNull(), // "buyer" or "seller" - which role the user is interested in
+  maxRounds: integer("max_rounds").default(10),
+  // Selected techniques and tactics for this negotiation (UUIDs)
+  selectedTechniques: uuid("selected_techniques").array().default([]).notNull(),
+  selectedTactics: uuid("selected_tactics").array().default([]).notNull(),
+  // User's ZOPA configuration (consolidated)
+  userZopa: jsonb("user_zopa").notNull(), // {volumen: {min,max,target}, preis: {min,max,target}, laufzeit: {min,max,target}, zahlungskonditionen: {min,max,target}}
+  // Counterpart positioning relative to user (-1: far, 0: neutral, 1: close)
+  counterpartDistance: jsonb("counterpart_distance").default({}), // {volumen: 0, preis: 0, laufzeit: 0, zahlungskonditionen: 0}
+  sonderinteressen: text("sonderinteressen"), // Special interests/requirements
+  // Timestamps
+  createdAt: timestamp("created_at").defaultNow(),
   startedAt: timestamp("started_at"),
   completedAt: timestamp("completed_at"),
-  totalRounds: integer("total_rounds").default(0),
-  maxRounds: integer("max_rounds").default(10),
-  selectedTechniques: text("selected_techniques").array().default([]).notNull(),
-  selectedTactics: text("selected_tactics").array().default([]).notNull(),
-  simulationRuns: integer("simulation_runs").default(1).notNull(),
-  // User ZOPA configuration for all dimensions
-  userZopaVolumen: jsonb("user_zopa_volumen").notNull(), // {min, max, target}
-  userZopaPreis: jsonb("user_zopa_preis").notNull(), // {min, max, target}
-  userZopaLaufzeit: jsonb("user_zopa_laufzeit").notNull(), // {min, max, target}
-  userZopaZahlungskonditionen: jsonb("user_zopa_zahlungskonditionen").notNull(), // {min, max, target}
-  // Counterpart distance settings (-1: far, 0: neutral, 1: close)
-  counterpartDistanceVolumen: integer("counterpart_distance_volumen").default(0),
-  counterpartDistancePreis: integer("counterpart_distance_preis").default(0),
-  counterpartDistanceLaufzeit: integer("counterpart_distance_laufzeit").default(0),
-  counterpartDistanceZahlungskonditionen: integer("counterpart_distance_zahlungskonditionen").default(0),
-  sonderinteressen: text("sonderinteressen"), // Special interests/requirements
-  metadata: jsonb("metadata"), // additional tracking data
+  metadata: jsonb("metadata").default({}),
 });
 
-// Simulation Results - individual simulation runs for each negotiation
-export const simulationResults = pgTable("simulation_results", {
+// Simulation Runs - individual runs for each technique-tactic combination
+export const simulationRuns = pgTable("simulation_runs", {
   id: uuid("id").primaryKey().defaultRandom(),
   negotiationId: uuid("negotiation_id").references(() => negotiations.id, { onDelete: "cascade" }),
-  simulationNumber: integer("simulation_number").notNull(), // 1, 2, 3... for multiple runs
+  runNumber: integer("run_number").notNull(), // Sequential number for this negotiation
+  // Specific technique/tactic combination being tested
+  techniqueId: uuid("technique_id").references(() => influencingTechniques.id),
+  tacticId: uuid("tactic_id").references(() => negotiationTactics.id),
+  // Status and timing
   status: text("status").notNull().default("pending"), // pending, running, completed, failed
   startedAt: timestamp("started_at"),
   completedAt: timestamp("completed_at"),
+  // Results
   totalRounds: integer("total_rounds").default(0),
   finalAgreement: jsonb("final_agreement"), // Final negotiated terms
   zopaAchieved: boolean("zopa_achieved").default(false), // Whether user's ZOPA was met
-  successScore: decimal("success_score", { precision: 5, scale: 2 }),
-  // Final negotiated values for each dimension
-  finalVolumen: decimal("final_volumen", { precision: 15, scale: 2 }),
-  finalPreis: decimal("final_preis", { precision: 15, scale: 2 }),
-  finalLaufzeit: integer("final_laufzeit"), // in months
-  finalZahlungskonditionen: integer("final_zahlungskonditionen"), // payment terms in days
+  successScore: decimal("success_score", { precision: 5, scale: 2 }), // 0-100 score
+  // Final negotiated values
+  finalTerms: jsonb("final_terms"), // {volumen: X, preis: Y, laufzeit: Z, zahlungskonditionen: W}
   // Performance metrics
-  avgResponseTime: decimal("avg_response_time", { precision: 8, scale: 2 }),
-  techniqueEffectiveness: jsonb("technique_effectiveness"), // effectiveness scores per technique
-  tacticEffectiveness: jsonb("tactic_effectiveness"), // effectiveness scores per tactic
-  metadata: jsonb("metadata"),
+  avgResponseTimeMs: integer("avg_response_time_ms"),
+  techniqueEffectivenessScore: decimal("technique_effectiveness_score", { precision: 5, scale: 2 }),
+  tacticEffectivenessScore: decimal("tactic_effectiveness_score", { precision: 5, scale: 2 }),
+  metadata: jsonb("metadata").default({}),
 });
 
-// Negotiation rounds - individual turns in a negotiation
+// Negotiation rounds - individual turns in a simulation run
 export const negotiationRounds = pgTable("negotiation_rounds", {
   id: uuid("id").primaryKey().defaultRandom(),
-  negotiationId: uuid("negotiation_id").references(() => negotiations.id),
+  simulationRunId: uuid("simulation_run_id").references(() => simulationRuns.id, { onDelete: "cascade" }),
   roundNumber: integer("round_number").notNull(),
   agentId: uuid("agent_id").references(() => agents.id),
   message: text("message").notNull(),
   proposal: jsonb("proposal"),
-  responseTime: integer("response_time_ms"),
+  responseTimeMs: integer("response_time_ms"),
   timestamp: timestamp("timestamp").defaultNow(),
 });
 
@@ -190,15 +187,24 @@ export const negotiationRelations = relations(negotiations, ({ one, many }) => (
     relationName: "sellerAgent",
   }),
   rounds: many(negotiationRounds),
-  simulationResults: many(simulationResults),
+  simulationRuns: many(simulationRuns),
   performanceMetrics: many(performanceMetrics),
 }));
 
-export const simulationResultRelations = relations(simulationResults, ({ one }) => ({
+export const simulationRunRelations = relations(simulationRuns, ({ one, many }) => ({
   negotiation: one(negotiations, {
-    fields: [simulationResults.negotiationId],
+    fields: [simulationRuns.negotiationId],
     references: [negotiations.id],
   }),
+  technique: one(influencingTechniques, {
+    fields: [simulationRuns.techniqueId],
+    references: [influencingTechniques.id],
+  }),
+  tactic: one(negotiationTactics, {
+    fields: [simulationRuns.tacticId],
+    references: [negotiationTactics.id],
+  }),
+  rounds: many(negotiationRounds),
 }));
 
 export const negotiationContextRelations = relations(negotiationContexts, ({ many }) => ({
@@ -262,7 +268,7 @@ export const insertNegotiationSchema = createInsertSchema(negotiations).omit({
   completedAt: true,
 });
 
-export const insertSimulationResultSchema = createInsertSchema(simulationResults).omit({
+export const insertSimulationRunSchema = createInsertSchema(simulationRuns).omit({
   id: true,
   startedAt: true,
   completedAt: true,
