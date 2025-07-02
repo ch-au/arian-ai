@@ -45,11 +45,17 @@ export default function CreateNegotiation() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <CreateNegotiationForm
-            agents={agents || []}
-            contexts={contexts || []}
-            onSuccess={handleSuccess}
-          />
+          {agents && contexts ? (
+            <CreateNegotiationForm
+              agents={agents}
+              contexts={contexts}
+              onSuccess={handleSuccess}
+            />
+          ) : (
+            <div className="text-center py-8">
+              <p>Loading agents and contexts...</p>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

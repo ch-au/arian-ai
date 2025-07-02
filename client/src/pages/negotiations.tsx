@@ -180,7 +180,10 @@ export default function Negotiations() {
               <p className="text-muted-foreground mb-6">
                 Create your first AI negotiation session to get started with automated negotiations between intelligent agents.
               </p>
-              <Button onClick={() => setShowCreateDialog(true)} className="bg-blue-600 hover:bg-blue-700">
+              <Button 
+                onClick={() => setLocation("/negotiations/new")} 
+                className="bg-blue-600 hover:bg-blue-700"
+              >
                 <Plus className="mr-2 h-4 w-4" />
                 Create Your First Negotiation
               </Button>
@@ -312,19 +315,21 @@ export default function Negotiations() {
         </Card>
       )}
 
-      {/* Negotiation Detail Modal */}
+      {/* Negotiation Detail Panel */}
       {selectedNegotiation && (
-        <Dialog open={true} onOpenChange={() => setSelectedNegotiation(null)}>
-          <DialogContent className="max-w-4xl">
-            <DialogHeader>
-              <DialogTitle>Negotiation Details</DialogTitle>
-            </DialogHeader>
-            <div className="p-4">
-              <p>Negotiation details for {selectedNegotiation} will be shown here</p>
-              <Button onClick={() => setSelectedNegotiation(null)} className="mt-4">Close</Button>
+        <Card className="mt-6">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle>Negotiation Details</CardTitle>
+              <Button variant="outline" onClick={() => setSelectedNegotiation(null)}>
+                Close
+              </Button>
             </div>
-          </DialogContent>
-        </Dialog>
+          </CardHeader>
+          <CardContent>
+            <p>Negotiation details for {selectedNegotiation} will be shown here</p>
+          </CardContent>
+        </Card>
       )}
     </div>
   );
