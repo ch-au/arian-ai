@@ -516,10 +516,10 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
                   Configure ZOPA (Zone of Possible Agreement)
                 </CardTitle>
                 <CardDescription>
-                  Define your negotiation parameters and acceptable ranges for each dimension.
+                  Set your negotiation ranges visually and compare with counterpart positions.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-6">
+              <CardContent className="space-y-8">
                 {/* User Role Selection */}
                 <FormField
                   control={form.control}
@@ -543,357 +543,551 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
                   )}
                 />
 
-                {/* ZOPA Configuration for each dimension */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Visual ZOPA Configuration */}
+                <div className="space-y-8">
                   {/* Volumen */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-lg">Volumen (Volume)</CardTitle>
-                      <CardDescription>Define acceptable volume ranges</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <FormField
-                        control={form.control}
-                        name="userZopaVolumen.min"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Minimum (Mindestmenge)</FormLabel>
-                            <FormControl>
-                              <Input
-                                type="number"
-                                {...field}
-                                onChange={(e) => field.onChange(parseFloat(e.target.value))}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="userZopaVolumen.target"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Target (Zielmenge)</FormLabel>
-                            <FormControl>
-                              <Input
-                                type="number"
-                                {...field}
-                                onChange={(e) => field.onChange(parseFloat(e.target.value))}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="userZopaVolumen.max"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Maximum (Höchstmenge)</FormLabel>
-                            <FormControl>
-                              <Input
-                                type="number"
-                                {...field}
-                                onChange={(e) => field.onChange(parseFloat(e.target.value))}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </CardContent>
-                  </Card>
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-lg font-semibold">Volumen (Volume)</h3>
+                      <Badge variant="outline">Units/Stück</Badge>
+                    </div>
+                    
+                    <div className="space-y-6">
+                      {/* Your Position */}
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-blue-600 font-medium">Your Position</Label>
+                          <div className="text-sm text-gray-600">
+                            {form.watch("userZopaVolumen")?.min || 100} - {form.watch("userZopaVolumen")?.max || 1000} 
+                            (Target: {form.watch("userZopaVolumen")?.target || 500})
+                          </div>
+                        </div>
+                        
+                        <div className="space-y-2">
+                          <div className="flex space-x-4">
+                            <FormField
+                              control={form.control}
+                              name="userZopaVolumen.min"
+                              render={({ field }) => (
+                                <FormItem className="flex-1">
+                                  <FormLabel className="text-xs">Min</FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      type="number"
+                                      className="h-8"
+                                      {...field}
+                                      onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                                    />
+                                  </FormControl>
+                                </FormItem>
+                              )}
+                            />
+                            
+                            <FormField
+                              control={form.control}
+                              name="userZopaVolumen.target"
+                              render={({ field }) => (
+                                <FormItem className="flex-1">
+                                  <FormLabel className="text-xs">Target</FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      type="number"
+                                      className="h-8 border-blue-300"
+                                      {...field}
+                                      onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                                    />
+                                  </FormControl>
+                                </FormItem>
+                              )}
+                            />
+                            
+                            <FormField
+                              control={form.control}
+                              name="userZopaVolumen.max"
+                              render={({ field }) => (
+                                <FormItem className="flex-1">
+                                  <FormLabel className="text-xs">Max</FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      type="number"
+                                      className="h-8"
+                                      {...field}
+                                      onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                                    />
+                                  </FormControl>
+                                </FormItem>
+                              )}
+                            />
+                          </div>
+                          
+                          {/* Visual Spectrum */}
+                          <div className="relative h-4 bg-gray-100 rounded-full overflow-hidden">
+                            <div 
+                              className="absolute h-full bg-blue-200 rounded-full"
+                              style={{
+                                left: `${((form.watch("userZopaVolumen")?.min || 100) / 1000) * 100}%`,
+                                width: `${(((form.watch("userZopaVolumen")?.max || 1000) - (form.watch("userZopaVolumen")?.min || 100)) / 1000) * 100}%`
+                              }}
+                            />
+                            <div 
+                              className="absolute w-2 h-full bg-blue-600 rounded-full"
+                              style={{
+                                left: `${((form.watch("userZopaVolumen")?.target || 500) / 1000) * 100}%`
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Counterpart Assessment */}
+                      <div className="space-y-3">
+                        <Label className="text-red-600 font-medium">Counterpart Assessment</Label>
+                        <FormField
+                          control={form.control}
+                          name="counterpartDistanceVolumen"
+                          render={({ field }) => (
+                            <FormItem>
+                              <div className="flex items-center space-x-4">
+                                <Label className="text-sm min-w-[60px]">Position:</Label>
+                                <Select onValueChange={(value) => field.onChange(parseInt(value))} defaultValue={field.value?.toString()}>
+                                  <FormControl>
+                                    <SelectTrigger className="w-[200px]">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent>
+                                    <SelectItem value="-1">Weit entfernt (far from your range)</SelectItem>
+                                    <SelectItem value="0">Neutral (overlapping)</SelectItem>
+                                    <SelectItem value="1">Nah (close to your range)</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        
+                        {/* Counterpart Visual Indicator */}
+                        <div className="relative h-4 bg-gray-100 rounded-full overflow-hidden">
+                          <div className="absolute h-full bg-red-200 rounded-full w-1/3"
+                               style={{
+                                 left: form.watch("counterpartDistanceVolumen") === -1 ? "10%" : 
+                                       form.watch("counterpartDistanceVolumen") === 0 ? "35%" : "60%"
+                               }} />
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <Separator />
+                  </div>
 
                   {/* Preis */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-lg">Preis (Price)</CardTitle>
-                      <CardDescription>Define acceptable price ranges</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <FormField
-                        control={form.control}
-                        name="userZopaPreis.min"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Minimum (Mindestpreis)</FormLabel>
-                            <FormControl>
-                              <Input
-                                type="number"
-                                step="0.01"
-                                {...field}
-                                onChange={(e) => field.onChange(parseFloat(e.target.value))}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="userZopaPreis.target"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Target (Zielpreis)</FormLabel>
-                            <FormControl>
-                              <Input
-                                type="number"
-                                step="0.01"
-                                {...field}
-                                onChange={(e) => field.onChange(parseFloat(e.target.value))}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="userZopaPreis.max"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Maximum (Höchstpreis)</FormLabel>
-                            <FormControl>
-                              <Input
-                                type="number"
-                                step="0.01"
-                                {...field}
-                                onChange={(e) => field.onChange(parseFloat(e.target.value))}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </CardContent>
-                  </Card>
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-lg font-semibold">Preis (Price)</h3>
+                      <Badge variant="outline">EUR</Badge>
+                    </div>
+                    
+                    <div className="space-y-6">
+                      {/* Your Position */}
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-blue-600 font-medium">Your Position</Label>
+                          <div className="text-sm text-gray-600">
+                            €{form.watch("userZopaPreis")?.min || 10} - €{form.watch("userZopaPreis")?.max || 100} 
+                            (Target: €{form.watch("userZopaPreis")?.target || 50})
+                          </div>
+                        </div>
+                        
+                        <div className="space-y-2">
+                          <div className="flex space-x-4">
+                            <FormField
+                              control={form.control}
+                              name="userZopaPreis.min"
+                              render={({ field }) => (
+                                <FormItem className="flex-1">
+                                  <FormLabel className="text-xs">Min €</FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      type="number"
+                                      step="0.01"
+                                      className="h-8"
+                                      {...field}
+                                      onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                                    />
+                                  </FormControl>
+                                </FormItem>
+                              )}
+                            />
+                            
+                            <FormField
+                              control={form.control}
+                              name="userZopaPreis.target"
+                              render={({ field }) => (
+                                <FormItem className="flex-1">
+                                  <FormLabel className="text-xs">Target €</FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      type="number"
+                                      step="0.01"
+                                      className="h-8 border-blue-300"
+                                      {...field}
+                                      onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                                    />
+                                  </FormControl>
+                                </FormItem>
+                              )}
+                            />
+                            
+                            <FormField
+                              control={form.control}
+                              name="userZopaPreis.max"
+                              render={({ field }) => (
+                                <FormItem className="flex-1">
+                                  <FormLabel className="text-xs">Max €</FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      type="number"
+                                      step="0.01"
+                                      className="h-8"
+                                      {...field}
+                                      onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                                    />
+                                  </FormControl>
+                                </FormItem>
+                              )}
+                            />
+                          </div>
+                          
+                          {/* Visual Spectrum */}
+                          <div className="relative h-4 bg-gray-100 rounded-full overflow-hidden">
+                            <div 
+                              className="absolute h-full bg-blue-200 rounded-full"
+                              style={{
+                                left: `${((form.watch("userZopaPreis")?.min || 10) / 100) * 100}%`,
+                                width: `${(((form.watch("userZopaPreis")?.max || 100) - (form.watch("userZopaPreis")?.min || 10)) / 100) * 100}%`
+                              }}
+                            />
+                            <div 
+                              className="absolute w-2 h-full bg-blue-600 rounded-full"
+                              style={{
+                                left: `${((form.watch("userZopaPreis")?.target || 50) / 100) * 100}%`
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Counterpart Assessment */}
+                      <div className="space-y-3">
+                        <Label className="text-red-600 font-medium">Counterpart Assessment</Label>
+                        <FormField
+                          control={form.control}
+                          name="counterpartDistancePreis"
+                          render={({ field }) => (
+                            <FormItem>
+                              <div className="flex items-center space-x-4">
+                                <Label className="text-sm min-w-[60px]">Position:</Label>
+                                <Select onValueChange={(value) => field.onChange(parseInt(value))} defaultValue={field.value?.toString()}>
+                                  <FormControl>
+                                    <SelectTrigger className="w-[200px]">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent>
+                                    <SelectItem value="-1">Weit entfernt (far from your range)</SelectItem>
+                                    <SelectItem value="0">Neutral (overlapping)</SelectItem>
+                                    <SelectItem value="1">Nah (close to your range)</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        
+                        {/* Counterpart Visual Indicator */}
+                        <div className="relative h-4 bg-gray-100 rounded-full overflow-hidden">
+                          <div className="absolute h-full bg-red-200 rounded-full w-1/3"
+                               style={{
+                                 left: form.watch("counterpartDistancePreis") === -1 ? "10%" : 
+                                       form.watch("counterpartDistancePreis") === 0 ? "35%" : "60%"
+                               }} />
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <Separator />
+                  </div>
 
                   {/* Laufzeit */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-lg">Laufzeit (Duration)</CardTitle>
-                      <CardDescription>Define contract duration in months</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <FormField
-                        control={form.control}
-                        name="userZopaLaufzeit.min"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Minimum (Monate)</FormLabel>
-                            <FormControl>
-                              <Input
-                                type="number"
-                                {...field}
-                                onChange={(e) => field.onChange(parseFloat(e.target.value))}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="userZopaLaufzeit.target"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Target (Ziellaufzeit)</FormLabel>
-                            <FormControl>
-                              <Input
-                                type="number"
-                                {...field}
-                                onChange={(e) => field.onChange(parseFloat(e.target.value))}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="userZopaLaufzeit.max"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Maximum (Monate)</FormLabel>
-                            <FormControl>
-                              <Input
-                                type="number"
-                                {...field}
-                                onChange={(e) => field.onChange(parseFloat(e.target.value))}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </CardContent>
-                  </Card>
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-lg font-semibold">Laufzeit (Duration)</h3>
+                      <Badge variant="outline">Months</Badge>
+                    </div>
+                    
+                    <div className="space-y-6">
+                      {/* Your Position */}
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-blue-600 font-medium">Your Position</Label>
+                          <div className="text-sm text-gray-600">
+                            {form.watch("userZopaLaufzeit")?.min || 12} - {form.watch("userZopaLaufzeit")?.max || 36} months
+                            (Target: {form.watch("userZopaLaufzeit")?.target || 24})
+                          </div>
+                        </div>
+                        
+                        <div className="space-y-2">
+                          <div className="flex space-x-4">
+                            <FormField
+                              control={form.control}
+                              name="userZopaLaufzeit.min"
+                              render={({ field }) => (
+                                <FormItem className="flex-1">
+                                  <FormLabel className="text-xs">Min months</FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      type="number"
+                                      className="h-8"
+                                      {...field}
+                                      onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                                    />
+                                  </FormControl>
+                                </FormItem>
+                              )}
+                            />
+                            
+                            <FormField
+                              control={form.control}
+                              name="userZopaLaufzeit.target"
+                              render={({ field }) => (
+                                <FormItem className="flex-1">
+                                  <FormLabel className="text-xs">Target months</FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      type="number"
+                                      className="h-8 border-blue-300"
+                                      {...field}
+                                      onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                                    />
+                                  </FormControl>
+                                </FormItem>
+                              )}
+                            />
+                            
+                            <FormField
+                              control={form.control}
+                              name="userZopaLaufzeit.max"
+                              render={({ field }) => (
+                                <FormItem className="flex-1">
+                                  <FormLabel className="text-xs">Max months</FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      type="number"
+                                      className="h-8"
+                                      {...field}
+                                      onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                                    />
+                                  </FormControl>
+                                </FormItem>
+                              )}
+                            />
+                          </div>
+                          
+                          {/* Visual Spectrum */}
+                          <div className="relative h-4 bg-gray-100 rounded-full overflow-hidden">
+                            <div 
+                              className="absolute h-full bg-blue-200 rounded-full"
+                              style={{
+                                left: `${((form.watch("userZopaLaufzeit")?.min || 12) / 36) * 100}%`,
+                                width: `${(((form.watch("userZopaLaufzeit")?.max || 36) - (form.watch("userZopaLaufzeit")?.min || 12)) / 36) * 100}%`
+                              }}
+                            />
+                            <div 
+                              className="absolute w-2 h-full bg-blue-600 rounded-full"
+                              style={{
+                                left: `${((form.watch("userZopaLaufzeit")?.target || 24) / 36) * 100}%`
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Counterpart Assessment */}
+                      <div className="space-y-3">
+                        <Label className="text-red-600 font-medium">Counterpart Assessment</Label>
+                        <FormField
+                          control={form.control}
+                          name="counterpartDistanceLaufzeit"
+                          render={({ field }) => (
+                            <FormItem>
+                              <div className="flex items-center space-x-4">
+                                <Label className="text-sm min-w-[60px]">Position:</Label>
+                                <Select onValueChange={(value) => field.onChange(parseInt(value))} defaultValue={field.value?.toString()}>
+                                  <FormControl>
+                                    <SelectTrigger className="w-[200px]">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent>
+                                    <SelectItem value="-1">Weit entfernt (far from your range)</SelectItem>
+                                    <SelectItem value="0">Neutral (overlapping)</SelectItem>
+                                    <SelectItem value="1">Nah (close to your range)</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        
+                        {/* Counterpart Visual Indicator */}
+                        <div className="relative h-4 bg-gray-100 rounded-full overflow-hidden">
+                          <div className="absolute h-full bg-red-200 rounded-full w-1/3"
+                               style={{
+                                 left: form.watch("counterpartDistanceLaufzeit") === -1 ? "10%" : 
+                                       form.watch("counterpartDistanceLaufzeit") === 0 ? "35%" : "60%"
+                               }} />
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <Separator />
+                  </div>
 
                   {/* Zahlungskonditionen */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-lg">Zahlungskonditionen (Payment Terms)</CardTitle>
-                      <CardDescription>Define payment terms in days</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <FormField
-                        control={form.control}
-                        name="userZopaZahlungskonditionen.min"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Minimum (Tage)</FormLabel>
-                            <FormControl>
-                              <Input
-                                type="number"
-                                {...field}
-                                onChange={(e) => field.onChange(parseFloat(e.target.value))}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="userZopaZahlungskonditionen.target"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Target (Ziel-Zahlungsziel)</FormLabel>
-                            <FormControl>
-                              <Input
-                                type="number"
-                                {...field}
-                                onChange={(e) => field.onChange(parseFloat(e.target.value))}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="userZopaZahlungskonditionen.max"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Maximum (Tage)</FormLabel>
-                            <FormControl>
-                              <Input
-                                type="number"
-                                {...field}
-                                onChange={(e) => field.onChange(parseFloat(e.target.value))}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </CardContent>
-                  </Card>
-                </div>
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-lg font-semibold">Zahlungskonditionen (Payment Terms)</h3>
+                      <Badge variant="outline">Days</Badge>
+                    </div>
+                    
+                    <div className="space-y-6">
+                      {/* Your Position */}
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-blue-600 font-medium">Your Position</Label>
+                          <div className="text-sm text-gray-600">
+                            {form.watch("userZopaZahlungskonditionen")?.min || 30} - {form.watch("userZopaZahlungskonditionen")?.max || 90} days
+                            (Target: {form.watch("userZopaZahlungskonditionen")?.target || 60})
+                          </div>
+                        </div>
+                        
+                        <div className="space-y-2">
+                          <div className="flex space-x-4">
+                            <FormField
+                              control={form.control}
+                              name="userZopaZahlungskonditionen.min"
+                              render={({ field }) => (
+                                <FormItem className="flex-1">
+                                  <FormLabel className="text-xs">Min days</FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      type="number"
+                                      className="h-8"
+                                      {...field}
+                                      onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                                    />
+                                  </FormControl>
+                                </FormItem>
+                              )}
+                            />
+                            
+                            <FormField
+                              control={form.control}
+                              name="userZopaZahlungskonditionen.target"
+                              render={({ field }) => (
+                                <FormItem className="flex-1">
+                                  <FormLabel className="text-xs">Target days</FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      type="number"
+                                      className="h-8 border-blue-300"
+                                      {...field}
+                                      onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                                    />
+                                  </FormControl>
+                                </FormItem>
+                              )}
+                            />
+                            
+                            <FormField
+                              control={form.control}
+                              name="userZopaZahlungskonditionen.max"
+                              render={({ field }) => (
+                                <FormItem className="flex-1">
+                                  <FormLabel className="text-xs">Max days</FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      type="number"
+                                      className="h-8"
+                                      {...field}
+                                      onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                                    />
+                                  </FormControl>
+                                </FormItem>
+                              )}
+                            />
+                          </div>
+                          
+                          {/* Visual Spectrum */}
+                          <div className="relative h-4 bg-gray-100 rounded-full overflow-hidden">
+                            <div 
+                              className="absolute h-full bg-blue-200 rounded-full"
+                              style={{
+                                left: `${((form.watch("userZopaZahlungskonditionen")?.min || 30) / 90) * 100}%`,
+                                width: `${(((form.watch("userZopaZahlungskonditionen")?.max || 90) - (form.watch("userZopaZahlungskonditionen")?.min || 30)) / 90) * 100}%`
+                              }}
+                            />
+                            <div 
+                              className="absolute w-2 h-full bg-blue-600 rounded-full"
+                              style={{
+                                left: `${((form.watch("userZopaZahlungskonditionen")?.target || 60) / 90) * 100}%`
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </div>
 
-                <Separator />
-
-                {/* Counterpart Distance Settings */}
-                <div>
-                  <h4 className="font-medium mb-4">Counterpart Position Settings</h4>
-                  <p className="text-sm text-gray-600 mb-4">
-                    Configure how far the opponent should be positioned from your parameters (-1: weit entfernt, 0: neutral, +1: nah)
-                  </p>
-                  
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <FormField
-                      control={form.control}
-                      name="counterpartDistanceVolumen"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Volumen Distance</FormLabel>
-                          <Select onValueChange={(value) => field.onChange(parseInt(value))} defaultValue={field.value?.toString()}>
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              <SelectItem value="-1">Weit (-)</SelectItem>
-                              <SelectItem value="0">Neutral (0)</SelectItem>
-                              <SelectItem value="1">Nah (+)</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="counterpartDistancePreis"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Preis Distance</FormLabel>
-                          <Select onValueChange={(value) => field.onChange(parseInt(value))} defaultValue={field.value?.toString()}>
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              <SelectItem value="-1">Weit (-)</SelectItem>
-                              <SelectItem value="0">Neutral (0)</SelectItem>
-                              <SelectItem value="1">Nah (+)</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="counterpartDistanceLaufzeit"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Laufzeit Distance</FormLabel>
-                          <Select onValueChange={(value) => field.onChange(parseInt(value))} defaultValue={field.value?.toString()}>
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              <SelectItem value="-1">Weit (-)</SelectItem>
-                              <SelectItem value="0">Neutral (0)</SelectItem>
-                              <SelectItem value="1">Nah (+)</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="counterpartDistanceZahlungskonditionen"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Zahlungskonditionen Distance</FormLabel>
-                          <Select onValueChange={(value) => field.onChange(parseInt(value))} defaultValue={field.value?.toString()}>
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              <SelectItem value="-1">Weit (-)</SelectItem>
-                              <SelectItem value="0">Neutral (0)</SelectItem>
-                              <SelectItem value="1">Nah (+)</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                      {/* Counterpart Assessment */}
+                      <div className="space-y-3">
+                        <Label className="text-red-600 font-medium">Counterpart Assessment</Label>
+                        <FormField
+                          control={form.control}
+                          name="counterpartDistanceZahlungskonditionen"
+                          render={({ field }) => (
+                            <FormItem>
+                              <div className="flex items-center space-x-4">
+                                <Label className="text-sm min-w-[60px]">Position:</Label>
+                                <Select onValueChange={(value) => field.onChange(parseInt(value))} defaultValue={field.value?.toString()}>
+                                  <FormControl>
+                                    <SelectTrigger className="w-[200px]">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent>
+                                    <SelectItem value="-1">Weit entfernt (far from your range)</SelectItem>
+                                    <SelectItem value="0">Neutral (overlapping)</SelectItem>
+                                    <SelectItem value="1">Nah (close to your range)</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        
+                        {/* Counterpart Visual Indicator */}
+                        <div className="relative h-4 bg-gray-100 rounded-full overflow-hidden">
+                          <div className="absolute h-full bg-red-200 rounded-full w-1/3"
+                               style={{
+                                 left: form.watch("counterpartDistanceZahlungskonditionen") === -1 ? "10%" : 
+                                       form.watch("counterpartDistanceZahlungskonditionen") === 0 ? "35%" : "60%"
+                               }} />
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
 

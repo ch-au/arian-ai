@@ -283,12 +283,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/negotiations", async (req, res) => {
     try {
+      console.log("Received negotiation data:", JSON.stringify(req.body, null, 2));
       const negotiationData = insertNegotiationSchema.parse(req.body);
       const negotiation = await storage.createNegotiation(negotiationData);
       res.status(201).json(negotiation);
     } catch (error) {
       console.error("Failed to create negotiation:", error);
       if (error instanceof z.ZodError) {
+        console.error("Validation errors:", JSON.stringify(error.errors, null, 2));
         return res.status(400).json({ error: "Invalid negotiation data", details: error.errors });
       }
       res.status(500).json({ error: "Failed to create negotiation" });
