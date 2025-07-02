@@ -7,6 +7,7 @@ import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/dashboard";
 import AgentConfiguration from "@/pages/agent-configuration";
 import Negotiations from "@/pages/negotiations";
+import CreateNegotiation from "@/pages/create-negotiation";
 import Analytics from "@/pages/analytics";
 import TestingSuite from "@/pages/testing-suite";
 import Reports from "@/pages/reports";
@@ -19,6 +20,7 @@ function Router() {
       <Route path="/" component={Dashboard} />
       <Route path="/agents" component={AgentConfiguration} />
       <Route path="/negotiations" component={Negotiations} />
+      <Route path="/negotiations/new" component={CreateNegotiation} />
       <Route path="/analytics" component={Analytics} />
       <Route path="/testing" component={TestingSuite} />
       <Route path="/reports" component={Reports} />

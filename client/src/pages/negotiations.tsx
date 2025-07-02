@@ -6,12 +6,12 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { useLocation } from "wouter";
 import { Play, Square, Eye, Plus, Clock, CheckCircle, XCircle, Users, BarChart3 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useWebSocket } from "@/hooks/use-websocket";
-import CreateNegotiationForm from "@/components/CreateNegotiationForm";
+
 
 interface Negotiation {
   id: string;
@@ -29,7 +29,7 @@ interface Negotiation {
 
 export default function Negotiations() {
   const [selectedNegotiation, setSelectedNegotiation] = useState<string | null>(null);
-  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [, setLocation] = useLocation();
   const { toast } = useToast();
 
   const { data: negotiations, isLoading } = useQuery<Negotiation[]>({
@@ -159,24 +159,13 @@ export default function Negotiations() {
           <h1 className="text-3xl font-bold tracking-tight">Negotiations</h1>
           <p className="text-muted-foreground">Monitor and manage AI negotiation sessions</p>
         </div>
-        <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-          <DialogTrigger asChild>
-            <Button className="bg-blue-600 hover:bg-blue-700">
-              <Plus className="mr-2 h-4 w-4" />
-              New Negotiation
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-4xl">
-            <DialogHeader>
-              <DialogTitle>Create New Negotiation</DialogTitle>
-            </DialogHeader>
-            <CreateNegotiationForm
-              agents={agents || []}
-              contexts={contexts || []}
-              onSuccess={() => setShowCreateDialog(false)}
-            />
-          </DialogContent>
-        </Dialog>
+        <Button 
+          className="bg-blue-600 hover:bg-blue-700"
+          onClick={() => setLocation("/negotiations/new")}
+        >
+          <Plus className="mr-2 h-4 w-4" />
+          New Negotiation
+        </Button>
       </div>
 
       {/* Empty State */}
