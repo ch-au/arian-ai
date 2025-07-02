@@ -9,6 +9,8 @@ import {
   insertZopaConfigurationSchema,
   insertNegotiationSchema,
   insertTacticSchema,
+  insertInfluencingTechniqueSchema,
+  insertNegotiationTacticSchema,
   personalityProfileSchema,
   zopaBoundariesSchema,
 } from "@shared/schema";
@@ -390,14 +392,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/influencing-techniques", async (req, res) => {
     try {
-      const techniqueData = insertInfluencingTechniqueSchema.parse(req.body);
-      const technique = await storage.createInfluencingTechnique(techniqueData);
+      const technique = await storage.createInfluencingTechnique(req.body);
       res.status(201).json(technique);
     } catch (error) {
       console.error("Failed to create influencing technique:", error);
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ error: "Invalid technique data", details: error.errors });
-      }
       res.status(500).json({ error: "Failed to create influencing technique" });
     }
   });
@@ -415,14 +413,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/negotiation-tactics", async (req, res) => {
     try {
-      const tacticData = insertNegotiationTacticSchema.parse(req.body);
-      const tactic = await storage.createNegotiationTactic(tacticData);
+      const tactic = await storage.createNegotiationTactic(req.body);
       res.status(201).json(tactic);
     } catch (error) {
       console.error("Failed to create negotiation tactic:", error);
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ error: "Invalid tactic data", details: error.errors });
-      }
       res.status(500).json({ error: "Failed to create negotiation tactic" });
     }
   });
