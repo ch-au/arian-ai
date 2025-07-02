@@ -497,8 +497,424 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
             </Card>
           )}
 
-          {/* Step 4: Review & Configure */}
+          {/* Step 4: Configure ZOPA */}
           {step === 4 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Target className="w-5 h-5 mr-2" />
+                  Configure ZOPA (Zone of Possible Agreement)
+                </CardTitle>
+                <CardDescription>
+                  Define your negotiation parameters and acceptable ranges for each dimension.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* User Role Selection */}
+                <FormField
+                  control={form.control}
+                  name="userRole"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Your Role in Negotiation</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select your role" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="buyer">Buyer (Käufer)</SelectItem>
+                          <SelectItem value="seller">Seller (Verkäufer)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* ZOPA Configuration for each dimension */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Volumen */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg">Volumen (Volume)</CardTitle>
+                      <CardDescription>Define acceptable volume ranges</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <FormField
+                        control={form.control}
+                        name="userZopaVolumen.min"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Minimum (Mindestmenge)</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                {...field}
+                                onChange={(e) => field.onChange(parseFloat(e.target.value))}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="userZopaVolumen.target"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Target (Zielmenge)</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                {...field}
+                                onChange={(e) => field.onChange(parseFloat(e.target.value))}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="userZopaVolumen.max"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Maximum (Höchstmenge)</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                {...field}
+                                onChange={(e) => field.onChange(parseFloat(e.target.value))}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </CardContent>
+                  </Card>
+
+                  {/* Preis */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg">Preis (Price)</CardTitle>
+                      <CardDescription>Define acceptable price ranges</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <FormField
+                        control={form.control}
+                        name="userZopaPreis.min"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Minimum (Mindestpreis)</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                {...field}
+                                onChange={(e) => field.onChange(parseFloat(e.target.value))}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="userZopaPreis.target"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Target (Zielpreis)</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                {...field}
+                                onChange={(e) => field.onChange(parseFloat(e.target.value))}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="userZopaPreis.max"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Maximum (Höchstpreis)</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                {...field}
+                                onChange={(e) => field.onChange(parseFloat(e.target.value))}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </CardContent>
+                  </Card>
+
+                  {/* Laufzeit */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg">Laufzeit (Duration)</CardTitle>
+                      <CardDescription>Define contract duration in months</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <FormField
+                        control={form.control}
+                        name="userZopaLaufzeit.min"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Minimum (Monate)</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                {...field}
+                                onChange={(e) => field.onChange(parseFloat(e.target.value))}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="userZopaLaufzeit.target"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Target (Ziellaufzeit)</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                {...field}
+                                onChange={(e) => field.onChange(parseFloat(e.target.value))}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="userZopaLaufzeit.max"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Maximum (Monate)</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                {...field}
+                                onChange={(e) => field.onChange(parseFloat(e.target.value))}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </CardContent>
+                  </Card>
+
+                  {/* Zahlungskonditionen */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg">Zahlungskonditionen (Payment Terms)</CardTitle>
+                      <CardDescription>Define payment terms in days</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <FormField
+                        control={form.control}
+                        name="userZopaZahlungskonditionen.min"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Minimum (Tage)</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                {...field}
+                                onChange={(e) => field.onChange(parseFloat(e.target.value))}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="userZopaZahlungskonditionen.target"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Target (Ziel-Zahlungsziel)</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                {...field}
+                                onChange={(e) => field.onChange(parseFloat(e.target.value))}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="userZopaZahlungskonditionen.max"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Maximum (Tage)</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                {...field}
+                                onChange={(e) => field.onChange(parseFloat(e.target.value))}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </CardContent>
+                  </Card>
+                </div>
+
+                <Separator />
+
+                {/* Counterpart Distance Settings */}
+                <div>
+                  <h4 className="font-medium mb-4">Counterpart Position Settings</h4>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Configure how far the opponent should be positioned from your parameters (-1: weit entfernt, 0: neutral, +1: nah)
+                  </p>
+                  
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="counterpartDistanceVolumen"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Volumen Distance</FormLabel>
+                          <Select onValueChange={(value) => field.onChange(parseInt(value))} defaultValue={field.value?.toString()}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="-1">Weit (-)</SelectItem>
+                              <SelectItem value="0">Neutral (0)</SelectItem>
+                              <SelectItem value="1">Nah (+)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="counterpartDistancePreis"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Preis Distance</FormLabel>
+                          <Select onValueChange={(value) => field.onChange(parseInt(value))} defaultValue={field.value?.toString()}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="-1">Weit (-)</SelectItem>
+                              <SelectItem value="0">Neutral (0)</SelectItem>
+                              <SelectItem value="1">Nah (+)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="counterpartDistanceLaufzeit"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Laufzeit Distance</FormLabel>
+                          <Select onValueChange={(value) => field.onChange(parseInt(value))} defaultValue={field.value?.toString()}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="-1">Weit (-)</SelectItem>
+                              <SelectItem value="0">Neutral (0)</SelectItem>
+                              <SelectItem value="1">Nah (+)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="counterpartDistanceZahlungskonditionen"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Zahlungskonditionen Distance</FormLabel>
+                          <Select onValueChange={(value) => field.onChange(parseInt(value))} defaultValue={field.value?.toString()}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="-1">Weit (-)</SelectItem>
+                              <SelectItem value="0">Neutral (0)</SelectItem>
+                              <SelectItem value="1">Nah (+)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                </div>
+
+                <Separator />
+
+                {/* Sonderinteressen */}
+                <FormField
+                  control={form.control}
+                  name="sonderinteressen"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Sonderinteressen (Special Interests)</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="e.g., Sustainability requirements, exclusive partnership terms..."
+                          {...field}
+                        />
+                      </FormControl>
+                      <p className="text-xs text-gray-600">
+                        Additional requirements or special interests that should be considered during negotiation
+                      </p>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Step 5: Review & Configure */}
+          {step === 5 && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center">
@@ -625,14 +1041,15 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
               Previous
             </Button>
 
-            {step < 4 ? (
+            {step < 5 ? (
               <Button
                 type="button"
                 onClick={nextStep}
                 disabled={
                   (step === 1 && !canProceedToStep2) ||
                   (step === 2 && !canProceedToStep3) ||
-                  (step === 3 && !canProceedToStep4)
+                  (step === 3 && !canProceedToStep4) ||
+                  (step === 4 && !canProceedToStep5)
                 }
               >
                 Next
