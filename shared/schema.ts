@@ -53,6 +53,9 @@ export const negotiations = pgTable("negotiations", {
   completedAt: timestamp("completed_at"),
   totalRounds: integer("total_rounds").default(0),
   maxRounds: integer("max_rounds").default(10),
+  selectedTechniques: text("selected_techniques").array().default([]).notNull(),
+  selectedTactics: text("selected_tactics").array().default([]).notNull(),
+  simulationRuns: integer("simulation_runs").default(1).notNull(),
   finalAgreement: jsonb("final_agreement"),
   successScore: decimal("success_score", { precision: 5, scale: 2 }),
   metadata: jsonb("metadata"), // additional tracking data
