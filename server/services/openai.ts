@@ -33,6 +33,56 @@ export interface NegotiationResponse {
 }
 
 export class OpenAINegotiationService {
+  private getPersonalityType(personality: PersonalityProfile): string {
+    // Determine personality type based on Big Five traits
+    if (personality.agreeableness > 0.6 && personality.extraversion > 0.6) {
+      return 'collaborative';
+    } else if (personality.extraversion > 0.7 && personality.agreeableness < 0.4) {
+      return 'aggressive';
+    } else if (personality.conscientiousness > 0.7 && personality.openness > 0.6) {
+      return 'analytical';
+    } else {
+      return 'diplomatic';
+    }
+  }
+
+  private determineZopaSituation(history: NegotiationMessage[], boundaries: ZopaBoundaries): 'within_range' | 'outside_range' | 'near_limits' {
+    // Analyze the last proposal to determine ZOPA situation
+    const lastMessage = history[history.length - 1];
+    if (!lastMessage?.proposal) return 'outside_range';
+
+    const proposal = lastMessage.proposal;
+    let withinCount = 0;
+    let totalChecks = 0;
+
+    // Check each boundary
+    if (boundaries.volume && proposal.volume) {
+      totalChecks++;
+      if (proposal.volume >= boundaries.volume.minAcceptable && proposal.volume <= boundaries.volume.maxDesired) {
+        withinCount++;
+      }
+    }
+    if (boundaries.price && proposal.price) {
+      totalChecks++;
+      if (proposal.price >= boundaries.price.minAcceptable && proposal.price <= boundaries.price.maxDesired) {
+        withinCount++;
+      }
+    }
+    if (boundaries.paymentTerms && proposal.paymentTerms) {
+      totalChecks++;
+      if (proposal.paymentTerms >= boundaries.paymentTerms.minAcceptable && proposal.paymentTerms <= boundaries.paymentTerms.maxDesired) {
+        withinCount++;
+      }
+    }
+
+    if (totalChecks === 0) return 'outside_range';
+    
+    const ratio = withinCount / totalChecks;
+    if (ratio >= 0.8) return 'within_range';
+    if (ratio >= 0.5) return 'near_limits';
+    return 'outside_range';
+  }
+
   private generatePersonalityPrompt(personality: PersonalityProfile): string {
     const traits = [];
     
@@ -58,19 +108,19 @@ export class OpenAINegotiationService {
     const constraints = [];
     
     if (boundaries.volume) {
-      constraints.push(`Volume: ${role === 'buyer' ? 'need at least' : 'can provide up to'} ${boundaries.minAcceptable} units, prefer ${boundaries.maxDesired} units`);
+      constraints.push(`Volume: ${role === 'buyer' ? 'need at least' : 'can provide up to'} ${boundaries.volume.minAcceptable} units, prefer ${boundaries.volume.maxDesired} units`);
     }
     
     if (boundaries.price) {
-      constraints.push(`Price: ${role === 'buyer' ? 'can pay up to' : 'need at least'} $${boundaries.minAcceptable}/unit, prefer $${boundaries.maxDesired}/unit`);
+      constraints.push(`Price: ${role === 'buyer' ? 'can pay up to' : 'need at least'} $${boundaries.price.minAcceptable}/unit, prefer $${boundaries.price.maxDesired}/unit`);
     }
     
     if (boundaries.paymentTerms) {
-      constraints.push(`Payment Terms: ${role === 'buyer' ? 'prefer' : 'can accept up to'} ${boundaries.maxDesired} days, minimum ${boundaries.minAcceptable} days`);
+      constraints.push(`Payment Terms: ${role === 'buyer' ? 'prefer' : 'can accept up to'} ${boundaries.paymentTerms.maxDesired} days, minimum ${boundaries.paymentTerms.minAcceptable} days`);
     }
     
     if (boundaries.contractDuration) {
-      constraints.push(`Contract Duration: prefer ${boundaries.maxDesired} months, minimum ${boundaries.minAcceptable} months`);
+      constraints.push(`Contract Duration: prefer ${boundaries.contractDuration.maxDesired} months, minimum ${boundaries.contractDuration.minAcceptable} months`);
     }
 
     return `Your negotiation boundaries are: ${constraints.join('; ')}. Never agree to terms outside these boundaries.`;
@@ -83,22 +133,46 @@ export class OpenAINegotiationService {
     zopaBoundaries: ZopaBoundaries,
     negotiationHistory: NegotiationMessage[],
     roundNumber: number,
-    maxRounds: number
+    maxRounds: number,
+    negotiationId?: string
   ): Promise<NegotiationResponse> {
-    const startTime = Date.now();
+    const startTime = new Date();
 
-    const personalityPrompt = this.generatePersonalityPrompt(agent.personalityProfile as PersonalityProfile);
-    const zopaPrompt = this.generateZopaPrompt(zopaBoundaries, role);
+    // Create Langfuse trace for this negotiation round
+    const trace = negotiationId ? langfuseService.createTrace(
+      `${negotiationId}-round-${roundNumber}`,
+      {
+        agentId: agent.id,
+        role,
+        roundNumber,
+        maxRounds,
+        contextType: 'supply_contract'
+      }
+    ) : null;
+
+    // Get prompts from YAML configuration
+    const systemPrompt = langfuseService.getSystemPrompt();
+    const personalityType = this.getPersonalityType(agent.personalityProfile as PersonalityProfile);
+    const personalityPrompt = langfuseService.getPersonalityPrompt(personalityType, roundNumber === 1 ? 'opening' : 'response');
+    const contextPrompt = langfuseService.getContextTemplate('supply_contract');
     
-    const systemPrompt = `You are an AI negotiation agent acting as a ${role} in a business negotiation. 
+    // Determine ZOPA situation and get appropriate prompt
+    const zopaSituation = this.determineZopaSituation(negotiationHistory, zopaBoundaries);
+    const zopaPrompt = langfuseService.getZopaPrompt(zopaSituation);
+    
+    const fullSystemPrompt = `${systemPrompt}
 
 ${personalityPrompt}
+
+${contextPrompt}
 
 Context: You are negotiating for ${JSON.stringify(context.productInfo)}. 
 Market conditions: ${JSON.stringify(context.marketConditions || {})}.
 Baseline values: ${JSON.stringify(context.baselineValues)}.
 
 ${zopaPrompt}
+
+Your specific boundaries: ${this.generateZopaPrompt(zopaBoundaries, role)}
 
 Current round: ${roundNumber}/${maxRounds}
 
@@ -125,7 +199,7 @@ Respond with JSON in this exact format:
 }`;
 
     const conversationHistory = negotiationHistory.map(msg => ({
-      role: msg.role === role ? 'assistant' : 'user',
+      role: (msg.role === role ? 'assistant' : 'user') as 'assistant' | 'user',
       content: `${msg.content}${msg.proposal ? `\nProposal: ${JSON.stringify(msg.proposal)}` : ''}`
     }));
 
