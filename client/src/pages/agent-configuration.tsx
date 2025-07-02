@@ -1,56 +1,13 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Slider } from "@/components/ui/slider";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Edit2, Trash2, Brain, Save, X } from "lucide-react";
+import { Plus, Edit2, Trash2, Brain } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-
-const personalitySchema = z.object({
-  openness: z.number().min(0).max(1),
-  conscientiousness: z.number().min(0).max(1),
-  extraversion: z.number().min(0).max(1),
-  agreeableness: z.number().min(0).max(1),
-  neuroticism: z.number().min(0).max(1),
-});
-
-const agentFormSchema = z.object({
-  name: z.string().min(1, "Name is required"),
-  description: z.string().min(10, "Description must be at least 10 characters"),
-  powerLevel: z.string(),
-  personalityProfile: personalitySchema,
-  preferredTactics: z.array(z.string()).min(1, "Select at least one tactic"),
-  selectedInfluencingTechniques: z.array(z.string()).optional(),
-});
-
-type AgentFormData = z.infer<typeof agentFormSchema>;
-
-// Sample data for tactics and techniques (will be replaced with real data)
-const sampleTactics = [
-  { id: "competitive_pricing", name: "Competitive Pricing", description: "Focus on price-based negotiations" },
-  { id: "value_creation", name: "Value Creation", description: "Look for win-win opportunities" },
-  { id: "time_pressure", name: "Time Pressure", description: "Use urgency to drive decisions" },
-  { id: "relationship_building", name: "Relationship Building", description: "Focus on long-term partnerships" },
-];
-
-const sampleTechniques = [
-  { id: "scarcity", name: "Scarcity Technique", description: "Creates urgency by emphasizing limited availability" },
-  { id: "social_proof", name: "Social Proof", description: "Use examples of others to influence decisions" },
-  { id: "reciprocity", name: "Reciprocity", description: "Create obligation through giving first" },
-  { id: "authority", name: "Authority", description: "Leverage expertise and credibility" },
-];
 
 export default function AgentConfiguration() {
   const [selectedAgent, setSelectedAgent] = useState<any>(null);
@@ -59,80 +16,6 @@ export default function AgentConfiguration() {
 
   const { data: agents, isLoading } = useQuery({
     queryKey: ["/api/agents"],
-  });
-
-  const { data: negotiationTactics } = useQuery({
-    queryKey: ["/api/negotiation-tactics"],
-    initialData: [],
-  });
-
-  const { data: influencingTechniques } = useQuery({
-    queryKey: ["/api/influencing-techniques"],
-    initialData: [],
-  });
-
-  const form = useForm<AgentFormData>({
-    resolver: zodResolver(agentFormSchema),
-    defaultValues: {
-      name: "",
-      description: "",
-      powerLevel: "5.0",
-      personalityProfile: {
-        openness: 0.5,
-        conscientiousness: 0.5,
-        extraversion: 0.5,
-        agreeableness: 0.5,
-        neuroticism: 0.5,
-      },
-      preferredTactics: [],
-      selectedInfluencingTechniques: [],
-    },
-  });
-
-  const createAgentMutation = useMutation({
-    mutationFn: async (data: AgentFormData) => {
-      const response = await apiRequest("POST", "/api/agents", data);
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/agents"] });
-      toast({
-        title: "Agent created",
-        description: "The agent has been successfully created.",
-      });
-      setShowCreateForm(false);
-      form.reset();
-    },
-    onError: () => {
-      toast({
-        title: "Error",
-        description: "Failed to create agent. Please try again.",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const updateAgentMutation = useMutation({
-    mutationFn: async (data: AgentFormData) => {
-      const response = await apiRequest("PUT", `/api/agents/${selectedAgent.id}`, data);
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/agents"] });
-      toast({
-        title: "Agent updated",
-        description: "The agent has been successfully updated.",
-      });
-      setSelectedAgent(null);
-      form.reset();
-    },
-    onError: () => {
-      toast({
-        title: "Error",
-        description: "Failed to update agent. Please try again.",
-        variant: "destructive",
-      });
-    },
   });
 
   const deleteAgentMutation = useMutation({
@@ -155,30 +38,6 @@ export default function AgentConfiguration() {
       });
     },
   });
-
-  const onSubmit = (data: AgentFormData) => {
-    if (selectedAgent) {
-      updateAgentMutation.mutate(data);
-    } else {
-      createAgentMutation.mutate(data);
-    }
-  };
-
-  const handleEditAgent = (agent: any) => {
-    setSelectedAgent(agent);
-    form.reset({
-      name: agent.name,
-      description: agent.description,
-      powerLevel: agent.powerLevel,
-      personalityProfile: agent.personalityProfile,
-      preferredTactics: agent.preferredTactics || [],
-      selectedInfluencingTechniques: agent.selectedInfluencingTechniques || [],
-    });
-  };
-
-  // Use sample data if API data isn't available
-  const tacticsToShow = negotiationTactics?.length > 0 ? negotiationTactics : sampleTactics;
-  const techniquesToShow = influencingTechniques?.length > 0 ? influencingTechniques : sampleTechniques;
 
   if (isLoading) {
     return (
@@ -252,7 +111,7 @@ export default function AgentConfiguration() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => handleEditAgent(agent)}
+                      onClick={() => setSelectedAgent(agent)}
                     >
                       <Edit2 className="w-4 h-4" />
                     </Button>
@@ -298,280 +157,26 @@ export default function AgentConfiguration() {
         </div>
       )}
 
-      {/* Create/Edit Form Modal */}
+      {/* Placeholder for create/edit form */}
       {(showCreateForm || selectedAgent) && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-bold">
+          <div className="bg-white rounded-lg p-6 w-full max-w-2xl">
+            <div className="text-center py-8">
+              <h2 className="text-xl font-bold mb-4">
                 {selectedAgent ? 'Edit Agent' : 'Create New Agent'}
               </h2>
+              <p className="text-gray-600 mb-6">
+                Agent configuration form will be available soon with full personality, tactics, and technique selection.
+              </p>
               <Button
-                variant="ghost"
-                size="sm"
                 onClick={() => {
                   setShowCreateForm(false);
                   setSelectedAgent(null);
-                  form.reset();
                 }}
               >
-                <X className="w-4 h-4" />
+                Close
               </Button>
             </div>
-
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-                <Tabs defaultValue="basic" className="w-full">
-                  <TabsList className="grid w-full grid-cols-4">
-                    <TabsTrigger value="basic">Basic Info</TabsTrigger>
-                    <TabsTrigger value="personality">Personality</TabsTrigger>
-                    <TabsTrigger value="tactics">Tactics</TabsTrigger>
-                    <TabsTrigger value="techniques">Techniques</TabsTrigger>
-                  </TabsList>
-
-                  <TabsContent value="basic" className="space-y-4">
-                    <FormField
-                      control={form.control}
-                      name="name"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Agent Name</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Enter agent name" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="description"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Description</FormLabel>
-                          <FormControl>
-                            <Textarea placeholder="Describe the agent's role and behavior" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="powerLevel"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Power Level (1-10)</FormLabel>
-                          <FormControl>
-                            <div className="space-y-2">
-                              <Slider
-                                value={[parseFloat(field.value)]}
-                                onValueChange={(values) => field.onChange(values[0].toString())}
-                                max={10}
-                                min={1}
-                                step={0.5}
-                                className="w-full"
-                              />
-                              <div className="text-center text-sm text-gray-600">
-                                Current: {field.value}
-                              </div>
-                            </div>
-                          </FormControl>
-                          <FormDescription>
-                            Agent's negotiation power level affects their assertiveness and concession patterns
-                          </FormDescription>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </TabsContent>
-
-                  <TabsContent value="personality" className="space-y-4">
-                    <div className="space-y-4">
-                      <h3 className="text-lg font-medium">Big Five Personality Traits</h3>
-                      
-                      {[
-                        { key: 'openness', label: 'Openness to Experience', description: 'Creativity, curiosity, willingness to try new approaches' },
-                        { key: 'conscientiousness', label: 'Conscientiousness', description: 'Organization, discipline, attention to detail' },
-                        { key: 'extraversion', label: 'Extraversion', description: 'Assertiveness, social confidence, energy level' },
-                        { key: 'agreeableness', label: 'Agreeableness', description: 'Cooperation, trust, empathy' },
-                        { key: 'neuroticism', label: 'Neuroticism', description: 'Stress sensitivity, emotional reactivity' },
-                      ].map((trait) => (
-                        <FormField
-                          key={trait.key}
-                          control={form.control}
-                          name={`personalityProfile.${trait.key}` as any}
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>{trait.label}</FormLabel>
-                              <FormControl>
-                                <div className="space-y-2">
-                                  <Slider
-                                    value={[field.value]}
-                                    onValueChange={(values) => field.onChange(values[0])}
-                                    max={1}
-                                    min={0}
-                                    step={0.1}
-                                    className="w-full"
-                                  />
-                                  <div className="text-center text-sm text-gray-600">
-                                    {(field.value * 100).toFixed(0)}%
-                                  </div>
-                                </div>
-                              </FormControl>
-                              <FormDescription className="text-xs">
-                                {trait.description}
-                              </FormDescription>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                      ))}
-                    </div>
-                  </TabsContent>
-
-                  <TabsContent value="tactics" className="space-y-4">
-                    <FormField
-                      control={form.control}
-                      name="preferredTactics"
-                      render={() => (
-                        <FormItem>
-                          <div className="mb-4">
-                            <FormLabel className="text-base">Negotiation Tactics</FormLabel>
-                            <FormDescription>
-                              Select the negotiation tactics this agent should prefer to use
-                            </FormDescription>
-                          </div>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {tacticsToShow?.map((tactic: any) => (
-                              <FormField
-                                key={tactic.id}
-                                control={form.control}
-                                name="preferredTactics"
-                                render={({ field }) => {
-                                  return (
-                                    <FormItem
-                                      key={tactic.id}
-                                      className="flex flex-row items-start space-x-3 space-y-0 border rounded-lg p-4"
-                                    >
-                                      <FormControl>
-                                        <Checkbox
-                                          checked={field.value?.includes(tactic.id)}
-                                          onCheckedChange={(checked) => {
-                                            return checked
-                                              ? field.onChange([...field.value, tactic.id])
-                                              : field.onChange(
-                                                  field.value?.filter(
-                                                    (value) => value !== tactic.id
-                                                  )
-                                                )
-                                          }}
-                                        />
-                                      </FormControl>
-                                      <div className="space-y-1 leading-none">
-                                        <FormLabel className="font-medium">
-                                          {tactic.name}
-                                        </FormLabel>
-                                        <p className="text-sm text-muted-foreground">
-                                          {tactic.description || tactic.beschreibung}
-                                        </p>
-                                      </div>
-                                    </FormItem>
-                                  )
-                                }}
-                              />
-                            ))}
-                          </div>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </TabsContent>
-
-                  <TabsContent value="techniques" className="space-y-4">
-                    <FormField
-                      control={form.control}
-                      name="selectedInfluencingTechniques"
-                      render={() => (
-                        <FormItem>
-                          <div className="mb-4">
-                            <FormLabel className="text-base">Influencing Techniques</FormLabel>
-                            <FormDescription>
-                              Select the psychological influencing techniques this agent should use
-                            </FormDescription>
-                          </div>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {techniquesToShow?.map((technique: any) => (
-                              <FormField
-                                key={technique.id}
-                                control={form.control}
-                                name="selectedInfluencingTechniques"
-                                render={({ field }) => {
-                                  return (
-                                    <FormItem
-                                      key={technique.id}
-                                      className="flex flex-row items-start space-x-3 space-y-0 border rounded-lg p-4"
-                                    >
-                                      <FormControl>
-                                        <Checkbox
-                                          checked={field.value?.includes(technique.id)}
-                                          onCheckedChange={(checked) => {
-                                            const currentValue = field.value || [];
-                                            return checked
-                                              ? field.onChange([...currentValue, technique.id])
-                                              : field.onChange(
-                                                  currentValue?.filter(
-                                                    (value) => value !== technique.id
-                                                  )
-                                                )
-                                          }}
-                                        />
-                                      </FormControl>
-                                      <div className="space-y-1 leading-none">
-                                        <FormLabel className="font-medium">
-                                          {technique.name}
-                                        </FormLabel>
-                                        <p className="text-sm text-muted-foreground">
-                                          {technique.description || technique.beschreibung}
-                                        </p>
-                                      </div>
-                                    </FormItem>
-                                  )
-                                }}
-                              />
-                            ))}
-                          </div>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </TabsContent>
-                </Tabs>
-
-                <div className="flex justify-end space-x-4 pt-6 border-t">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      setShowCreateForm(false);
-                      setSelectedAgent(null);
-                      form.reset();
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    disabled={createAgentMutation.isPending || updateAgentMutation.isPending}
-                  >
-                    <Save className="w-4 h-4 mr-2" />
-                    {selectedAgent ? 'Update Agent' : 'Create Agent'}
-                  </Button>
-                </div>
-              </form>
-            </Form>
           </div>
         </div>
       )}

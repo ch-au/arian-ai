@@ -95,7 +95,17 @@ The application follows a modern full-stack architecture:
 ## Changelog
 - July 02, 2025: Initial setup
 - July 02, 2025: Added Langfuse tracing integration and YAML prompt management system
+- July 02, 2025: Fixed confusing UI by removing duplicate "New Negotiation" buttons
+- July 02, 2025: Implemented fully functional negotiation creation form with 3-step wizard
+- July 02, 2025: Added database tables for influencing techniques and negotiation tactics
+- July 02, 2025: Created agent configuration interface with personality trait management
 
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
+
+## Current Focus Areas
+The user wants detailed configuration of:
+1. Influencing techniques (Beeinflussungstechniken) - stored in database table with fields: name, beschreibung, anwendung, wichtige_aspekte, key_phrases
+2. Negotiation tactics (Verhandlungstaktiken) - stored in database table with fields: name, beschreibung, anwendung, wichtige_aspekte, key_phrases
+3. Agent configuration should allow users to select which techniques and tactics to test in simulated negotiations
