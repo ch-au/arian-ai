@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Zap } from "lucide-react";
+import { Zap } from "lucide-react";
 import { useLocation } from "wouter";
 
 const pageTitles: Record<string, { title: string; description: string }> = {
@@ -44,10 +43,6 @@ export default function Header() {
     description: "AI Negotiation Platform"
   };
 
-  const handleNewNegotiation = () => {
-    window.location.href = "/negotiations";
-  };
-
   return (
     <header className="bg-white border-b border-gray-200 px-6 py-4">
       <div className="flex items-center justify-between">
@@ -67,16 +62,10 @@ export default function Header() {
             <div className="flex items-center space-x-2 text-sm text-gray-600">
               <Zap className="text-yellow-500 w-4 h-4" />
               <span>
-                Active: <span className="font-medium text-gray-900">{systemStatus.activeNegotiations}</span>
+                Active: <span className="font-medium text-gray-900">{(systemStatus as any).activeNegotiations || 0}</span>
               </span>
             </div>
           )}
-
-          {/* Action Buttons */}
-          <Button onClick={handleNewNegotiation} className="font-medium">
-            <Plus className="w-4 h-4 mr-2" />
-            New Negotiation
-          </Button>
         </div>
       </div>
     </header>
