@@ -16,6 +16,12 @@ import { Settings, Users, Target, Play, ArrowLeft, ArrowRight, Brain, Zap } from
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
+const zopaDimensionSchema = z.object({
+  min: z.number(),
+  max: z.number(),
+  target: z.number(),
+});
+
 const createNegotiationSchema = z.object({
   contextId: z.string().min(1, "Please select a negotiation context"),
   buyerAgentId: z.string().min(1, "Please select a buyer agent"),
@@ -24,6 +30,18 @@ const createNegotiationSchema = z.object({
   selectedTechniques: z.array(z.string()).min(1, "Select at least one influencing technique"),
   selectedTactics: z.array(z.string()).min(1, "Select at least one negotiation tactic"),
   simulationRuns: z.number().min(1).max(100).default(1),
+  // Role and ZOPA configuration
+  userRole: z.enum(["buyer", "seller"]),
+  userZopaVolumen: zopaDimensionSchema,
+  userZopaPreis: zopaDimensionSchema,
+  userZopaLaufzeit: zopaDimensionSchema,
+  userZopaZahlungskonditionen: zopaDimensionSchema,
+  // Counterpart distance settings
+  counterpartDistanceVolumen: z.number().min(-1).max(1).default(0),
+  counterpartDistancePreis: z.number().min(-1).max(1).default(0),
+  counterpartDistanceLaufzeit: z.number().min(-1).max(1).default(0),
+  counterpartDistanceZahlungskonditionen: z.number().min(-1).max(1).default(0),
+  sonderinteressen: z.string().optional(),
   autoStart: z.boolean().default(false),
 });
 
@@ -65,6 +83,16 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
       selectedTechniques: [],
       selectedTactics: [],
       simulationRuns: 1,
+      userRole: "buyer",
+      userZopaVolumen: { min: 100, max: 1000, target: 500 },
+      userZopaPreis: { min: 10, max: 100, target: 50 },
+      userZopaLaufzeit: { min: 12, max: 36, target: 24 },
+      userZopaZahlungskonditionen: { min: 30, max: 90, target: 60 },
+      counterpartDistanceVolumen: 0,
+      counterpartDistancePreis: 0,
+      counterpartDistanceLaufzeit: 0,
+      counterpartDistanceZahlungskonditionen: 0,
+      sonderinteressen: "",
       autoStart: false,
     },
   });
@@ -124,7 +152,7 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
   };
 
   const nextStep = () => {
-    if (step < 4) setStep(step + 1);
+    if (step < 5) setStep(step + 1);
   };
 
   const prevStep = () => {
@@ -134,21 +162,23 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
   const canProceedToStep2 = form.watch("contextId");
   const canProceedToStep3 = canProceedToStep2 && form.watch("buyerAgentId") && form.watch("sellerAgentId");
   const canProceedToStep4 = canProceedToStep3 && form.watch("selectedTechniques")?.length > 0 && form.watch("selectedTactics")?.length > 0;
+  const canProceedToStep5 = canProceedToStep4 && form.watch("userRole");
 
   const stepTitles = [
     "Define Basic Parameters",
     "Select Agents", 
     "Choose Negotiation Style",
+    "Configure ZOPA",
     "Review & Configure"
   ];
 
-  const stepIcons = [Settings, Users, Brain, Play];
+  const stepIcons = [Settings, Users, Brain, Target, Play];
 
   return (
     <div className="space-y-6">
       {/* Progress Steps */}
       <div className="flex items-center justify-center space-x-4 mb-8">
-        {[1, 2, 3, 4].map((stepNum) => {
+        {[1, 2, 3, 4, 5].map((stepNum) => {
           const StepIcon = stepIcons[stepNum - 1];
           return (
             <div key={stepNum} className="flex items-center">
@@ -164,7 +194,7 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
                 </div>
                 <p className="text-xs mt-2 text-gray-600">{stepTitles[stepNum - 1]}</p>
               </div>
-              {stepNum < 4 && (
+              {stepNum < 5 && (
                 <div
                   className={`w-16 h-1 mx-4 ${
                     step > stepNum ? "bg-blue-600" : "bg-gray-200"
