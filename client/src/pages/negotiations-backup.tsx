@@ -33,7 +33,7 @@ export default function Negotiations() {
 
   const { data: negotiations, isLoading } = useQuery<Negotiation[]>({
     queryKey: ["/api/negotiations"],
-    refetchInterval: 5000,
+    refetchInterval: 5000, // Refresh every 5 seconds
   });
 
   const { data: agents } = useQuery({
@@ -58,8 +58,8 @@ export default function Negotiations() {
     },
     onError: (error) => {
       toast({
-        title: "Failed to start negotiation",
-        description: error instanceof Error ? error.message : "An unknown error occurred",
+        title: "Error",
+        description: "Failed to start negotiation. Please try again.",
         variant: "destructive",
       });
     },
@@ -79,72 +79,87 @@ export default function Negotiations() {
     },
     onError: (error) => {
       toast({
-        title: "Failed to stop negotiation",
-        description: error instanceof Error ? error.message : "An unknown error occurred",
+        title: "Error",
+        description: "Failed to stop negotiation. Please try again.",
         variant: "destructive",
       });
     },
   });
 
   // WebSocket connection for real-time updates
-  useWebSocket("ws://localhost:5000/ws", (message) => {
-    if (message.type === 'negotiation_started' || message.type === 'round_completed' || message.type === 'negotiation_completed') {
-      queryClient.invalidateQueries({ queryKey: ["/api/negotiations"] });
-      
-      if (message.type === 'negotiation_completed') {
-        toast({
-          title: "Negotiation Completed",
-          description: `Negotiation ${message.negotiationId} has finished.`,
-        });
+  useWebSocket('/ws', {
+    onMessage: (data) => {
+      if (data.type === 'negotiation_started' || data.type === 'round_completed' || data.type === 'negotiation_completed') {
+        queryClient.invalidateQueries({ queryKey: ["/api/negotiations"] });
+        
+        if (data.type === 'negotiation_completed') {
+          toast({
+            title: "Negotiation Completed",
+            description: `Negotiation ${data.negotiationId} has completed with a success score of ${data.data.successScore}%.`,
+          });
+        }
       }
-    }
+    },
   });
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "active": return "bg-green-500";
-      case "completed": return "bg-blue-500";
-      case "failed": return "bg-red-500";
-      default: return "bg-gray-500";
-    }
-  };
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case "active": return <Clock className="h-4 w-4" />;
-      case "completed": return <CheckCircle className="h-4 w-4" />;
-      case "failed": return <XCircle className="h-4 w-4" />;
-      default: return <Clock className="h-4 w-4" />;
+      case "pending":
+        return <Clock className="h-4 w-4 text-gray-500" />;
+      case "active":
+        return <Play className="h-4 w-4 text-blue-500" />;
+      case "completed":
+        return <CheckCircle className="h-4 w-4 text-green-500" />;
+      case "failed":
+        return <XCircle className="h-4 w-4 text-red-500" />;
+      default:
+        return <Clock className="h-4 w-4 text-gray-500" />;
     }
   };
 
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "pending":
+        return "gray";
+      case "active":
+        return "blue";
+      case "completed":
+        return "green";
+      case "failed":
+        return "red";
+      default:
+        return "gray";
+    }
+  };
+
+  const getAgentName = (agentId: string) => {
+    return agents?.find((agent: any) => agent.id === agentId)?.name || "Unknown Agent";
+  };
+
+  const getContextName = (contextId: string) => {
+    return contexts?.find((context: any) => context.id === contextId)?.name || "Unknown Context";
+  };
+
   const formatDuration = (startedAt: string, completedAt?: string) => {
+    if (!startedAt) return "Not started";
+    
     const start = new Date(startedAt);
     const end = completedAt ? new Date(completedAt) : new Date();
-    const diffMs = end.getTime() - start.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
+    const duration = Math.floor((end.getTime() - start.getTime()) / 1000 / 60); // minutes
     
-    if (diffMins < 60) {
-      return `${diffMins}m`;
-    }
-    const diffHours = Math.floor(diffMins / 60);
-    return `${diffHours}h ${diffMins % 60}m`;
+    return `${duration}m`;
   };
 
   if (isLoading) {
     return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <Skeleton className="h-8 w-48" />
-            <Skeleton className="h-4 w-72 mt-2" />
+      <div className="p-6">
+        <div className="animate-pulse space-y-4">
+          <div className="h-8 bg-gray-200 rounded w-1/4"></div>
+          <div className="grid grid-cols-1 gap-4">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="h-32 bg-gray-200 rounded-lg"></div>
+            ))}
           </div>
-          <Skeleton className="h-10 w-36" />
-        </div>
-        <div className="space-y-4">
-          {[1, 2, 3, 4].map((i) => (
-            <Skeleton key={i} className="h-24 w-full" />
-          ))}
         </div>
       </div>
     );
