@@ -101,6 +101,7 @@ The application follows a modern full-stack architecture:
 - July 02, 2025: Created agent configuration interface with personality trait management
 - July 02, 2025: Redesigned database schema with combinatorial simulation system - each technique-tactic combination gets its own simulation run
 - July 02, 2025: Added simulation confirmation screen to show user the matrix of runs before starting
+- July 03, 2025: Fixed critical negotiation creation bug - removed double JSON encoding that was causing request body parsing failures
 
 ## User Preferences
 

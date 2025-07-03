@@ -122,9 +122,7 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
       
       console.log("Sending payload:", payload);
       
-      const response = await apiRequest("POST", "/api/negotiations", {
-        body: JSON.stringify(payload),
-      });
+      const response = await apiRequest("POST", "/api/negotiations", payload);
       return response.json();
     },
     onSuccess: async (negotiation) => {
