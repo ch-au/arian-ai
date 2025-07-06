@@ -132,7 +132,7 @@ export const performanceMetrics = pgTable("performance_metrics", {
   id: uuid("id").primaryKey().defaultRandom(),
   negotiationId: uuid("negotiation_id").references(() => negotiations.id),
   agentId: uuid("agent_id").references(() => agents.id),
-  tacticId: uuid("tactic_id").references(() => tactics.id),
+  tacticId: uuid("tactic_id").references(() => negotiationTactics.id),
   effectivenessScore: decimal("effectiveness_score", { precision: 5, scale: 2 }),
   responseTime: integer("response_time_ms"),
   apiTokensUsed: integer("api_tokens_used"),

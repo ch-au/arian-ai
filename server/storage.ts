@@ -4,6 +4,7 @@ import {
   negotiationContexts,
   zopaConfigurations,
   negotiations,
+  simulationRuns,
   negotiationRounds,
   tactics,
   analyticsSessions,
@@ -287,11 +288,24 @@ export class DatabaseStorage implements IStorage {
 
   // Negotiation round methods
   async getNegotiationRounds(negotiationId: string): Promise<NegotiationRound[]> {
-    return await db
+    // Get all simulation runs for this negotiation
+    const simulationRunsResult = await db
+      .select()
+      .from(simulationRuns)
+      .where(eq(simulationRuns.negotiationId, negotiationId));
+    
+    if (simulationRunsResult.length === 0) {
+      return [];
+    }
+
+    // Get all rounds for these simulation runs
+    const rounds = await db
       .select()
       .from(negotiationRounds)
-      .where(eq(negotiationRounds.negotiationId, negotiationId))
+      .where(eq(negotiationRounds.simulationRunId, simulationRunsResult[0].id))
       .orderBy(asc(negotiationRounds.roundNumber));
+    
+    return rounds;
   }
 
   async createNegotiationRound(round: InsertNegotiationRound): Promise<NegotiationRound> {

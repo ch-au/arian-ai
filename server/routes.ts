@@ -354,6 +354,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Start a negotiation
+  app.post("/api/negotiations/:id/start", async (req, res) => {
+    try {
+      const negotiation = await storage.getNegotiation(req.params.id);
+      if (!negotiation) {
+        return res.status(404).json({ error: "Negotiation not found" });
+      }
+
+      if (negotiation.status !== "pending") {
+        return res.status(400).json({ error: "Negotiation is not in pending status" });
+      }
+
+      // Start the negotiation asynchronously
+      negotiationEngine.startNegotiation(req.params.id).catch(error => {
+        console.error("Negotiation failed:", error);
+      });
+
+      res.json({ message: "Negotiation started successfully" });
+    } catch (error) {
+      console.error("Failed to start negotiation:", error);
+      res.status(500).json({ error: "Failed to start negotiation" });
+    }
+  });
+
+  // Stop a negotiation
+  app.post("/api/negotiations/:id/stop", async (req, res) => {
+    try {
+      await negotiationEngine.stopNegotiation(req.params.id);
+      res.json({ message: "Negotiation stopped successfully" });
+    } catch (error) {
+      console.error("Failed to stop negotiation:", error);
+      res.status(500).json({ error: "Failed to stop negotiation" });
+    }
+  });
+
+  // Get negotiation rounds
+  app.get("/api/negotiations/:id/rounds", async (req, res) => {
+    try {
+      const rounds = await storage.getNegotiationRounds(req.params.id);
+      res.json(rounds);
+    } catch (error) {
+      console.error("Failed to get negotiation rounds:", error);
+      res.status(500).json({ error: "Failed to get negotiation rounds" });
+    }
+  });
+
   app.post("/api/negotiations/:id/start", async (req, res) => {
     try {
       await negotiationEngine.startNegotiation(req.params.id);

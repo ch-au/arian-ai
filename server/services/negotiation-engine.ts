@@ -86,16 +86,18 @@ export class NegotiationEngine {
         throw new Error("Missing negotiation components");
       }
 
-      // Get ZOPA configurations
-      const buyerZopaConfigs = await storage.getZopaConfigurationsByAgent(buyerAgent.id);
-      const sellerZopaConfigs = await storage.getZopaConfigurationsByAgent(sellerAgent.id);
-
-      const buyerZopa = buyerZopaConfigs.find(z => z.contextId === context.id)?.boundaries as ZopaBoundaries;
-      const sellerZopa = sellerZopaConfigs.find(z => z.contextId === context.id)?.boundaries as ZopaBoundaries;
-
-      if (!buyerZopa || !sellerZopa) {
-        throw new Error("ZOPA configurations not found");
-      }
+      // Get ZOPA boundaries from negotiation and context
+      const userZopa = negotiation.userZopa;
+      const counterpartDistance = negotiation.counterpartDistance;
+      
+      // Convert user ZOPA and counterpart distance to proper ZOPA boundaries
+      const buyerZopa = negotiation.userRole === 'buyer' ? 
+        this.convertToZopaBoundaries(userZopa) : 
+        this.generateCounterpartZopa(userZopa, counterpartDistance);
+        
+      const sellerZopa = negotiation.userRole === 'seller' ? 
+        this.convertToZopaBoundaries(userZopa) : 
+        this.generateCounterpartZopa(userZopa, counterpartDistance);
 
       // Start the negotiation
       await storage.startNegotiation(negotiationId);
@@ -157,7 +159,7 @@ export class NegotiationEngine {
             negotiationHistory,
             currentRound,
             negotiation.maxRounds,
-            negotiation.id
+            negotiation
           );
 
           await this.recordNegotiationRound(
@@ -203,7 +205,7 @@ export class NegotiationEngine {
             negotiationHistory,
             currentRound,
             negotiation.maxRounds || 10,
-            negotiation.id
+            negotiation
           );
 
           await this.recordNegotiationRound(
@@ -289,7 +291,7 @@ export class NegotiationEngine {
     negotiationHistory: NegotiationMessage[],
     roundNumber: number,
     maxRounds: number,
-    negotiationId: string
+    negotiation: Negotiation
   ) {
     const startTime = Date.now();
 
@@ -302,7 +304,9 @@ export class NegotiationEngine {
         negotiationHistory,
         roundNumber,
         maxRounds,
-        negotiationId
+        negotiation.id,
+        negotiation.selectedTechniques,
+        negotiation.selectedTactics
       );
 
       // Record performance metrics
@@ -349,9 +353,6 @@ export class NegotiationEngine {
     };
 
     await storage.createPerformanceMetric(performanceData);
-
-    // Update negotiation total rounds
-    await storage.updateNegotiation(negotiationId, { totalRounds: roundNumber });
   }
 
   private isWithinBothZopas(proposal: any, buyerZopa: ZopaBoundaries, sellerZopa: ZopaBoundaries): boolean {
@@ -405,5 +406,53 @@ export class NegotiationEngine {
 
   getActiveNegotiationsCount(): number {
     return this.activeNegotiations.size;
+  }
+
+  private convertToZopaBoundaries(userZopa: any): ZopaBoundaries {
+    return {
+      volume: userZopa.volumen ? {
+        minAcceptable: userZopa.volumen.min,
+        maxDesired: userZopa.volumen.max,
+        target: userZopa.volumen.target
+      } : undefined,
+      price: userZopa.preis ? {
+        minAcceptable: userZopa.preis.min,
+        maxDesired: userZopa.preis.max,
+        target: userZopa.preis.target
+      } : undefined,
+      paymentTerms: userZopa.zahlungskonditionen ? {
+        minAcceptable: userZopa.zahlungskonditionen.min,
+        maxDesired: userZopa.zahlungskonditionen.max,
+        target: userZopa.zahlungskonditionen.target
+      } : undefined,
+      contractDuration: userZopa.laufzeit ? {
+        minAcceptable: userZopa.laufzeit.min,
+        maxDesired: userZopa.laufzeit.max,
+        target: userZopa.laufzeit.target
+      } : undefined
+    };
+  }
+
+  private generateCounterpartZopa(userZopa: any, counterpartDistance: any): ZopaBoundaries {
+    // Generate counterpart ZOPA based on distance settings
+    const adjustRange = (original: any, distance: number) => {
+      if (!original) return undefined;
+      
+      const range = original.max - original.min;
+      const adjustment = range * (distance / 100); // distance as percentage
+      
+      return {
+        minAcceptable: original.min - adjustment,
+        maxDesired: original.max + adjustment,
+        target: original.target + (adjustment * 0.5) // Shift target slightly
+      };
+    };
+
+    return {
+      volume: adjustRange(userZopa.volumen, counterpartDistance.volumen || 0),
+      price: adjustRange(userZopa.preis, counterpartDistance.preis || 0),
+      paymentTerms: adjustRange(userZopa.zahlungskonditionen, counterpartDistance.zahlungskonditionen || 0),
+      contractDuration: adjustRange(userZopa.laufzeit, counterpartDistance.laufzeit || 0)
+    };
   }
 }

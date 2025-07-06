@@ -134,7 +134,9 @@ export class OpenAINegotiationService {
     negotiationHistory: NegotiationMessage[],
     roundNumber: number,
     maxRounds: number,
-    negotiationId?: string
+    negotiationId?: string,
+    selectedTechniques?: string[],
+    selectedTactics?: string[]
   ): Promise<NegotiationResponse> {
     const startTime = new Date();
 
@@ -160,6 +162,10 @@ export class OpenAINegotiationService {
     const zopaSituation = this.determineZopaSituation(negotiationHistory, zopaBoundaries);
     const zopaPrompt = langfuseService.getZopaPrompt(zopaSituation);
     
+    // Generate techniques and tactics guidance
+    const techniqueGuidance = await this.generateTechniqueGuidance(selectedTechniques);
+    const tacticGuidance = await this.generateTacticGuidance(selectedTactics);
+
     const fullSystemPrompt = `${systemPrompt}
 
 ${personalityPrompt}
@@ -174,6 +180,10 @@ ${zopaPrompt}
 
 Your specific boundaries: ${this.generateZopaPrompt(zopaBoundaries, role)}
 
+${techniqueGuidance ? `\nInfluencing Techniques to Apply:\n${techniqueGuidance}` : ''}
+
+${tacticGuidance ? `\nNegotiation Tactics to Use:\n${tacticGuidance}` : ''}
+
 Current round: ${roundNumber}/${maxRounds}
 
 Instructions:
@@ -181,9 +191,10 @@ Instructions:
 2. Never exceed your ZOPA boundaries
 3. Be realistic and professional
 4. Make concrete proposals with specific numbers
-5. Respond with a JSON object containing your message, proposal, reasoning, and confidence (0-1)
-6. As rounds progress, be more willing to compromise within your boundaries
-7. Consider the negotiation history and respond appropriately
+5. Apply the specified influencing techniques and negotiation tactics naturally
+6. Respond with a JSON object containing your message, proposal, reasoning, and confidence (0-1)
+7. As rounds progress, be more willing to compromise within your boundaries
+8. Consider the negotiation history and respond appropriately
 
 Respond with JSON in this exact format:
 {
@@ -333,6 +344,44 @@ Provide analysis in JSON format:
   calculateApiCost(tokensUsed: number): number {
     // GPT-4o pricing (as of the model's release): $0.005 per 1K tokens
     return (tokensUsed / 1000) * 0.005;
+  }
+
+  private async generateTechniqueGuidance(techniques?: string[]): Promise<string> {
+    if (!techniques || techniques.length === 0) return '';
+    
+    const techniqueMap: Record<string, string> = {
+      'reciprocity': 'Use reciprocity by offering something valuable to encourage the other party to reciprocate. Make small concessions to build goodwill.',
+      'scarcity': 'Emphasize limited time or availability to create urgency. Mention deadlines, limited stock, or competing offers.',
+      'authority': 'Reference your expertise, credentials, or organizational backing to build credibility and trust.',
+      'commitment': 'Make firm commitments and ask for commitments in return. Use phrases like "if we can agree on X, then I can guarantee Y".',
+      'social_proof': 'Reference similar successful deals, industry standards, or what other companies typically do.',
+      'liking': 'Build rapport and find common ground. Show genuine interest in the other party\'s concerns and goals.'
+    };
+
+    const guidance = techniques
+      .map(t => techniqueMap[t] || `Apply ${t} technique appropriately`)
+      .join('\n- ');
+    
+    return `- ${guidance}`;
+  }
+
+  private async generateTacticGuidance(tactics?: string[]): Promise<string> {
+    if (!tactics || tactics.length === 0) return '';
+    
+    const tacticMap: Record<string, string> = {
+      'relationship_building': 'Focus on building long-term relationships. Ask about their business goals and show how the deal benefits both parties.',
+      'anchoring': 'Start with an ambitious but reasonable initial offer to anchor expectations. Let your first proposal set the negotiation range.',
+      'concession_pattern': 'Make strategic concessions that decrease in size over time. Show movement while protecting your key interests.',
+      'time_pressure': 'Create appropriate urgency around decision-making. Mention timelines and the cost of delays.',
+      'package_deals': 'Bundle multiple elements together to create value and make trade-offs easier to negotiate.',
+      'information_gathering': 'Ask probing questions to understand their priorities, constraints, and decision-making process.'
+    };
+
+    const guidance = tactics
+      .map(t => tacticMap[t] || `Apply ${t} tactic strategically`)
+      .join('\n- ');
+    
+    return `- ${guidance}`;
   }
 }
 
