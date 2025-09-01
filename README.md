@@ -1,144 +1,133 @@
-# ARIAN - AI Negotiation Platform
+# ARIAN AI Negotiation Platform
 
-An advanced AI-powered negotiation simulation platform that enables automated negotiations between AI agents with configurable personalities, tactics, and ZOPA (Zone of Possible Agreement) boundaries.
+> Advanced AI-powered negotiation simulation platform with configurable personalities, tactics, and real-time analytics
 
-## 🚀 Features
+[![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![React](https://img.shields.io/badge/React-20232A?style=flat&logo=react&logoColor=61DAFB)](https://reactjs.org/)
+[![OpenAI](https://img.shields.io/badge/OpenAI-412991?style=flat&logo=openai&logoColor=white)](https://openai.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-316192?style=flat&logo=postgresql&logoColor=white)](https://postgresql.org/)
 
-- **AI-to-AI Negotiations**: Automated negotiations using OpenAI GPT-4o models
-- **Configurable AI Personalities**: Big Five personality traits configuration for realistic agent behavior
-- **Influencing Techniques & Tactics**: Database-driven technique and tactic selection for negotiations
-- **Real-time Monitoring**: WebSocket-based live negotiation updates
-- **Combinatorial Testing**: Test multiple technique-tactic combinations automatically
-- **ZOPA Analysis**: Zone of Possible Agreement boundary validation and overlap analysis
-- **Performance Analytics**: Comprehensive metrics tracking and reporting
-- **Multi-round Negotiations**: Support for extended negotiation sessions
+## ✨ Key Features
 
-## 🛠 Technology Stack
+🤖 **AI-Powered Negotiations** - Autonomous agent negotiations using OpenAI GPT-4o  
+🎭 **Configurable Personalities** - Big Five personality traits for realistic behavior  
+🎯 **Strategic Techniques** - 10 psychological influence techniques + 44 tactical approaches  
+📊 **Real-time Analytics** - Live monitoring with comprehensive performance metrics  
+🔄 **Combinatorial Testing** - Automated testing of technique-tactic combinations  
+📈 **ZOPA Analysis** - Zone of Possible Agreement validation and optimization  
 
-### Frontend
-- **React** with TypeScript
-- **Vite** for build tooling
-- **Wouter** for routing
-- **TanStack Query** for state management
-- **Shadcn/ui** with Radix UI components
-- **Tailwind CSS** for styling
-- **WebSocket** for real-time updates
-
-### Backend
-- **Express.js** with TypeScript
-- **PostgreSQL** with Drizzle ORM
-- **Neon** serverless PostgreSQL
-- **OpenAI API** for AI agent intelligence
-- **Langfuse** for AI observability and tracing
-- **WebSocket** server for real-time communication
-
-## 📊 System Architecture
-
-The platform follows a modern full-stack architecture with separated concerns:
-
-1. **Agent Configuration**: Configure AI personalities, tactics, and boundaries
-2. **Negotiation Setup**: Define contexts, products, and market conditions
-3. **Negotiation Engine**: Process negotiations with OpenAI integration
-4. **Real-time Updates**: WebSocket-based live monitoring
-5. **Analytics**: Performance tracking and reporting
-
-## 🔧 Setup & Installation
+## 🚀 Quick Start
 
 ### Prerequisites
 - Node.js 18+ 
 - PostgreSQL database
 - OpenAI API key
 
-### Environment Variables
-Create a `.env` file with:
-```env
-DATABASE_URL=your_postgresql_connection_string
-OPENAI_API_KEY=your_openai_api_key
-LANGFUSE_PUBLIC_KEY=your_langfuse_public_key (optional)
-LANGFUSE_SECRET_KEY=your_langfuse_secret_key (optional)
-```
-
 ### Installation
 ```bash
-# Install dependencies
+git clone <repository-url>
+cd arian-ai
 npm install
-
-# Push database schema
-npm run db:push
-
-# Start development server
-npm run dev
 ```
 
-The application will be available at `http://localhost:5000`
+### Configuration
+Create `.env` file:
+```env
+DATABASE_URL="postgresql://user:pass@host:port/db"
+OPENAI_API_KEY="sk-..."
+LANGFUSE_PUBLIC_KEY="pk-lf-..."  # Optional
+LANGFUSE_SECRET_KEY="sk-lf-..."  # Optional
+```
 
-## 🎯 Key Components
+### Setup & Start
+```bash
+npm run db:push    # Deploy database schema
+npm run db:seed    # Add sample data
+npm run dev        # Start development server
+```
 
-### Negotiation Engine
-- **Location**: `server/services/negotiation-engine.ts`
-- **Features**: AI agent orchestration, ZOPA validation, real-time processing
-- **Integration**: OpenAI API with custom prompts incorporating techniques and tactics
+**Access the application:**
+- Frontend: http://localhost:5173
+- Backend API: http://localhost:3000
 
-### AI Service
-- **Location**: `server/services/openai.ts`
-- **Features**: GPT-4o integration, token tracking, cost calculation
-- **Prompts**: YAML-based prompt management with technique/tactic integration
+## 🏗️ Architecture
 
-### Database Schema
-- **Agents**: AI personality configurations
-- **Negotiations**: Session management and status tracking
-- **Simulation Runs**: Individual technique-tactic combination tests
-- **Performance Metrics**: Detailed analytics and cost tracking
+**Full-Stack TypeScript** with modern tooling:
+- **Frontend**: React + Vite + TanStack Query + Shadcn/ui
+- **Backend**: Express.js + Drizzle ORM + PostgreSQL + WebSocket
+- **AI Services**: OpenAI Agents (Python) + Langfuse tracing
+- **Real-time**: WebSocket communication for live updates
 
-### Frontend Components
-- **Dashboard**: Real-time metrics and active negotiations
-- **Agent Configuration**: Personality trait management
-- **Negotiation Creation**: 3-step wizard for setting up negotiations
-- **Analytics**: Performance reports and success rate trends
+**Key Components:**
+- `server/services/negotiation-engine.ts` - Core orchestration logic
+- `scripts/run_production_negotiation.py` - AI agent microservice
+- `client/src/pages/dashboard.tsx` - Real-time monitoring interface
+- `shared/schema.ts` - Type-safe database schema
 
-## 🔄 Negotiation Flow
+## 📊 System Flow
 
-1. **Setup**: Configure agents with personalities and select techniques/tactics
-2. **Initialization**: Create negotiation context with ZOPA boundaries
-3. **Execution**: AI agents negotiate autonomously using OpenAI
-4. **Monitoring**: Real-time updates via WebSocket
-5. **Analysis**: Performance metrics and success evaluation
+1. **Configure** negotiation parameters, techniques, and agent personalities
+2. **Execute** combinatorial simulations testing N×M technique-tactic combinations  
+3. **Monitor** real-time progress via WebSocket updates
+4. **Analyze** results with comprehensive performance metrics and AI tracing
 
-## 📈 Analytics & Reporting
+## 🛠️ Development
 
-- **Dashboard Metrics**: Active negotiations, success rates, API costs
-- **Agent Performance**: Individual agent effectiveness tracking
-- **Technique Analysis**: Effectiveness of different negotiation techniques
-- **Cost Optimization**: Token usage and API cost monitoring
+```bash
+npm run dev              # Full development environment
+npm run dev:client       # Frontend only (port 5173)  
+npm run dev:server       # Backend only (port 3000)
+npm run test             # Run test suite
+npm run check            # TypeScript type checking
+```
 
-## 🛡 Security & Best Practices
+**Project Structure:**
+```
+arian-ai/
+├── client/              # React frontend
+├── server/              # Express.js backend  
+├── scripts/             # Python AI microservice
+├── shared/              # Shared types/schemas
+├── tests/               # Test files
+├── docs/                # Technical documentation
+└── data/                # Reference CSV files
+```
 
+## 📚 Documentation
+
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - System design and technical details
+- **[DEVELOPMENT.md](DEVELOPMENT.md)** - Development workflows and patterns
+- **[TESTING_GUIDE.md](TESTING_GUIDE.md)** - Testing strategies and examples
+- **[docs/SIMULATION_QUEUE.md](docs/SIMULATION_QUEUE.md)** - Simulation queue processing and status model
+- **[docs/](docs/)** - Additional technical documentation
+
+## 🔬 Core Concepts
+
+**Negotiation Engine**: Orchestrates multi-round AI-to-AI negotiations with configurable parameters and real-time monitoring.
+
+**Combinatorial Testing**: Automatically tests multiple technique-tactic combinations to identify optimal negotiation strategies.
+
+**ZOPA Analysis**: Zone of Possible Agreement validation ensures realistic negotiation boundaries and outcome analysis.
+
+**AI Observability**: Complete Langfuse tracing of LLM calls with prompt linking and performance analytics.
+
+## 🚀 Production
+
+```bash
+npm run build            # Create production build
+npm run start            # Start production server
+```
+
+Built for modern deployment with:
 - Environment-based configuration
-- Secure API key management
 - Database connection pooling
-- Type-safe development with TypeScript
+- WebSocket scaling support
 - Comprehensive error handling
-
-## 📝 Development Guidelines
-
-- Follow TypeScript best practices
-- Use Drizzle ORM for database operations
-- Implement proper error handling
-- Maintain comprehensive logging
-- Follow the existing code structure
-
-## 🚀 Deployment
-
-The application is optimized for deployment on Replit with:
-- Automatic workflow configuration
-- Environment variable management
-- Database connection handling
-- WebSocket support in hosted environment
 
 ## 📄 License
 
 This project is private and proprietary.
 
-## 🤝 Contributing
+---
 
-This is a private project. Please follow the established patterns and maintain code quality.
+*Built with TypeScript, React, and OpenAI for advanced negotiation simulation and analysis.*

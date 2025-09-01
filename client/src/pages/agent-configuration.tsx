@@ -1,21 +1,38 @@
 import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Plus, Edit2, Trash2, Brain } from "lucide-react";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import AgentForm from "@/components/agent-form";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 export default function AgentConfiguration() {
   const [selectedAgent, setSelectedAgent] = useState<any>(null);
-  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [isFormOpen, setIsFormOpen] = useState(false);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
-  const { data: agents, isLoading } = useQuery({
+  const { data: agents, isLoading } = useQuery<any[]>({
     queryKey: ["/api/agents"],
+    queryFn: () => apiRequest("GET", "/api/agents").then(res => res.json()),
+  });
+
+  const agentMutation = useMutation({
+    mutationFn: (agentData: any) => {
+      const url = selectedAgent ? `/api/agents/${selectedAgent.id}` : "/api/agents";
+      const method = selectedAgent ? "PUT" : "POST";
+      return apiRequest(method, url, agentData);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/agents"] });
+      setIsFormOpen(false);
+      setSelectedAgent(null);
+    },
   });
 
   const deleteAgentMutation = useMutation({
@@ -73,13 +90,20 @@ export default function AgentConfiguration() {
           <h1 className="text-3xl font-bold text-gray-900">Agent Configuration</h1>
           <p className="text-gray-600 mt-2">Configure AI negotiation agents with personalities, tactics, and influencing techniques</p>
         </div>
-        <Button 
-          onClick={() => setShowCreateForm(true)}
-          className="bg-blue-600 hover:bg-blue-700"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Create Agent
-        </Button>
+        <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+          <DialogTrigger asChild>
+            <Button onClick={() => setSelectedAgent(null)} className="bg-blue-600 hover:bg-blue-700">
+              <Plus className="w-4 h-4 mr-2" />
+              Create Agent
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{selectedAgent ? "Edit Agent" : "Create New Agent"}</DialogTitle>
+            </DialogHeader>
+            <AgentForm agent={selectedAgent} onSubmit={agentMutation.mutate} />
+          </DialogContent>
+        </Dialog>
       </div>
 
       {agents && agents.length === 0 ? (
@@ -90,7 +114,7 @@ export default function AgentConfiguration() {
             Create your first AI negotiation agent to get started with automated negotiations.
           </p>
           <Button 
-            onClick={() => setShowCreateForm(true)}
+            onClick={() => setIsFormOpen(true)}
             className="bg-blue-600 hover:bg-blue-700"
           >
             <Plus className="w-4 h-4 mr-2" />
@@ -111,7 +135,10 @@ export default function AgentConfiguration() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => setSelectedAgent(agent)}
+                      onClick={() => {
+                        setSelectedAgent(agent);
+                        setIsFormOpen(true);
+                      }}
                     >
                       <Edit2 className="w-4 h-4" />
                     </Button>
@@ -157,29 +184,6 @@ export default function AgentConfiguration() {
         </div>
       )}
 
-      {/* Placeholder for create/edit form */}
-      {(showCreateForm || selectedAgent) && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-2xl">
-            <div className="text-center py-8">
-              <h2 className="text-xl font-bold mb-4">
-                {selectedAgent ? 'Edit Agent' : 'Create New Agent'}
-              </h2>
-              <p className="text-gray-600 mb-6">
-                Agent configuration form will be available soon with full personality, tactics, and technique selection.
-              </p>
-              <Button
-                onClick={() => {
-                  setShowCreateForm(false);
-                  setSelectedAgent(null);
-                }}
-              >
-                Close
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

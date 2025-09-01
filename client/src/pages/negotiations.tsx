@@ -6,8 +6,9 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useLocation } from "wouter";
-import { Play, Square, Eye, Plus, Clock, CheckCircle, XCircle, Users, BarChart3 } from "lucide-react";
+import { Play, Square, Eye, Plus, Clock, CheckCircle, XCircle, Users, BarChart3, Trash2, AlertTriangle, Edit, Activity } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useWebSocket } from "@/hooks/use-websocket";
@@ -15,20 +16,27 @@ import { useWebSocket } from "@/hooks/use-websocket";
 
 interface Negotiation {
   id: string;
+  title: string;
+  negotiationType: "one-shot" | "multi-year";
+  relationshipType: "first" | "long-standing";
   contextId: string;
   buyerAgentId: string;
   sellerAgentId: string;
-  status: "pending" | "active" | "completed" | "failed";
-  startedAt: string;
-  completedAt: string;
-  totalRounds: number;
-  maxRounds: number;
-  finalAgreement: any;
-  successScore: number;
+  status: "configured" | "running" | "completed" | "error";
+  createdAt: string;
+  startedAt?: string;
+  completedAt?: string;
+  totalRounds?: number;
+  maxRounds?: number;
+  finalAgreement?: any;
+  successScore?: number;
+  simulationRunsCount?: number;
+  completedRunsCount?: number;
 }
 
 export default function Negotiations() {
   const [selectedNegotiation, setSelectedNegotiation] = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
@@ -87,8 +95,30 @@ export default function Negotiations() {
     },
   });
 
+  const deleteNegotiationMutation = useMutation({
+    mutationFn: async (negotiationId: string) => {
+      const response = await apiRequest("DELETE", `/api/negotiations/${negotiationId}`);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/negotiations"] });
+      setDeleteConfirmId(null);
+      toast({
+        title: "Negotiation Deleted",
+        description: "The negotiation has been deleted successfully.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to delete negotiation",
+        description: error instanceof Error ? error.message : "An unknown error occurred",
+        variant: "destructive",
+      });
+    },
+  });
+
   // WebSocket connection for real-time updates
-  useWebSocket("ws://localhost:5000/ws", (message) => {
+  useWebSocket("/ws", (message) => {
     if (message.type === 'negotiation_started' || message.type === 'round_completed' || message.type === 'negotiation_completed') {
       queryClient.invalidateQueries({ queryKey: ["/api/negotiations"] });
       
@@ -103,18 +133,20 @@ export default function Negotiations() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "active": return "bg-green-500";
+      case "running": return "bg-green-500";
       case "completed": return "bg-blue-500";
-      case "failed": return "bg-red-500";
+      case "error": return "bg-red-500";
+      case "configured": return "bg-yellow-500";
       default: return "bg-gray-500";
     }
   };
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case "active": return <Clock className="h-4 w-4" />;
+      case "running": return <Clock className="h-4 w-4" />;
       case "completed": return <CheckCircle className="h-4 w-4" />;
-      case "failed": return <XCircle className="h-4 w-4" />;
+      case "error": return <XCircle className="h-4 w-4" />;
+      case "configured": return <AlertTriangle className="h-4 w-4" />;
       default: return <Clock className="h-4 w-4" />;
     }
   };
@@ -152,16 +184,16 @@ export default function Negotiations() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Negotiations</h1>
-          <p className="text-muted-foreground">Monitor and manage AI negotiation sessions</p>
+          <h1 className="text-3xl font-bold tracking-tight text-gray-900">Negotiations</h1>
+          <p className="text-gray-600 mt-2">Monitor and manage AI negotiation sessions</p>
         </div>
         <Button 
-          className="bg-blue-600 hover:bg-blue-700"
-          onClick={() => setLocation("/negotiations/new")}
+          className="bg-primary hover:bg-primary/90"
+          onClick={() => setLocation("/configure")}
         >
           <Plus className="mr-2 h-4 w-4" />
           New Negotiation
@@ -170,21 +202,22 @@ export default function Negotiations() {
 
       {/* Empty State */}
       {negotiations && negotiations.length === 0 ? (
-        <Card className="text-center py-16">
-          <CardContent>
-            <div className="mx-auto max-w-sm">
-              <div className="mx-auto mb-4 h-16 w-16 rounded-full bg-blue-100 p-4">
-                <Users className="h-8 w-8 text-blue-600" />
+        <Card className="border-dashed border-2 border-gray-200">
+          <CardContent className="text-center py-20">
+            <div className="mx-auto max-w-md">
+              <div className="mx-auto mb-6 h-20 w-20 rounded-full bg-primary/10 flex items-center justify-center">
+                <Users className="h-10 w-10 text-primary" />
               </div>
-              <h3 className="text-xl font-semibold mb-2">No negotiations yet</h3>
-              <p className="text-muted-foreground mb-6">
-                Create your first AI negotiation session to get started with automated negotiations between intelligent agents.
+              <h3 className="text-2xl font-semibold mb-3 text-gray-900">No negotiations yet</h3>
+              <p className="text-gray-600 mb-8 leading-relaxed">
+                Create your first AI negotiation session to get started with automated negotiations between intelligent agents. You can test different techniques and tactics to find the most effective strategies.
               </p>
               <Button 
-                onClick={() => setLocation("/negotiations/new")} 
-                className="bg-blue-600 hover:bg-blue-700"
+                onClick={() => setLocation("/configure")} 
+                className="bg-primary hover:bg-primary/90 text-white px-6 py-3"
+                size="lg"
               >
-                <Plus className="mr-2 h-4 w-4" />
+                <Plus className="mr-2 h-5 w-5" />
                 Create Your First Negotiation
               </Button>
             </div>
@@ -203,31 +236,46 @@ export default function Negotiations() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Context</TableHead>
-                  <TableHead>Agents</TableHead>
+                  <TableHead>Title</TableHead>
+                  <TableHead>Type & Relationship</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Progress</TableHead>
-                  <TableHead>Duration</TableHead>
+                  <TableHead>Simulation Runs</TableHead>
+                  <TableHead>Created</TableHead>
                   <TableHead>Success Score</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {negotiations?.map((negotiation) => {
-                  const buyerAgent = (agents as any)?.find((a: any) => a.id === negotiation.buyerAgentId);
-                  const sellerAgent = (agents as any)?.find((a: any) => a.id === negotiation.sellerAgentId);
-                  const context = (contexts as any)?.find((c: any) => c.id === negotiation.contextId);
-                  const progressPercent = Math.round((negotiation.totalRounds / (negotiation.maxRounds || 1)) * 100);
+                  const simulationStats = (negotiation as any).simulationStats || {
+                    completedRuns: 0,
+                    totalRuns: 0,
+                    runningRuns: 0,
+                    failedRuns: 0,
+                    pendingRuns: 0,
+                    successRate: 0
+                  };
+                  const completedRuns = simulationStats.completedRuns;
+                  const totalRuns = simulationStats.totalRuns;
 
                   return (
                     <TableRow key={negotiation.id} className="hover:bg-muted/50">
                       <TableCell className="font-medium">
-                        {context?.name || 'Unknown Context'}
+                        <div className="flex flex-col">
+                          <span className="font-semibold">{negotiation.title || 'Untitled Negotiation'}</span>
+                          <span className="text-xs text-muted-foreground">ID: {negotiation.id.slice(0, 8)}</span>
+                        </div>
                       </TableCell>
                       <TableCell>
-                        <div className="text-sm">
-                          <div className="text-blue-600">B: {buyerAgent?.name || 'Unknown'}</div>
-                          <div className="text-green-600">S: {sellerAgent?.name || 'Unknown'}</div>
+                        <div className="text-sm space-y-1">
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="text-xs">
+                              {negotiation.negotiationType || 'one-shot'}
+                            </Badge>
+                          </div>
+                          <div className="text-muted-foreground text-xs">
+                            {negotiation.relationshipType === 'first' ? 'First-time' : 'Long-standing'} relationship
+                          </div>
                         </div>
                       </TableCell>
                       <TableCell>
@@ -241,23 +289,36 @@ export default function Negotiations() {
                       </TableCell>
                       <TableCell>
                         <div className="space-y-1">
-                          <div className="text-sm text-muted-foreground">
-                            {negotiation.totalRounds}/{negotiation.maxRounds} rounds
+                          <div className="text-sm">
+                            <span className="font-medium">{completedRuns}/{totalRuns}</span>
+                            <span className="text-muted-foreground ml-1">completed</span>
                           </div>
-                          <Progress value={progressPercent} className="h-2" />
+                          {simulationStats.runningRuns > 0 && (
+                            <div className="text-xs text-blue-600">
+                              {simulationStats.runningRuns} running
+                            </div>
+                          )}
+                          {simulationStats.pendingRuns > 0 && (
+                            <div className="text-xs text-gray-500">
+                              {simulationStats.pendingRuns} pending
+                            </div>
+                          )}
+                          {totalRuns > 0 && (
+                            <Progress value={(completedRuns / totalRuns) * 100} className="h-2" />
+                          )}
                         </div>
                       </TableCell>
                       <TableCell className="text-sm">
-                        {formatDuration(negotiation.startedAt, negotiation.completedAt)}
+                        {negotiation.createdAt ? new Date(negotiation.createdAt).toLocaleDateString() : '-'}
                       </TableCell>
                       <TableCell>
-                        {negotiation.status === "completed" && negotiation.successScore ? (
+                        {totalRuns > 0 && completedRuns > 0 ? (
                           <span className={
-                            negotiation.successScore > 70 ? "text-green-600 font-medium" : 
-                            negotiation.successScore > 40 ? "text-yellow-600 font-medium" : 
+                            simulationStats.successRate > 70 ? "text-green-600 font-medium" : 
+                            simulationStats.successRate > 40 ? "text-yellow-600 font-medium" : 
                             "text-red-600 font-medium"
                           }>
-                            {negotiation.successScore}%
+                            {simulationStats.successRate}%
                           </span>
                         ) : (
                           <span className="text-muted-foreground">-</span>
@@ -268,42 +329,68 @@ export default function Negotiations() {
                           <Button 
                             variant="ghost" 
                             size="sm"
-                            onClick={() => setSelectedNegotiation(negotiation.id)}
+                            onClick={() => setLocation(`/monitor/${negotiation.id}`)}
+                            title="View Details"
                           >
                             <Eye className="h-4 w-4" />
                           </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={() => setLocation(`/simulation-monitor/${negotiation.id}`)}
+                            title="Monitor Simulations"
+                          >
+                            <Activity className="h-4 w-4" />
+                          </Button>
+
+                          {(negotiation.status === "configured" || negotiation.status === "pending") && (
+                            <Button 
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                console.log(`Editing negotiation: ${negotiation.id}`);
+                                console.log(`Navigating to: /configure?edit=${negotiation.id}`);
+                                setLocation(`/configure?edit=${negotiation.id}`);
+                              }}
+                              title="Edit Configuration"
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                          )}
                           
-                          {negotiation.status === "pending" && (
+                          {negotiation.status === "configured" && (
                             <Button 
                               variant="ghost"
                               size="sm"
                               onClick={() => startNegotiationMutation.mutate(negotiation.id)}
                               disabled={startNegotiationMutation.isPending}
+                              title="Start Simulation"
                             >
                               <Play className="h-4 w-4" />
                             </Button>
                           )}
                           
-                          {negotiation.status === "active" && (
+                          {negotiation.status === "running" && (
                             <Button 
                               variant="ghost" 
                               size="sm"
                               onClick={() => stopNegotiationMutation.mutate(negotiation.id)}
                               disabled={stopNegotiationMutation.isPending}
+                              title="Stop Simulation"
                             >
                               <Square className="h-4 w-4" />
                             </Button>
                           )}
 
-                          {negotiation.status === "completed" && (
-                            <Button 
-                              variant="ghost" 
-                              size="sm"
-                              onClick={() => setSelectedNegotiation(negotiation.id)}
-                            >
-                              <BarChart3 className="h-4 w-4" />
-                            </Button>
-                          )}
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={() => setDeleteConfirmId(negotiation.id)}
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            title="Delete Negotiation"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -315,22 +402,27 @@ export default function Negotiations() {
         </Card>
       )}
 
-      {/* Negotiation Detail Panel */}
-      {selectedNegotiation && (
-        <Card className="mt-6">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle>Negotiation Details</CardTitle>
-              <Button variant="outline" onClick={() => setSelectedNegotiation(null)}>
-                Close
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <p>Negotiation details for {selectedNegotiation} will be shown here</p>
-          </CardContent>
-        </Card>
-      )}
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteConfirmId !== null} onOpenChange={() => setDeleteConfirmId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Negotiation</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this negotiation? This action cannot be undone and will permanently remove all simulation runs and conversation logs.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteConfirmId && deleteNegotiationMutation.mutate(deleteConfirmId)}
+              className="bg-red-600 hover:bg-red-700"
+              disabled={deleteNegotiationMutation.isPending}
+            >
+              {deleteNegotiationMutation.isPending ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

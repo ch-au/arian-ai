@@ -3,6 +3,9 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { NegotiationEngine } from "./services/negotiation-engine";
 import { analyticsService } from "./services/analytics";
+import simulationQueueRoutes from "./api/simulation-queue";
+import { setNegotiationEngine } from "./services/simulation-queue";
+// import testWebSocketRoutes, { setTestNegotiationEngine } from "./api/test-websocket";
 import {
   insertAgentSchema,
   insertNegotiationContextSchema,
@@ -23,6 +26,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Initialize negotiation engine with WebSocket support
   negotiationEngine = new NegotiationEngine(httpServer);
+  
+  // Set negotiation engine for simulation queue WebSocket broadcasts
+  setNegotiationEngine(negotiationEngine);
+  // setTestNegotiationEngine(negotiationEngine);
 
   // Dashboard metrics
   app.get("/api/dashboard/metrics", async (req, res) => {
@@ -230,7 +237,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/negotiations", async (req, res) => {
     try {
       const negotiations = await storage.getAllNegotiations();
-      res.json(negotiations);
+      
+      // Get simulation stats for each negotiation
+      const negotiationsWithStats = await Promise.all(
+        negotiations.map(async (negotiation) => {
+          try {
+            // Import simulation queue service
+            const { SimulationQueueService } = await import('./services/simulation-queue');
+            
+            // Try to get simulation results for this negotiation
+            const simulationResults = await SimulationQueueService.getSimulationResultsByNegotiation(negotiation.id);
+            
+            const totalRuns = simulationResults.length;
+            const completedRuns = simulationResults.filter(r => r.status === 'completed').length;
+            const runningRuns = simulationResults.filter(r => r.status === 'running').length;
+            const failedRuns = simulationResults.filter(r => r.status === 'failed').length;
+            const pendingRuns = simulationResults.filter(r => r.status === 'pending').length;
+            
+            return {
+              ...negotiation,
+              simulationStats: {
+                totalRuns,
+                completedRuns,
+                runningRuns,
+                failedRuns,
+                pendingRuns,
+                successRate: totalRuns > 0 ? Math.round((completedRuns / totalRuns) * 100) : 0
+              }
+            };
+          } catch (error) {
+            // If no queue exists for this negotiation, return zero stats
+            return {
+              ...negotiation,
+              simulationStats: {
+                totalRuns: 0,
+                completedRuns: 0,
+                runningRuns: 0,
+                failedRuns: 0,
+                pendingRuns: 0,
+                successRate: 0
+              }
+            };
+          }
+        })
+      );
+
+      res.json(negotiationsWithStats);
     } catch (error) {
       console.error("Failed to get negotiations:", error);
       res.status(500).json({ error: "Failed to get negotiations" });
@@ -264,10 +316,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!negotiation) {
         return res.status(404).json({ error: "Negotiation not found" });
       }
-      res.json(negotiation);
+      
+      // Fetch all related data in parallel
+      const [dimensions, allTechniques, allTactics] = await Promise.all([
+        storage.getNegotiationDimensions(req.params.id).catch(() => []),
+        storage.getAllInfluencingTechniques().catch(() => []),
+        storage.getAllNegotiationTactics().catch(() => [])
+      ]);
+      
+      // Format dimensions
+      const formattedDimensions = dimensions.map(dim => ({
+        id: dim.id,
+        name: dim.name,
+        minValue: parseFloat(dim.minValue),
+        maxValue: parseFloat(dim.maxValue),
+        targetValue: parseFloat(dim.targetValue),
+        priority: dim.priority,
+        unit: dim.unit
+      }));
+      
+      // Convert technique/tactic UUIDs to objects with names
+      const selectedTechniques = (negotiation.selectedTechniques || [])
+        .map(id => allTechniques.find(tech => tech.id === id))
+        .filter(tech => tech !== undefined)
+        .map(tech => tech.id); // Frontend expects IDs
+        
+      const selectedTactics = (negotiation.selectedTactics || [])
+        .map(id => allTactics.find(tactic => tactic.id === id))
+        .filter(tactic => tactic !== undefined)
+        .map(tactic => tactic.id); // Frontend expects IDs
+      
+      const response = {
+        ...negotiation,
+        selectedTechniques,
+        selectedTactics,
+        dimensions: formattedDimensions
+      };
+      
+      res.json(response);
     } catch (error) {
       console.error("Failed to get negotiation:", error);
       res.status(500).json({ error: "Failed to get negotiation" });
+    }
+  });
+
+  // Debug endpoint for dimensions
+  app.get("/api/negotiations/:id/dimensions", async (req, res) => {
+    try {
+      const dimensions = await storage.getNegotiationDimensions(req.params.id);
+      res.json({
+        negotiationId: req.params.id,
+        dimensionsFound: dimensions.length,
+        dimensions: dimensions
+      });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
     }
   });
 
@@ -281,6 +384,216 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Enhanced negotiation creation endpoint for new configuration wizard
+  app.post("/api/negotiations/enhanced", async (req, res) => {
+    try {
+      console.log("Received enhanced negotiation data:", JSON.stringify(req.body, null, 2));
+      
+      // Validation schema for enhanced negotiation creation
+      const enhancedNegotiationSchema = z.object({
+        title: z.string().min(1, "Title is required"),
+        userRole: z.enum(["buyer", "seller"]),
+        negotiationType: z.enum(["one-shot", "multi-year"]),
+        relationshipType: z.enum(["first", "long-standing"]),
+        productMarketDescription: z.string().optional(),
+        additionalComments: z.string().optional(),
+        selectedTechniques: z.array(z.string()),
+        selectedTactics: z.array(z.string()),
+        counterpartPersonality: z.string().optional(),
+        zopaDistance: z.string().optional(),
+        dimensions: z.array(z.object({
+          id: z.string(),
+          name: z.string().min(1, "Dimension name is required"),
+          minValue: z.number(),
+          maxValue: z.number(),
+          targetValue: z.number(),
+          priority: z.number().int().min(1).max(3),
+          unit: z.string().optional()
+        })).min(1, "At least one dimension is required")
+      });
+
+      const validatedData = enhancedNegotiationSchema.parse(req.body);
+      
+      // Get default agents and context for now (will be enhanced later)
+      const agents = await storage.getAllAgents();
+      const contexts = await storage.getAllNegotiationContexts();
+      
+      if (agents.length < 2) {
+        throw new Error("At least 2 agents required");
+      }
+      if (contexts.length === 0) {
+        throw new Error("At least 1 context required");
+      }
+
+      // Get all available techniques and tactics to map names to UUIDs
+      const [allTechniques, allTactics] = await Promise.all([
+        storage.getAllInfluencingTechniques(),
+        storage.getAllNegotiationTactics()
+      ]);
+
+      // Convert technique/tactic names to UUIDs (if they're not already UUIDs)
+      const selectedTechniqueUUIDs = validatedData.selectedTechniques
+        .map(nameOrId => {
+          // Try to find by ID first, then by name
+          return allTechniques.find(tech => tech.id === nameOrId || tech.name === nameOrId)?.id;
+        })
+        .filter(id => id !== undefined);
+        
+      const selectedTacticUUIDs = validatedData.selectedTactics
+        .map(nameOrId => {
+          // Try to find by ID first, then by name
+          return allTactics.find(tactic => tactic.id === nameOrId || tactic.name === nameOrId)?.id;
+        })
+        .filter(id => id !== undefined);
+
+      // Create negotiation with enhanced fields
+      const negotiationData = {
+        title: validatedData.title,
+        negotiationType: validatedData.negotiationType,
+        relationshipType: validatedData.relationshipType,
+        contextId: contexts[0].id, // Use first available context for now
+        buyerAgentId: validatedData.userRole === "buyer" ? agents[0].id : agents[1].id,
+        sellerAgentId: validatedData.userRole === "buyer" ? agents[1].id : agents[0].id,
+        userRole: validatedData.userRole,
+        productMarketDescription: validatedData.productMarketDescription || null,
+        additionalComments: validatedData.additionalComments || null,
+        selectedTechniques: selectedTechniqueUUIDs,
+        selectedTactics: selectedTacticUUIDs,
+        counterpartPersonality: validatedData.counterpartPersonality || null,
+        zopaDistance: validatedData.zopaDistance || null,
+        status: "configured" as const,
+      };
+
+      // Create negotiation with dimensions
+      const negotiation = await storage.createNegotiationWithDimensions(
+        negotiationData,
+        validatedData.dimensions.map(d => ({
+          name: d.name,
+          minValue: d.minValue.toString(),
+          maxValue: d.maxValue.toString(),
+          targetValue: d.targetValue.toString(),
+          priority: d.priority,
+          unit: d.unit || null
+        }))
+      );
+      console.log(`Created enhanced negotiation "${validatedData.title}" with ${validatedData.dimensions.length} dimensions`);
+      
+      const responseData = {
+        negotiation,
+        dimensionsCount: validatedData.dimensions.length,
+        message: "Negotiation created successfully"
+      };
+      
+      console.log("Sending response:", JSON.stringify(responseData, null, 2));
+      res.status(201).json(responseData);
+    } catch (error) {
+      console.error("Failed to create enhanced negotiation:", error);
+      console.error("Error stack:", error instanceof Error ? error.stack : "No stack trace");
+      
+      if (error instanceof z.ZodError) {
+        console.error("Validation errors:", JSON.stringify(error.errors, null, 2));
+        return res.status(400).json({ error: "Invalid negotiation data", details: error.errors });
+      }
+      
+      const errorResponse = { 
+        error: error instanceof Error ? error.message : "Failed to create negotiation",
+        timestamp: new Date().toISOString()
+      };
+      console.log("Sending error response:", JSON.stringify(errorResponse, null, 2));
+      res.status(500).json(errorResponse);
+    }
+  });
+
+  // Update existing negotiation endpoint
+  app.put("/api/negotiations/:id", async (req, res) => {
+    try {
+      const negotiationId = req.params.id;
+      console.log("Updating negotiation:", negotiationId, JSON.stringify(req.body, null, 2));
+      
+      // Use the same validation schema as creation
+      const enhancedNegotiationSchema = z.object({
+        title: z.string().min(1, "Title is required"),
+        userRole: z.enum(["buyer", "seller"]),
+        negotiationType: z.enum(["one-shot", "multi-year"]),
+        relationshipType: z.enum(["first", "long-standing"]),
+        productMarketDescription: z.string().optional(),
+        additionalComments: z.string().optional(),
+        selectedTechniques: z.array(z.string()),
+        selectedTactics: z.array(z.string()),
+        counterpartPersonality: z.string().optional(),
+        zopaDistance: z.enum(["close", "medium", "far"]).optional(),
+        dimensions: z.array(z.object({
+          id: z.string(),
+          name: z.string().min(1, "Dimension name is required"),
+          minValue: z.number(),
+          maxValue: z.number(),
+          targetValue: z.number(),
+          priority: z.number().int().min(1).max(3),
+          unit: z.string().optional()
+        })).min(1, "At least one dimension is required")
+      });
+
+      const validatedData = enhancedNegotiationSchema.parse(req.body);
+
+      // Create negotiation object for update
+      const negotiationData = {
+        title: validatedData.title,
+        userRole: validatedData.userRole,
+        negotiationType: validatedData.negotiationType,
+        relationshipType: validatedData.relationshipType,
+        productMarketDescription: validatedData.productMarketDescription || "",
+        additionalComments: validatedData.additionalComments || "",
+        selectedTechniques: validatedData.selectedTechniques,
+        selectedTactics: validatedData.selectedTactics,
+        counterpartPersonality: validatedData.counterpartPersonality,
+        zopaDistance: validatedData.zopaDistance
+      };
+
+      // Update the negotiation
+      const updatedNegotiation = await storage.updateNegotiation(negotiationId, negotiationData);
+      
+      // TODO: Update dimensions (would require more complex logic)
+      
+      const responseData = {
+        negotiation: updatedNegotiation,
+        message: "Negotiation updated successfully"
+      };
+      
+      console.log("Update response:", JSON.stringify(responseData, null, 2));
+      res.json(responseData);
+    } catch (error) {
+      console.error("Failed to update negotiation:", error);
+      
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid negotiation data", details: error.errors });
+      }
+      
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Failed to update negotiation"
+      });
+    }
+  });
+
+  // Get individual negotiation by ID
+  app.get("/api/negotiations/:id", async (req, res) => {
+    try {
+      const negotiationId = req.params.id;
+      const negotiation = await storage.getNegotiationById(negotiationId);
+      
+      if (!negotiation) {
+        return res.status(404).json({ error: "Negotiation not found" });
+      }
+      
+      res.json(negotiation);
+    } catch (error) {
+      console.error("Failed to get negotiation:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Failed to get negotiation"
+      });
+    }
+  });
+
+  // Legacy negotiation creation endpoint (kept for compatibility)
   app.post("/api/negotiations", async (req, res) => {
     try {
       console.log("Received negotiation data:", JSON.stringify(req.body, null, 2));
@@ -362,7 +675,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Start a negotiation
+  // Start a negotiation by creating simulation queue
   app.post("/api/negotiations/:id/start", async (req, res) => {
     try {
       const negotiation = await storage.getNegotiation(req.params.id);
@@ -370,16 +683,77 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Negotiation not found" });
       }
 
-      if (negotiation.status !== "pending") {
-        return res.status(400).json({ error: "Negotiation is not in pending status" });
+      if (negotiation.status !== "configured") {
+        return res.status(400).json({ error: "Negotiation must be configured before starting" });
       }
 
-      // Start the negotiation asynchronously
-      negotiationEngine.startNegotiation(req.params.id).catch(error => {
-        console.error("Negotiation failed:", error);
+      // Import simulation queue service
+      const { SimulationQueueService } = await import('./services/simulation-queue');
+
+      // Use the actual negotiation's selected techniques and tactics
+      const selectedTechniques = negotiation.selectedTechniques || [];
+      const selectedTactics = negotiation.selectedTactics || [];
+
+      if (selectedTechniques.length === 0 || selectedTactics.length === 0) {
+        return res.status(400).json({ error: "Negotiation must have at least one technique and one tactic selected" });
+      }
+
+      // Convert counterpartPersonality and zopaDistance to arrays for queue creation
+      let personalities: string[] = [];
+      let zopaDistances: string[] = [];
+
+      // Handle personality configuration
+      if (negotiation.counterpartPersonality) {
+        if (negotiation.counterpartPersonality === "all-personalities") {
+          personalities = ["all"];
+        } else {
+          personalities = [negotiation.counterpartPersonality];
+        }
+      } else {
+        // Default to all personalities if not specified
+        personalities = ["all"];
+      }
+
+      // Handle ZOPA distance configuration
+      if (negotiation.zopaDistance) {
+        if (negotiation.zopaDistance === "all-distances") {
+          zopaDistances = ["all"];
+        } else {
+          zopaDistances = [negotiation.zopaDistance];
+        }
+      } else {
+        // Default to all distances if not specified
+        zopaDistances = ["all"];
+      }
+
+      // Create simulation queue with full configuration
+      const queueId = await SimulationQueueService.createQueue({
+        negotiationId: req.params.id,
+        techniques: selectedTechniques,
+        tactics: selectedTactics,
+        personalities,
+        zopaDistances
       });
 
-      res.json({ message: "Negotiation started successfully" });
+      // Update negotiation status to running
+      await storage.updateNegotiationStatus(req.params.id, "running");
+
+      // Calculate total simulations for response
+      const personalityMultiplier = personalities.includes("all") ? 5 : personalities.length; // Assume 5 personality types
+      const distanceMultiplier = zopaDistances.includes("all") ? 3 : zopaDistances.length; // close, medium, far
+      const totalSimulations = selectedTechniques.length * selectedTactics.length * personalityMultiplier * distanceMultiplier;
+
+      res.json({ 
+        message: "Simulation queue created successfully",
+        queueId,
+        totalSimulations,
+        breakdown: {
+          techniques: selectedTechniques.length,
+          tactics: selectedTactics.length,
+          personalities: personalityMultiplier,
+          distances: distanceMultiplier
+        }
+      });
     } catch (error) {
       console.error("Failed to start negotiation:", error);
       res.status(500).json({ error: "Failed to start negotiation" });
@@ -394,6 +768,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Failed to stop negotiation:", error);
       res.status(500).json({ error: "Failed to stop negotiation" });
+    }
+  });
+
+  // Delete a negotiation
+  app.delete("/api/negotiations/:id", async (req, res) => {
+    try {
+      await storage.deleteNegotiation(req.params.id);
+      res.json({ message: "Negotiation deleted successfully" });
+    } catch (error) {
+      console.error("Failed to delete negotiation:", error);
+      res.status(500).json({ error: "Failed to delete negotiation" });
     }
   });
 
@@ -443,16 +828,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
 
-  // Tactics
-  app.get("/api/tactics", async (req, res) => {
-    try {
-      const tactics = await storage.getAllTactics();
-      res.json(tactics);
-    } catch (error) {
-      console.error("Failed to get tactics:", error);
-      res.status(500).json({ error: "Failed to get tactics" });
-    }
-  });
 
   app.get("/api/tactics/category/:category", async (req, res) => {
     try {
@@ -528,6 +903,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Personality types
+  app.get("/api/personality-types", async (req, res) => {
+    try {
+      console.log("Getting personality types from database...");
+      // TODO: Fix database query for personality types
+      // For now, return mock data to continue with UI development
+      const personalityTypes = [
+        { id: "1", name: "Aggressive", description: "Assertive and competitive negotiator", traits: "High assertiveness, low cooperation" },
+        { id: "2", name: "Collaborative", description: "Seeks win-win solutions", traits: "High assertiveness, high cooperation" },
+        { id: "3", name: "Accommodating", description: "Prioritizes relationships over outcomes", traits: "Low assertiveness, high cooperation" },
+        { id: "4", name: "Competitive", description: "Focuses on winning at all costs", traits: "High assertiveness, low cooperation" },
+        { id: "5", name: "Avoiding", description: "Prefers to avoid conflict", traits: "Low assertiveness, low cooperation" }
+      ];
+      console.log("Found personality types:", personalityTypes.length);
+      res.json(personalityTypes);
+    } catch (error) {
+      console.error("Failed to get personality types:", error);
+      res.status(500).json({ error: "Failed to get personality types" });
+    }
+  });
+
+  app.post("/api/personality-types", async (req, res) => {
+    try {
+      const personalityType = await storage.createPersonalityType(req.body);
+      res.status(201).json(personalityType);
+    } catch (error) {
+      console.error("Failed to create personality type:", error);
+      res.status(500).json({ error: "Failed to create personality type" });
+    }
+  });
+
   // Negotiation tactics  
   app.get("/api/negotiation-tactics", async (req, res) => {
     try {
@@ -549,6 +955,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Short aliases for frontend
+  app.get("/api/tactics", async (req, res) => {
+    try {
+      const tactics = await storage.getAllNegotiationTactics();
+      res.json(tactics);
+    } catch (error) {
+      console.error("Failed to get tactics:", error);
+      res.status(500).json({ error: "Failed to get tactics" });
+    }
+  });
+
+  app.get("/api/techniques", async (req, res) => {
+    try {
+      const techniques = await storage.getAllInfluencingTechniques();
+      res.json(techniques);
+    } catch (error) {
+      console.error("Failed to get techniques:", error);
+      res.status(500).json({ error: "Failed to get techniques" });
+    }
+  });
+
   app.get("/api/system/status", async (req, res) => {
     try {
       const status = {
@@ -563,6 +990,90 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ error: "Failed to get system status" });
     }
   });
+
+  // Python agents service health check
+  app.get("/api/agents/health", async (req, res) => {
+    try {
+      const { pythonAgentsBridge } = await import('./services/python-agents-bridge');
+      
+      const isHealthy = await pythonAgentsBridge.testConnection();
+      
+      if (isHealthy) {
+        res.json({ 
+          status: "healthy", 
+          pythonService: "connected",
+          message: "Python OpenAI Agents service is running"
+        });
+      } else {
+        res.status(503).json({ 
+          status: "unhealthy", 
+          pythonService: "disconnected",
+          message: "Python OpenAI Agents service is not responding"
+        });
+      }
+    } catch (error) {
+      res.status(503).json({ 
+        status: "error", 
+        pythonService: "error",
+        message: error instanceof Error ? error.message : "Unknown error",
+        error: String(error)
+      });
+    }
+  });
+
+  // Test Python agents functionality
+  app.post("/api/agents/test", async (req, res) => {
+    try {
+      const { pythonAgentsBridge } = await import('./services/python-agents-bridge');
+      
+      const testResult = await pythonAgentsBridge.testAgents();
+      
+      res.json({ 
+        status: "success", 
+        message: "Python agents test completed",
+        result: testResult
+      });
+    } catch (error) {
+      res.status(500).json({ 
+        status: "error", 
+        message: error instanceof Error ? error.message : "Unknown error",
+        error: String(error)
+      });
+    }
+  });
+
+  // Python negotiation service test endpoint
+  app.post("/api/python-negotiation/test", async (req, res) => {
+    try {
+      const { PythonNegotiationService } = await import('./services/python-negotiation-service');
+      
+      const { negotiationId, simulationRunId, maxRounds } = req.body;
+      
+      const result = await PythonNegotiationService.runNegotiation({
+        negotiationId,
+        simulationRunId,
+        maxRounds: maxRounds || 3
+      });
+      
+      res.json({ 
+        status: "success", 
+        message: "Python negotiation completed",
+        result 
+      });
+    } catch (error) {
+      res.status(500).json({ 
+        status: "error", 
+        message: error instanceof Error ? error.message : "Unknown error",
+        error: String(error)
+      });
+    }
+  });
+
+  // Simulation queue management routes
+  app.use("/api/simulations", simulationQueueRoutes);
+  
+  // Test WebSocket routes
+  // app.use("/api/test", testWebSocketRoutes);
 
   return httpServer;
 }

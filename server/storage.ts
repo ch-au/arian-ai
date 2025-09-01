@@ -4,6 +4,7 @@ import {
   negotiationContexts,
   zopaConfigurations,
   negotiations,
+  negotiationDimensions,
   simulationRuns,
   negotiationRounds,
   tactics,
@@ -11,6 +12,7 @@ import {
   performanceMetrics,
   influencingTechniques,
   negotiationTactics,
+  personalityTypes,
   type User,
   type InsertUser,
   type Agent,
@@ -33,9 +35,14 @@ import {
   type InsertInfluencingTechnique,
   type NegotiationTactic,
   type InsertNegotiationTactic,
+  type PersonalityType,
+  type InsertPersonalityType,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, asc, and, gte, lte, avg, count, sum } from "drizzle-orm";
+
+// Re-export db and schema tables for use in other services
+export { db, negotiations, simulationRuns, agents, negotiationDimensions };
 
 export interface IStorage {
   // User methods
@@ -87,11 +94,11 @@ export interface IStorage {
   createNegotiationRound(round: InsertNegotiationRound): Promise<NegotiationRound>;
 
   // Tactic methods
-  getTactic(id: string): Promise<Tactic | undefined>;
-  getAllTactics(): Promise<Tactic[]>;
-  getTacticsByCategory(category: string): Promise<Tactic[]>;
-  createTactic(tactic: InsertTactic): Promise<Tactic>;
-  updateTactic(id: string, tactic: Partial<InsertTactic>): Promise<Tactic>;
+  getTactic(id: string): Promise<NegotiationTactic | undefined>;
+  getAllTactics(): Promise<NegotiationTactic[]>;
+  getTacticsByCategory(category: string): Promise<NegotiationTactic[]>;
+  createTactic(tactic: InsertNegotiationTactic): Promise<NegotiationTactic>;
+  updateTactic(id: string, tactic: Partial<InsertNegotiationTactic>): Promise<NegotiationTactic>;
 
   // Analytics methods
   getAnalyticsSession(id: string): Promise<AnalyticsSession | undefined>;
@@ -261,6 +268,37 @@ export class DatabaseStorage implements IStorage {
     return newNegotiation;
   }
 
+  async createNegotiationWithDimensions(
+    negotiation: InsertNegotiation, 
+    dimensions: Array<{
+      name: string;
+      minValue: string;
+      maxValue: string;
+      targetValue: string;
+      priority: number;
+      unit: string | null;
+    }>
+  ): Promise<Negotiation> {
+    // Create negotiation first
+    const [newNegotiation] = await db.insert(negotiations).values(negotiation).returning();
+    
+    // Create dimensions
+    const dimensionsData = dimensions.map(dimension => ({
+      negotiationId: newNegotiation.id,
+      name: dimension.name,
+      minValue: dimension.minValue,
+      maxValue: dimension.maxValue,
+      targetValue: dimension.targetValue,
+      priority: dimension.priority,
+      unit: dimension.unit
+    }));
+    
+    // Insert dimensions
+    await db.insert(negotiationDimensions).values(dimensionsData);
+    
+    return newNegotiation;
+  }
+
   async createNegotiationWithSimulationRuns(negotiation: InsertNegotiation): Promise<{ negotiation: Negotiation; simulationRuns: any[] }> {
     // Create negotiation first
     const [newNegotiation] = await db.insert(negotiations).values(negotiation).returning();
@@ -331,6 +369,11 @@ export class DatabaseStorage implements IStorage {
     return negotiation;
   }
 
+  async deleteNegotiation(id: string): Promise<void> {
+    // Delete negotiation (dimensions and simulation runs will cascade delete)
+    await db.delete(negotiations).where(eq(negotiations.id, id));
+  }
+
   // Simulation run methods
   async getSimulationRun(id: string): Promise<any | undefined> {
     const [run] = await db.select().from(simulationRuns).where(eq(simulationRuns.id, id));
@@ -391,29 +434,30 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Tactic methods
-  async getTactic(id: string): Promise<Tactic | undefined> {
-    const [tactic] = await db.select().from(tactics).where(eq(tactics.id, id));
+  async getTactic(id: string): Promise<NegotiationTactic | undefined> {
+    const [tactic] = await db.select().from(negotiationTactics).where(eq(negotiationTactics.id, id));
     return tactic || undefined;
   }
 
-  async getAllTactics(): Promise<Tactic[]> {
-    return await db.select().from(tactics).orderBy(asc(tactics.name));
+  async getAllTactics(): Promise<NegotiationTactic[]> {
+    return await db.select().from(negotiationTactics).orderBy(asc(negotiationTactics.name));
   }
 
-  async getTacticsByCategory(category: string): Promise<Tactic[]> {
-    return await db.select().from(tactics).where(eq(tactics.category, category));
+  async getTacticsByCategory(category: string): Promise<NegotiationTactic[]> {
+    // Note: negotiationTactics doesn't have a 'category' field, returning all tactics for now
+    return await db.select().from(negotiationTactics);
   }
 
-  async createTactic(tactic: InsertTactic): Promise<Tactic> {
-    const [newTactic] = await db.insert(tactics).values(tactic).returning();
+  async createTactic(tactic: InsertNegotiationTactic): Promise<NegotiationTactic> {
+    const [newTactic] = await db.insert(negotiationTactics).values(tactic).returning();
     return newTactic;
   }
 
-  async updateTactic(id: string, tactic: Partial<InsertTactic>): Promise<Tactic> {
+  async updateTactic(id: string, tactic: Partial<InsertNegotiationTactic>): Promise<NegotiationTactic> {
     const [updatedTactic] = await db
-      .update(tactics)
+      .update(negotiationTactics)
       .set(tactic)
-      .where(eq(tactics.id, id))
+      .where(eq(negotiationTactics.id, id))
       .returning();
     return updatedTactic;
   }
@@ -509,8 +553,8 @@ export class DatabaseStorage implements IStorage {
     const totalCompleted = completedNegotiations[0]?.total || 0;
     const successfulCompleted = successfulNegotiations[0]?.successful || 0;
     const successRate = totalCompleted > 0 ? (successfulCompleted / totalCompleted) * 100 : 0;
-    const avgDuration = parseFloat(avgDurationResult[0]?.avgDuration || "0") / 1000 / 60; // Convert to minutes
-    const apiCostToday = parseFloat(apiCostResult[0]?.totalCost || "0");
+    const avgDuration = parseFloat(String(avgDurationResult[0]?.avgDuration || 0)) / 1000 / 60; // Convert to minutes
+    const apiCostToday = parseFloat(String(apiCostResult[0]?.totalCost || 0));
 
     return {
       activeNegotiations,
@@ -528,7 +572,7 @@ export class DatabaseStorage implements IStorage {
     const results = await db
       .select({
         date: negotiations.completedAt,
-        successScore: negotiations.successScore,
+        // successScore: negotiations.successScore, // Field doesn't exist in schema
       })
       .from(negotiations)
       .where(
@@ -629,6 +673,51 @@ export class DatabaseStorage implements IStorage {
 
   async deleteNegotiationTactic(id: string): Promise<void> {
     await db.delete(negotiationTactics).where(eq(negotiationTactics.id, id));
+  }
+
+  // Personality types methods
+  async getPersonalityType(id: string): Promise<PersonalityType | undefined> {
+    const [personalityType] = await db.select().from(personalityTypes).where(eq(personalityTypes.id, id));
+    return personalityType || undefined;
+  }
+
+  async getAllPersonalityTypes(): Promise<PersonalityType[]> {
+    return await db.select().from(personalityTypes).orderBy(asc(personalityTypes.archetype));
+  }
+
+  async createPersonalityType(personalityType: InsertPersonalityType): Promise<PersonalityType> {
+    const [created] = await db.insert(personalityTypes).values(personalityType).returning();
+    return created;
+  }
+
+  async updatePersonalityType(id: string, personalityType: Partial<InsertPersonalityType>): Promise<PersonalityType> {
+    const [updated] = await db.update(personalityTypes)
+      .set(personalityType)
+      .where(eq(personalityTypes.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deletePersonalityType(id: string): Promise<void> {
+    await db.delete(personalityTypes).where(eq(personalityTypes.id, id));
+  }
+
+  // Additional negotiation methods
+  async getNegotiationById(id: string): Promise<Negotiation | undefined> {
+    return this.getNegotiation(id); // Use existing method
+  }
+
+  async updateNegotiationStatus(id: string, status: string): Promise<Negotiation> {
+    return this.updateNegotiation(id, { status });
+  }
+
+  async getNegotiationDimensions(negotiationId: string) {
+    return await db.select().from(negotiationDimensions).where(eq(negotiationDimensions.negotiationId, negotiationId));
+  }
+
+  async getPersonalityTypeByName(name: string) {
+    const results = await db.select().from(personalityTypes).where(eq(personalityTypes.archetype, name));
+    return results.length > 0 ? results[0] : null;
   }
 }
 

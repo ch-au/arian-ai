@@ -4,26 +4,25 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
-import Dashboard from "@/pages/dashboard";
-import AgentConfiguration from "@/pages/agent-configuration";
 import Negotiations from "@/pages/negotiations";
-import CreateNegotiation from "@/pages/create-negotiation";
-import Analytics from "@/pages/analytics";
-import TestingSuite from "@/pages/testing-suite";
-import Reports from "@/pages/reports";
+import Configure from "@/pages/configure";
+import Monitor from "@/pages/monitor";
+import SimulationMonitor from "@/pages/simulation-monitor";
+import Analysis from "@/pages/analysis";
 import Sidebar from "@/components/layout/sidebar";
 import Header from "@/components/layout/header";
 
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={Dashboard} />
-      <Route path="/agents" component={AgentConfiguration} />
+      <Route path="/" component={Negotiations} />
       <Route path="/negotiations" component={Negotiations} />
-      <Route path="/negotiations/new" component={CreateNegotiation} />
-      <Route path="/analytics" component={Analytics} />
-      <Route path="/testing" component={TestingSuite} />
-      <Route path="/reports" component={Reports} />
+      <Route path="/configure" component={Configure} />
+      <Route path="/configure/:id" component={Configure} />
+      <Route path="/monitor" component={Monitor} />
+      <Route path="/monitor/:id" component={Monitor} />
+      <Route path="/simulation-monitor/:negotiationId" component={SimulationMonitor} />
+      <Route path="/analysis" component={Analysis} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -37,7 +36,7 @@ function App() {
           <Sidebar />
           <main className="flex-1 flex flex-col overflow-hidden">
             <Header />
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto p-6">
               <Router />
             </div>
           </main>

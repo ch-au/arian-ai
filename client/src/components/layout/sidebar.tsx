@@ -14,34 +14,28 @@ import {
 
 const navigationItems = [
   {
-    title: "Dashboard",
-    href: "/",
-    icon: LayoutDashboard,
-  },
-  {
-    title: "Agent Configuration",
-    href: "/agents",
-    icon: Bot,
-  },
-  {
     title: "Negotiations",
-    href: "/negotiations",
+    href: "/negotiations", 
     icon: HandMetal,
+    description: "Manage negotiations"
   },
   {
-    title: "Analytics",
-    href: "/analytics",
+    title: "Configure", 
+    href: "/configure",
+    icon: Bot,
+    description: "Setup new negotiation"
+  },
+  {
+    title: "Monitor",
+    href: "/monitor",
+    icon: LayoutDashboard, 
+    description: "Track simulation progress"
+  },
+  {
+    title: "Analysis",
+    href: "/analysis",
     icon: BarChart3,
-  },
-  {
-    title: "Testing Suite",
-    href: "/testing",
-    icon: TestTube,
-  },
-  {
-    title: "Reports",
-    href: "/reports",
-    icon: FileText,
+    description: "Cross-negotiation insights"
   },
 ];
 
@@ -76,14 +70,19 @@ export default function Sidebar() {
                   <Button
                     variant="ghost"
                     className={cn(
-                      "w-full justify-start h-12 px-4",
+                      "w-full justify-start h-16 px-4 py-3 flex items-start",
                       isActive 
                         ? "bg-primary/10 text-primary hover:bg-primary/15" 
                         : "text-gray-600 hover:bg-gray-50"
                     )}
                   >
-                    <Icon className="w-5 h-5 mr-3" />
-                    <span className="font-medium">{item.title}</span>
+                    <Icon className="w-5 h-5 mr-3 mt-0.5 flex-shrink-0" />
+                    <div className="flex flex-col items-start text-left">
+                      <span className="font-medium text-sm">{item.title}</span>
+                      <span className="text-xs text-gray-500 mt-0.5 leading-tight">
+                        {(item as any).description}
+                      </span>
+                    </div>
                   </Button>
                 </Link>
               </li>

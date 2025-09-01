@@ -11,6 +11,7 @@ import {
   InsertNegotiationRound,
   InsertPerformanceMetric,
 } from "@shared/schema";
+import type { PythonNegotiationResult } from './python-negotiation-service';
 
 export interface NegotiationUpdate {
   type: 'negotiation_started' | 'round_completed' | 'negotiation_completed' | 'error';
@@ -119,38 +120,75 @@ export class NegotiationEngine {
       throw new Error("Negotiation not found for simulation run");
     }
 
-    const context = await storage.getNegotiationContext(negotiation.contextId!);
-    const buyerAgent = await storage.getAgent(negotiation.buyerAgentId!);
-    const sellerAgent = await storage.getAgent(negotiation.sellerAgentId!);
-
-    if (!context || !buyerAgent || !sellerAgent) {
-      throw new Error("Missing negotiation components");
-    }
-
-    const userZopa = negotiation.userZopa;
-    const counterpartDistance = negotiation.counterpartDistance;
+    // Use Python OpenAI Agents service for negotiation simulation
+    const { PythonNegotiationService } = await import('./python-negotiation-service');
     
-    const buyerZopa = negotiation.userRole === 'buyer' ? 
-      this.convertToZopaBoundaries(userZopa) : 
-      this.generateCounterpartZopa(userZopa, counterpartDistance);
+    try {
+      console.log(`Running simulation ${run.id} using Python OpenAI Agents`);
       
-    const sellerZopa = negotiation.userRole === 'seller' ? 
-      this.convertToZopaBoundaries(userZopa) : 
-      this.generateCounterpartZopa(userZopa, counterpartDistance);
+      // Call Python agents service
+      const result = await PythonNegotiationService.runNegotiation(
+        {
+          negotiationId: negotiation.id,
+          simulationRunId: run.id,
+          techniqueId: run.techniqueId,
+          tacticId: run.tacticId,
+          maxRounds: 6
+        },
+        (roundUpdate) => {
+          // Broadcast real-time round updates
+          this.broadcast({
+            type: 'round_completed',
+            negotiationId: negotiation.id,
+            data: roundUpdate
+          });
+        }
+      );
+      
+      // Process and broadcast results
+      await this.processSimulationResult(negotiation, result);
+      
+    } catch (error) {
+      console.error(`Python agents simulation failed for run ${run.id}:`, error);
+      
+      // Update run status to failed
+      await storage.updateSimulationRun(run.id, { status: 'failed' });
+      
+      this.broadcast({
+        type: 'error',
+        negotiationId: negotiation.id,
+        data: { 
+          error: error instanceof Error ? error.message : 'Unknown error',
+          simulationRunId: run.id
+        }
+      });
+      
+      throw error;
+    }
+  }
 
-    const abortController = new AbortController();
-    this.activeNegotiations.set(run.id, abortController);
-
-    await this.runNegotiationLoop(
-      negotiation,
-      context,
-      buyerAgent,
-      sellerAgent,
-      buyerZopa,
-      sellerZopa,
-      abortController.signal,
-      run
-    );
+  private async processSimulationResult(negotiation: Negotiation, result: PythonNegotiationResult): Promise<void> {
+    try {
+      console.log(`Processing simulation result for negotiation ${negotiation.id}`);
+      
+      // The PythonNegotiationService already handles database updates
+      // So we just need to broadcast the completion
+      this.broadcast({
+        type: 'negotiation_completed',
+        negotiationId: negotiation.id,
+        data: {
+          outcome: result.outcome,
+          totalRounds: result.totalRounds,
+          conversationLog: result.conversationLog,
+          finalOffer: result.finalOffer,
+          langfuseTraceId: result.langfuseTraceId
+        }
+      });
+      
+    } catch (error) {
+      console.error('Error processing simulation result:', error);
+      throw error;
+    }
   }
 
   private async runNegotiationLoop(

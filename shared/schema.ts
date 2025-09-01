@@ -42,23 +42,38 @@ export const zopaConfigurations = pgTable("zopa_configurations", {
   preferences: jsonb("preferences"), // desired values
 });
 
-// Negotiations - actual negotiation sessions
+// Negotiations - actual negotiation sessions (ENHANCED)
 export const negotiations = pgTable("negotiations", {
   id: uuid("id").primaryKey().defaultRandom(),
   contextId: uuid("context_id").references(() => negotiationContexts.id),
   buyerAgentId: uuid("buyer_agent_id").references(() => agents.id),
   sellerAgentId: uuid("seller_agent_id").references(() => agents.id),
+  
+  // NEW: Business context fields
+  title: text("title").notNull().default("Untitled Negotiation"),
+  negotiationType: text("negotiation_type").notNull().default("one-shot"), // one-shot, multi-year
+  relationshipType: text("relationship_type").notNull().default("first"), // first, long-standing
+  productMarketDescription: text("product_market_description"),
+  additionalComments: text("additional_comments"),
+  
   status: text("status").notNull().default("pending"), // pending, running, completed, failed
   userRole: text("user_role").notNull(), // "buyer" or "seller" - which role the user is interested in
   maxRounds: integer("max_rounds").default(10),
-  // Selected techniques and tactics for this negotiation (names/identifiers)
-  selectedTechniques: text("selected_techniques").array().default([]).notNull(),
-  selectedTactics: text("selected_tactics").array().default([]).notNull(),
-  // User's ZOPA configuration (consolidated)
-  userZopa: jsonb("user_zopa").notNull(), // {volumen: {min,max,target}, preis: {min,max,target}, laufzeit: {min,max,target}, zahlungskonditionen: {min,max,target}}
-  // Counterpart positioning relative to user (-1: far, 0: neutral, 1: close)
-  counterpartDistance: jsonb("counterpart_distance").default({}), // {volumen: 0, preis: 0, laufzeit: 0, zahlungskonditionen: 0}
+  
+  // Selected techniques and tactics for this negotiation (UUIDs now instead of names)
+  selectedTechniques: uuid("selected_techniques").array().default([]).notNull(),
+  selectedTactics: uuid("selected_tactics").array().default([]).notNull(),
+  
+  // Counterpart configuration
+  counterpartPersonality: text("counterpart_personality"), // Selected personality type
+  zopaDistance: text("zopa_distance"), // "close", "medium", "far" 
+  
+  // DEPRECATED: Will be removed after migration to negotiation_dimensions table
+  userZopa: jsonb("user_zopa"), // {volumen: {min,max,target}, preis: {min,max,target}, laufzeit: {min,max,target}, zahlungskonditionen: {min,max,target}}
+  counterpartDistance: jsonb("counterpart_distance"), // {volumen: 0, preis: 0, laufzeit: 0, zahlungskonditionen: 0}
+  
   sonderinteressen: text("sonderinteressen"), // Special interests/requirements
+  
   // Timestamps
   createdAt: timestamp("created_at").defaultNow(),
   startedAt: timestamp("started_at"),
@@ -66,18 +81,44 @@ export const negotiations = pgTable("negotiations", {
   metadata: jsonb("metadata").default({}),
 });
 
+// Simulation Queue - manages execution queue for negotiations
+export const simulationQueue = pgTable("simulation_queue", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  negotiationId: uuid("negotiation_id").references(() => negotiations.id, { onDelete: "cascade" }),
+  status: text("status").notNull().default("pending"), // pending, running, completed, failed, paused
+  totalSimulations: integer("total_simulations").notNull(),
+  completedCount: integer("completed_count").default(0),
+  failedCount: integer("failed_count").default(0),
+  startedAt: timestamp("started_at"),
+  pausedAt: timestamp("paused_at"),
+  completedAt: timestamp("completed_at"),
+  estimatedTotalCost: decimal("estimated_total_cost", { precision: 10, scale: 4 }),
+  actualTotalCost: decimal("actual_total_cost", { precision: 10, scale: 4 }).default("0"),
+  crashRecoveryCheckpoint: jsonb("crash_recovery_checkpoint"), // Recovery state
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Simulation Runs - individual runs for each technique-tactic combination
 export const simulationRuns = pgTable("simulation_runs", {
   id: uuid("id").primaryKey().defaultRandom(),
   negotiationId: uuid("negotiation_id").references(() => negotiations.id, { onDelete: "cascade" }),
+  queueId: uuid("queue_id").references(() => simulationQueue.id, { onDelete: "cascade" }),
   runNumber: integer("run_number").notNull(), // Sequential number for this negotiation
-  // Specific technique/tactic combination being tested
+  executionOrder: integer("execution_order"), // Queue position
+  // Specific technique/tactic/personality/distance combination being tested
   techniqueId: uuid("technique_id").references(() => influencingTechniques.id),
   tacticId: uuid("tactic_id").references(() => negotiationTactics.id),
+  personalityId: text("personality_id"), // Using text for mock personality IDs like "1", "2", etc.
+  zopaDistance: text("zopa_distance"), // "close", "medium", "far"
   // Status and timing
-  status: text("status").notNull().default("pending"), // pending, running, completed, failed
+  status: text("status").notNull().default("pending"), // pending, running, completed, failed, paused
   startedAt: timestamp("started_at"),
   completedAt: timestamp("completed_at"),
+  estimatedDuration: integer("estimated_duration"), // Predicted seconds
+  actualCost: decimal("actual_cost", { precision: 10, scale: 4 }), // OpenAI API cost
+  crashRecoveryData: jsonb("crash_recovery_data"), // State for recovery
+  retryCount: integer("retry_count").default(0), // Failed attempts
+  maxRetries: integer("max_retries").default(3), // Retry limit
   // Results
   totalRounds: integer("total_rounds").default(0),
   finalAgreement: jsonb("final_agreement"), // Final negotiated terms
@@ -89,6 +130,10 @@ export const simulationRuns = pgTable("simulation_runs", {
   avgResponseTimeMs: integer("avg_response_time_ms"),
   techniqueEffectivenessScore: decimal("technique_effectiveness_score", { precision: 5, scale: 2 }),
   tacticEffectivenessScore: decimal("tactic_effectiveness_score", { precision: 5, scale: 2 }),
+  // NEW: Enhanced result tracking
+  conversationLog: jsonb("conversation_log").default([]).notNull(), // Array of conversation turns
+  dimensionResults: jsonb("dimension_results").default({}).notNull(), // Results per dimension
+  personalityArchetype: text("personality_archetype"), // Link to personality type
   metadata: jsonb("metadata").default({}),
 });
 
@@ -162,6 +207,48 @@ export const negotiationTactics = pgTable("negotiation_tactics", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// NEW: Flexible negotiation dimensions (replaces hardcoded userZopa)
+export const negotiationDimensions = pgTable("negotiation_dimensions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  negotiationId: uuid("negotiation_id").references(() => negotiations.id, { onDelete: "cascade" }).notNull(),
+  name: text("name").notNull(), // e.g. "price", "volume", "delivery_time"
+  minValue: decimal("min_value", { precision: 15, scale: 4 }).notNull(),
+  maxValue: decimal("max_value", { precision: 15, scale: 4 }).notNull(),
+  targetValue: decimal("target_value", { precision: 15, scale: 4 }).notNull(),
+  priority: integer("priority").notNull(), // 1=must have, 2=important, 3=flexible
+  unit: text("unit"), // e.g. "EUR", "pieces", "days", "%" (optional for display)
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  // Unique constraint: one dimension name per negotiation
+  uniqueDimensionPerNegotiation: unique().on(table.negotiationId, table.name),
+}));
+
+// NEW: Personality types from CSV data
+export const personalityTypes = pgTable("personality_types", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  archetype: text("archetype").notNull().unique(), // "Offenheit für Erfahrungen", etc.
+  behaviorDescription: text("behavior_description").notNull(), // "verhalten_in_verhandlungen"
+  advantages: text("advantages").notNull(), // "vorteile"
+  risks: text("risks").notNull(), // "risiken"
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// NEW: Normalized dimension results for efficient querying
+export const dimensionResults = pgTable("dimension_results", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  simulationRunId: uuid("simulation_run_id").references(() => simulationRuns.id, { onDelete: "cascade" }).notNull(),
+  dimensionName: text("dimension_name").notNull(), // Links to negotiation_dimensions.name
+  finalValue: decimal("final_value", { precision: 15, scale: 4 }).notNull(),
+  targetValue: decimal("target_value", { precision: 15, scale: 4 }).notNull(), // Denormalized for performance
+  achievedTarget: boolean("achieved_target").notNull(),
+  priorityScore: integer("priority_score").notNull(), // How well this addressed the priority level
+  improvementOverBatna: decimal("improvement_over_batna", { precision: 15, scale: 4 }), // Improvement vs Best Alternative
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  // Unique constraint: one result per dimension per simulation run
+  uniqueDimensionPerRun: unique().on(table.simulationRunId, table.dimensionName),
+}));
+
 // Relations
 export const agentRelations = relations(agents, ({ many }) => ({
   buyerNegotiations: many(negotiations, { relationName: "buyerAgent" }),
@@ -189,12 +276,28 @@ export const negotiationRelations = relations(negotiations, ({ one, many }) => (
   rounds: many(negotiationRounds),
   simulationRuns: many(simulationRuns),
   performanceMetrics: many(performanceMetrics),
+  // NEW: Relations to flexible dimensions and queue
+  dimensions: many(negotiationDimensions),
+  simulationQueue: one(simulationQueue),
+}));
+
+// Simulation Queue Relations
+export const simulationQueueRelations = relations(simulationQueue, ({ one, many }) => ({
+  negotiation: one(negotiations, {
+    fields: [simulationQueue.negotiationId],
+    references: [negotiations.id],
+  }),
+  simulationRuns: many(simulationRuns),
 }));
 
 export const simulationRunRelations = relations(simulationRuns, ({ one, many }) => ({
   negotiation: one(negotiations, {
     fields: [simulationRuns.negotiationId],
     references: [negotiations.id],
+  }),
+  queue: one(simulationQueue, {
+    fields: [simulationRuns.queueId],
+    references: [simulationQueue.id],
   }),
   technique: one(influencingTechniques, {
     fields: [simulationRuns.techniqueId],
@@ -205,6 +308,8 @@ export const simulationRunRelations = relations(simulationRuns, ({ one, many }) 
     references: [negotiationTactics.id],
   }),
   rounds: many(negotiationRounds),
+  // NEW: Relations to dimension results for efficient querying
+  dimensionResults: many(dimensionResults),
 }));
 
 export const negotiationContextRelations = relations(negotiationContexts, ({ many }) => ({
@@ -239,6 +344,22 @@ export const performanceMetricRelations = relations(performanceMetrics, ({ one }
   tactic: one(tactics, {
     fields: [performanceMetrics.tacticId],
     references: [tactics.id],
+  }),
+}));
+
+// NEW: Relations for negotiation dimensions
+export const negotiationDimensionRelations = relations(negotiationDimensions, ({ one }) => ({
+  negotiation: one(negotiations, {
+    fields: [negotiationDimensions.negotiationId],
+    references: [negotiations.id],
+  }),
+}));
+
+// NEW: Relations for dimension results
+export const dimensionResultRelations = relations(dimensionResults, ({ one }) => ({
+  simulationRun: one(simulationRuns, {
+    fields: [dimensionResults.simulationRunId],
+    references: [simulationRuns.id],
   }),
 }));
 
@@ -304,6 +425,22 @@ export const insertNegotiationTacticSchema = createInsertSchema(negotiationTacti
   createdAt: true,
 });
 
+// NEW: Insert schemas for new tables
+export const insertNegotiationDimensionSchema = createInsertSchema(negotiationDimensions).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertPersonalityTypeSchema = createInsertSchema(personalityTypes).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertDimensionResultSchema = createInsertSchema(dimensionResults).omit({
+  id: true,
+  createdAt: true,
+});
+
 // Types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -340,6 +477,16 @@ export type InsertInfluencingTechnique = z.infer<typeof insertInfluencingTechniq
 
 export type NegotiationTactic = typeof negotiationTactics.$inferSelect;
 export type InsertNegotiationTactic = z.infer<typeof insertNegotiationTacticSchema>;
+
+// NEW: Types for new tables
+export type NegotiationDimension = typeof negotiationDimensions.$inferSelect;
+export type InsertNegotiationDimension = z.infer<typeof insertNegotiationDimensionSchema>;
+
+export type PersonalityType = typeof personalityTypes.$inferSelect;
+export type InsertPersonalityType = z.infer<typeof insertPersonalityTypeSchema>;
+
+export type DimensionResult = typeof dimensionResults.$inferSelect;
+export type InsertDimensionResult = z.infer<typeof insertDimensionResultSchema>;
 
 // Personality profile schema
 export const personalityProfileSchema = z.object({
