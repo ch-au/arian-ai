@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import MetricsCards from "@/components/dashboard/metrics-cards";
 import LiveNegotiations from "@/components/dashboard/live-negotiations";
-import ZopaAnalysis from "@/components/dashboard/zopa-analysis";
+import SimulationRunHistory from "@/components/dashboard/simulation-run-history";
 import SuccessChart from "@/components/dashboard/success-chart";
 import AgentPerformance from "@/components/dashboard/agent-performance";
 import QuickActions from "@/components/dashboard/quick-actions";
@@ -21,9 +21,9 @@ export default function Dashboard() {
     queryKey: ["/api/dashboard/top-agents"],
   });
 
-  const { data: activeNegotiations } = useQuery({
-    queryKey: ["/api/negotiations/active"],
-    refetchInterval: 5000, // Refresh every 5 seconds for real-time updates
+  const { data: negotiations = [], isLoading: isLoadingNegotiations } = useQuery<any[]>({
+    queryKey: ["/api/negotiations"],
+    refetchInterval: 5000,
   });
 
   const handleNewNegotiation = () => {
@@ -39,10 +39,10 @@ export default function Dashboard() {
       {/* Real-time Monitoring Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Live Negotiations */}
-        {activeNegotiations && <LiveNegotiations negotiations={activeNegotiations} />}
+        <LiveNegotiations negotiations={negotiations.filter(n => n.status === 'running' || n.status === 'active')} />
 
-        {/* ZOPA Analysis */}
-        <ZopaAnalysis />
+        {/* Simulation Run History */}
+        <SimulationRunHistory negotiations={negotiations} isLoading={isLoadingNegotiations} />
       </div>
 
       {/* Performance Analytics */}

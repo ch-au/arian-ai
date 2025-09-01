@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,9 +12,10 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Settings, Users, Target, Play, ArrowLeft, ArrowRight, Brain, Zap } from "lucide-react";
+import { Settings, Users, Target, Play, ArrowLeft, ArrowRight, Brain, Zap, Info } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 const zopaDimensionSchema = z.object({
   min: z.number(),
@@ -56,28 +57,19 @@ interface Props {
   onSuccess: () => void;
 }
 
-// Sample data for techniques and tactics (will be replaced with API data)
-const sampleTechniques = [
-  { id: "scarcity", name: "Scarcity Technique", description: "Creates urgency by emphasizing limited availability" },
-  { id: "social_proof", name: "Social Proof", description: "Use examples of others to influence decisions" },
-  { id: "reciprocity", name: "Reciprocity", description: "Create obligation through giving first" },
-  { id: "authority", name: "Authority", description: "Leverage expertise and credibility" },
-  { id: "commitment", name: "Commitment & Consistency", description: "Build on previous commitments" },
-  { id: "liking", name: "Liking", description: "Build rapport and connection" },
-];
-
-const sampleTactics = [
-  { id: "competitive_pricing", name: "Competitive Pricing", description: "Focus on price-based negotiations" },
-  { id: "value_creation", name: "Value Creation", description: "Look for win-win opportunities" },
-  { id: "time_pressure", name: "Time Pressure", description: "Use urgency to drive decisions" },
-  { id: "relationship_building", name: "Relationship Building", description: "Focus on long-term partnerships" },
-  { id: "anchoring", name: "Anchoring", description: "Set initial reference points" },
-  { id: "concession_strategy", name: "Concession Strategy", description: "Strategic give-and-take approach" },
-];
-
 export default function CreateNegotiationForm({ agents, contexts, onSuccess }: Props) {
   const [step, setStep] = useState(1);
   const { toast } = useToast();
+
+  const { data: techniques = [], isLoading: isLoadingTechniques } = useQuery<any[]>({
+    queryKey: ["/api/influencing-techniques"],
+    queryFn: () => apiRequest("GET", "/api/influencing-techniques").then(res => res.json()),
+  });
+
+  const { data: tactics = [], isLoading: isLoadingTactics } = useQuery<any[]>({
+    queryKey: ["/api/negotiation-tactics"],
+    queryFn: () => apiRequest("GET", "/api/negotiation-tactics").then(res => res.json()),
+  });
 
   const form = useForm<CreateNegotiationForm>({
     resolver: zodResolver(createNegotiationSchema),
@@ -407,7 +399,7 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
                           <p className="text-sm text-gray-600">Select psychological techniques that agents should use</p>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {sampleTechniques.map((technique) => (
+                          {isLoadingTechniques ? <p>Loading techniques...</p> : techniques.map((technique: any) => (
                             <FormField
                               key={technique.id}
                               control={form.control}
@@ -421,22 +413,31 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
                                     <Checkbox
                                       checked={field.value?.includes(technique.id)}
                                       onCheckedChange={(checked) => {
-                                        return checked
-                                          ? field.onChange([...field.value, technique.id])
-                                          : field.onChange(
-                                              field.value?.filter(
-                                                (value) => value !== technique.id
-                                              )
-                                            )
+                                        const updatedValue = checked
+                                          ? [...field.value, technique.id]
+                                          : field.value?.filter((value: any) => value !== technique.id);
+                                        field.onChange(updatedValue);
                                       }}
                                     />
                                   </FormControl>
                                   <div className="space-y-1 leading-none">
-                                    <FormLabel className="text-sm font-medium">
+                                    <FormLabel className="text-sm font-medium flex items-center gap-2">
                                       {technique.name}
+                                      <TooltipProvider>
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <button type="button" onClick={(e) => e.preventDefault()}>
+                                              <Info className="w-4 h-4 text-gray-400" />
+                                            </button>
+                                          </TooltipTrigger>
+                                          <TooltipContent>
+                                            <p className="max-w-xs">{technique.description || technique.anwendung}</p>
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
                                     </FormLabel>
                                     <p className="text-xs text-gray-600">
-                                      {technique.description}
+                                      {technique.anwendung}
                                     </p>
                                   </div>
                                 </FormItem>
@@ -464,7 +465,7 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
                           <p className="text-sm text-gray-600">Select strategic approaches for the negotiation</p>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {sampleTactics.map((tactic) => (
+                          {isLoadingTactics ? <p>Loading tactics...</p> : tactics.map((tactic: any) => (
                             <FormField
                               key={tactic.id}
                               control={form.control}
@@ -478,22 +479,31 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
                                     <Checkbox
                                       checked={field.value?.includes(tactic.id)}
                                       onCheckedChange={(checked) => {
-                                        return checked
-                                          ? field.onChange([...field.value, tactic.id])
-                                          : field.onChange(
-                                              field.value?.filter(
-                                                (value) => value !== tactic.id
-                                              )
-                                            )
+                                        const updatedValue = checked
+                                          ? [...field.value, tactic.id]
+                                          : field.value?.filter((value: any) => value !== tactic.id);
+                                        field.onChange(updatedValue);
                                       }}
                                     />
                                   </FormControl>
                                   <div className="space-y-1 leading-none">
-                                    <FormLabel className="text-sm font-medium">
+                                    <FormLabel className="text-sm font-medium flex items-center gap-2">
                                       {tactic.name}
+                                      <TooltipProvider>
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <button type="button" onClick={(e) => e.preventDefault()}>
+                                              <Info className="w-4 h-4 text-gray-400" />
+                                            </button>
+                                          </TooltipTrigger>
+                                          <TooltipContent>
+                                            <p className="max-w-xs">{tactic.description || tactic.anwendung}</p>
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
                                     </FormLabel>
                                     <p className="text-xs text-gray-600">
-                                      {tactic.description}
+                                      {tactic.anwendung}
                                     </p>
                                   </div>
                                 </FormItem>
@@ -561,8 +571,8 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
                         <div className="flex items-center justify-between">
                           <Label className="text-blue-600 font-medium">Your Position</Label>
                           <div className="text-sm text-gray-600">
-                            {form.watch("userZopaVolumen")?.min || 100} - {form.watch("userZopaVolumen")?.max || 1000} 
-                            (Target: {form.watch("userZopaVolumen")?.target || 500})
+                            {form.watch("userZopa.volumen")?.min || 100} - {form.watch("userZopa.volumen")?.max || 1000} 
+                            (Target: {form.watch("userZopa.volumen")?.target || 500})
                           </div>
                         </div>
                         
@@ -570,7 +580,7 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
                           <div className="flex space-x-4">
                             <FormField
                               control={form.control}
-                              name="userZopaVolumen.min"
+                              name="userZopa.volumen.min"
                               render={({ field }) => (
                                 <FormItem className="flex-1">
                                   <FormLabel className="text-xs">Min</FormLabel>
@@ -588,7 +598,7 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
                             
                             <FormField
                               control={form.control}
-                              name="userZopaVolumen.target"
+                              name="userZopa.volumen.target"
                               render={({ field }) => (
                                 <FormItem className="flex-1">
                                   <FormLabel className="text-xs">Target</FormLabel>
@@ -606,7 +616,7 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
                             
                             <FormField
                               control={form.control}
-                              name="userZopaVolumen.max"
+                              name="userZopa.volumen.max"
                               render={({ field }) => (
                                 <FormItem className="flex-1">
                                   <FormLabel className="text-xs">Max</FormLabel>
@@ -628,14 +638,14 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
                             <div 
                               className="absolute h-full bg-blue-200 rounded-full"
                               style={{
-                                left: `${((form.watch("userZopaVolumen")?.min || 100) / 1000) * 100}%`,
-                                width: `${(((form.watch("userZopaVolumen")?.max || 1000) - (form.watch("userZopaVolumen")?.min || 100)) / 1000) * 100}%`
+                                left: `${((form.watch("userZopa.volumen")?.min || 100) / 1000) * 100}%`,
+                                width: `${(((form.watch("userZopa.volumen")?.max || 1000) - (form.watch("userZopa.volumen")?.min || 100)) / 1000) * 100}%`
                               }}
                             />
                             <div 
                               className="absolute w-2 h-full bg-blue-600 rounded-full"
                               style={{
-                                left: `${((form.watch("userZopaVolumen")?.target || 500) / 1000) * 100}%`
+                                left: `${((form.watch("userZopa.volumen")?.target || 500) / 1000) * 100}%`
                               }}
                             />
                           </div>
@@ -647,7 +657,7 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
                         <Label className="text-red-600 font-medium">Counterpart Assessment</Label>
                         <FormField
                           control={form.control}
-                          name="counterpartDistanceVolumen"
+                          name="counterpartDistance.volumen"
                           render={({ field }) => (
                             <FormItem>
                               <div className="flex items-center space-x-4">
@@ -674,8 +684,8 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
                         <div className="relative h-4 bg-gray-100 rounded-full overflow-hidden">
                           <div className="absolute h-full bg-red-200 rounded-full w-1/3"
                                style={{
-                                 left: form.watch("counterpartDistanceVolumen") === -1 ? "10%" : 
-                                       form.watch("counterpartDistanceVolumen") === 0 ? "35%" : "60%"
+                                 left: form.watch("counterpartDistance.volumen") === -1 ? "10%" : 
+                                       form.watch("counterpartDistance.volumen") === 0 ? "35%" : "60%"
                                }} />
                         </div>
                       </div>
@@ -697,8 +707,8 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
                         <div className="flex items-center justify-between">
                           <Label className="text-blue-600 font-medium">Your Position</Label>
                           <div className="text-sm text-gray-600">
-                            €{form.watch("userZopaPreis")?.min || 10} - €{form.watch("userZopaPreis")?.max || 100} 
-                            (Target: €{form.watch("userZopaPreis")?.target || 50})
+                            €{form.watch("userZopa.preis")?.min || 10} - €{form.watch("userZopa.preis")?.max || 100} 
+                            (Target: €{form.watch("userZopa.preis")?.target || 50})
                           </div>
                         </div>
                         
@@ -706,7 +716,7 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
                           <div className="flex space-x-4">
                             <FormField
                               control={form.control}
-                              name="userZopaPreis.min"
+                              name="userZopa.preis.min"
                               render={({ field }) => (
                                 <FormItem className="flex-1">
                                   <FormLabel className="text-xs">Min €</FormLabel>
@@ -725,7 +735,7 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
                             
                             <FormField
                               control={form.control}
-                              name="userZopaPreis.target"
+                              name="userZopa.preis.target"
                               render={({ field }) => (
                                 <FormItem className="flex-1">
                                   <FormLabel className="text-xs">Target €</FormLabel>
@@ -744,7 +754,7 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
                             
                             <FormField
                               control={form.control}
-                              name="userZopaPreis.max"
+                              name="userZopa.preis.max"
                               render={({ field }) => (
                                 <FormItem className="flex-1">
                                   <FormLabel className="text-xs">Max €</FormLabel>
@@ -767,14 +777,14 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
                             <div 
                               className="absolute h-full bg-blue-200 rounded-full"
                               style={{
-                                left: `${((form.watch("userZopaPreis")?.min || 10) / 100) * 100}%`,
-                                width: `${(((form.watch("userZopaPreis")?.max || 100) - (form.watch("userZopaPreis")?.min || 10)) / 100) * 100}%`
+                                left: `${((form.watch("userZopa.preis")?.min || 10) / 100) * 100}%`,
+                                width: `${(((form.watch("userZopa.preis")?.max || 100) - (form.watch("userZopa.preis")?.min || 10)) / 100) * 100}%`
                               }}
                             />
                             <div 
                               className="absolute w-2 h-full bg-blue-600 rounded-full"
                               style={{
-                                left: `${((form.watch("userZopaPreis")?.target || 50) / 100) * 100}%`
+                                left: `${((form.watch("userZopa.preis")?.target || 50) / 100) * 100}%`
                               }}
                             />
                           </div>
@@ -786,7 +796,7 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
                         <Label className="text-red-600 font-medium">Counterpart Assessment</Label>
                         <FormField
                           control={form.control}
-                          name="counterpartDistancePreis"
+                          name="counterpartDistance.preis"
                           render={({ field }) => (
                             <FormItem>
                               <div className="flex items-center space-x-4">
@@ -813,8 +823,8 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
                         <div className="relative h-4 bg-gray-100 rounded-full overflow-hidden">
                           <div className="absolute h-full bg-red-200 rounded-full w-1/3"
                                style={{
-                                 left: form.watch("counterpartDistancePreis") === -1 ? "10%" : 
-                                       form.watch("counterpartDistancePreis") === 0 ? "35%" : "60%"
+                                 left: form.watch("counterpartDistance.preis") === -1 ? "10%" : 
+                                       form.watch("counterpartDistance.preis") === 0 ? "35%" : "60%"
                                }} />
                         </div>
                       </div>
@@ -836,8 +846,8 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
                         <div className="flex items-center justify-between">
                           <Label className="text-blue-600 font-medium">Your Position</Label>
                           <div className="text-sm text-gray-600">
-                            {form.watch("userZopaLaufzeit")?.min || 12} - {form.watch("userZopaLaufzeit")?.max || 36} months
-                            (Target: {form.watch("userZopaLaufzeit")?.target || 24})
+                            {form.watch("userZopa.laufzeit")?.min || 12} - {form.watch("userZopa.laufzeit")?.max || 36} months
+                            (Target: {form.watch("userZopa.laufzeit")?.target || 24})
                           </div>
                         </div>
                         
@@ -845,7 +855,7 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
                           <div className="flex space-x-4">
                             <FormField
                               control={form.control}
-                              name="userZopaLaufzeit.min"
+                              name="userZopa.laufzeit.min"
                               render={({ field }) => (
                                 <FormItem className="flex-1">
                                   <FormLabel className="text-xs">Min months</FormLabel>
@@ -863,7 +873,7 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
                             
                             <FormField
                               control={form.control}
-                              name="userZopaLaufzeit.target"
+                              name="userZopa.laufzeit.target"
                               render={({ field }) => (
                                 <FormItem className="flex-1">
                                   <FormLabel className="text-xs">Target months</FormLabel>
@@ -881,7 +891,7 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
                             
                             <FormField
                               control={form.control}
-                              name="userZopaLaufzeit.max"
+                              name="userZopa.laufzeit.max"
                               render={({ field }) => (
                                 <FormItem className="flex-1">
                                   <FormLabel className="text-xs">Max months</FormLabel>
@@ -903,14 +913,14 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
                             <div 
                               className="absolute h-full bg-blue-200 rounded-full"
                               style={{
-                                left: `${((form.watch("userZopaLaufzeit")?.min || 12) / 36) * 100}%`,
-                                width: `${(((form.watch("userZopaLaufzeit")?.max || 36) - (form.watch("userZopaLaufzeit")?.min || 12)) / 36) * 100}%`
+                                left: `${((form.watch("userZopa.laufzeit")?.min || 12) / 36) * 100}%`,
+                                width: `${(((form.watch("userZopa.laufzeit")?.max || 36) - (form.watch("userZopa.laufzeit")?.min || 12)) / 36) * 100}%`
                               }}
                             />
                             <div 
                               className="absolute w-2 h-full bg-blue-600 rounded-full"
                               style={{
-                                left: `${((form.watch("userZopaLaufzeit")?.target || 24) / 36) * 100}%`
+                                left: `${((form.watch("userZopa.laufzeit")?.target || 24) / 36) * 100}%`
                               }}
                             />
                           </div>
@@ -922,7 +932,7 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
                         <Label className="text-red-600 font-medium">Counterpart Assessment</Label>
                         <FormField
                           control={form.control}
-                          name="counterpartDistanceLaufzeit"
+                          name="counterpartDistance.laufzeit"
                           render={({ field }) => (
                             <FormItem>
                               <div className="flex items-center space-x-4">
@@ -949,8 +959,8 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
                         <div className="relative h-4 bg-gray-100 rounded-full overflow-hidden">
                           <div className="absolute h-full bg-red-200 rounded-full w-1/3"
                                style={{
-                                 left: form.watch("counterpartDistanceLaufzeit") === -1 ? "10%" : 
-                                       form.watch("counterpartDistanceLaufzeit") === 0 ? "35%" : "60%"
+                                 left: form.watch("counterpartDistance.laufzeit") === -1 ? "10%" : 
+                                       form.watch("counterpartDistance.laufzeit") === 0 ? "35%" : "60%"
                                }} />
                         </div>
                       </div>
@@ -972,8 +982,8 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
                         <div className="flex items-center justify-between">
                           <Label className="text-blue-600 font-medium">Your Position</Label>
                           <div className="text-sm text-gray-600">
-                            {form.watch("userZopaZahlungskonditionen")?.min || 30} - {form.watch("userZopaZahlungskonditionen")?.max || 90} days
-                            (Target: {form.watch("userZopaZahlungskonditionen")?.target || 60})
+                            {form.watch("userZopa.zahlungskonditionen")?.min || 30} - {form.watch("userZopa.zahlungskonditionen")?.max || 90} days
+                            (Target: {form.watch("userZopa.zahlungskonditionen")?.target || 60})
                           </div>
                         </div>
                         
@@ -981,7 +991,7 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
                           <div className="flex space-x-4">
                             <FormField
                               control={form.control}
-                              name="userZopaZahlungskonditionen.min"
+                              name="userZopa.zahlungskonditionen.min"
                               render={({ field }) => (
                                 <FormItem className="flex-1">
                                   <FormLabel className="text-xs">Min days</FormLabel>
@@ -999,7 +1009,7 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
                             
                             <FormField
                               control={form.control}
-                              name="userZopaZahlungskonditionen.target"
+                              name="userZopa.zahlungskonditionen.target"
                               render={({ field }) => (
                                 <FormItem className="flex-1">
                                   <FormLabel className="text-xs">Target days</FormLabel>
@@ -1017,7 +1027,7 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
                             
                             <FormField
                               control={form.control}
-                              name="userZopaZahlungskonditionen.max"
+                              name="userZopa.zahlungskonditionen.max"
                               render={({ field }) => (
                                 <FormItem className="flex-1">
                                   <FormLabel className="text-xs">Max days</FormLabel>
@@ -1039,14 +1049,14 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
                             <div 
                               className="absolute h-full bg-blue-200 rounded-full"
                               style={{
-                                left: `${((form.watch("userZopaZahlungskonditionen")?.min || 30) / 90) * 100}%`,
-                                width: `${(((form.watch("userZopaZahlungskonditionen")?.max || 90) - (form.watch("userZopaZahlungskonditionen")?.min || 30)) / 90) * 100}%`
+                                left: `${((form.watch("userZopa.zahlungskonditionen")?.min || 30) / 90) * 100}%`,
+                                width: `${(((form.watch("userZopa.zahlungskonditionen")?.max || 90) - (form.watch("userZopa.zahlungskonditionen")?.min || 30)) / 90) * 100}%`
                               }}
                             />
                             <div 
                               className="absolute w-2 h-full bg-blue-600 rounded-full"
                               style={{
-                                left: `${((form.watch("userZopaZahlungskonditionen")?.target || 60) / 90) * 100}%`
+                                left: `${((form.watch("userZopa.zahlungskonditionen")?.target || 60) / 90) * 100}%`
                               }}
                             />
                           </div>
@@ -1058,7 +1068,7 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
                         <Label className="text-red-600 font-medium">Counterpart Assessment</Label>
                         <FormField
                           control={form.control}
-                          name="counterpartDistanceZahlungskonditionen"
+                          name="counterpartDistance.zahlungskonditionen"
                           render={({ field }) => (
                             <FormItem>
                               <div className="flex items-center space-x-4">
@@ -1085,8 +1095,8 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
                         <div className="relative h-4 bg-gray-100 rounded-full overflow-hidden">
                           <div className="absolute h-full bg-red-200 rounded-full w-1/3"
                                style={{
-                                 left: form.watch("counterpartDistanceZahlungskonditionen") === -1 ? "10%" : 
-                                       form.watch("counterpartDistanceZahlungskonditionen") === 0 ? "35%" : "60%"
+                                 left: form.watch("counterpartDistance.zahlungskonditionen") === -1 ? "10%" : 
+                                       form.watch("counterpartDistance.zahlungskonditionen") === 0 ? "35%" : "60%"
                                }} />
                         </div>
                       </div>
@@ -1161,8 +1171,8 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
                     <div className="p-4 border rounded-lg">
                       <h4 className="font-medium text-blue-700 mb-2">Selected Techniques</h4>
                       <div className="flex flex-wrap gap-2">
-                        {form.watch("selectedTechniques")?.map(id => {
-                          const technique = sampleTechniques.find(t => t.id === id);
+                        {form.watch("selectedTechniques")?.map((id: string) => {
+                          const technique = techniques.find((t: any) => t.id === id);
                           return <Badge key={id} variant="secondary">{technique?.name}</Badge>;
                         })}
                       </div>
@@ -1171,8 +1181,8 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
                     <div className="p-4 border rounded-lg">
                       <h4 className="font-medium text-green-700 mb-2">Selected Tactics</h4>
                       <div className="flex flex-wrap gap-2">
-                        {form.watch("selectedTactics")?.map(id => {
-                          const tactic = sampleTactics.find(t => t.id === id);
+                        {form.watch("selectedTactics")?.map((id: string) => {
+                          const tactic = tactics.find((t: any) => t.id === id);
                           return <Badge key={id} variant="secondary">{tactic?.name}</Badge>;
                         })}
                       </div>
@@ -1186,28 +1196,6 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
                 <div className="space-y-4">
                   <h4 className="font-medium">Simulation Settings</h4>
                   
-                  <FormField
-                    control={form.control}
-                    name="simulationRuns"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Number of Simulation Runs</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="number"
-                            min={1}
-                            max={100}
-                            {...field}
-                            onChange={(e) => field.onChange(parseInt(e.target.value))}
-                          />
-                        </FormControl>
-                        <p className="text-xs text-gray-600">
-                          Run multiple simulations for statistical analysis and comparison
-                        </p>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
 
                   <FormField
                     control={form.control}

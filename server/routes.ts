@@ -342,8 +342,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         status: "pending" as const,
       };
 
-      const negotiation = await storage.createNegotiation(negotiationData);
-      res.status(201).json(negotiation);
+      // Use the new combinatorial simulation creation
+      const result = await storage.createNegotiationWithSimulationRuns(negotiationData);
+      
+      console.log(`Created negotiation with ${result.simulationRuns.length} simulation runs (${validatedData.selectedTechniques.length}×${validatedData.selectedTactics.length} combinations)`);
+      
+      res.status(201).json({
+        negotiation: result.negotiation,
+        simulationRuns: result.simulationRuns,
+        totalCombinations: result.simulationRuns.length
+      });
     } catch (error) {
       console.error("Failed to create negotiation:", error);
       if (error instanceof z.ZodError) {
@@ -389,6 +397,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Simulation run management
+  app.get("/api/negotiations/:id/simulation-runs", async (req, res) => {
+    try {
+      const runs = await storage.getSimulationRuns(req.params.id);
+      res.json(runs);
+    } catch (error) {
+      console.error("Failed to get simulation runs:", error);
+      res.status(500).json({ error: "Failed to get simulation runs" });
+    }
+  });
+
+  app.get("/api/simulation-runs/:runId/status", async (req, res) => {
+    try {
+      const run = await storage.getSimulationRun(req.params.runId);
+      if (!run) {
+        return res.status(404).json({ error: "Simulation run not found" });
+      }
+      res.json(run);
+    } catch (error) {
+      console.error("Failed to get simulation run status:", error);
+      res.status(500).json({ error: "Failed to get simulation run status" });
+    }
+  });
+
+  app.post("/api/simulation-runs/:runId/stop", async (req, res) => {
+    try {
+      await negotiationEngine.stopNegotiation(req.params.runId);
+      res.json({ message: "Simulation run stopped successfully" });
+    } catch (error) {
+      console.error("Failed to stop simulation run:", error);
+      res.status(500).json({ error: "Failed to stop simulation run" });
+    }
+  });
+
   // Get negotiation rounds
   app.get("/api/negotiations/:id/rounds", async (req, res) => {
     try {
@@ -400,25 +442,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/negotiations/:id/start", async (req, res) => {
-    try {
-      await negotiationEngine.startNegotiation(req.params.id);
-      res.json({ message: "Negotiation started successfully" });
-    } catch (error) {
-      console.error("Failed to start negotiation:", error);
-      res.status(500).json({ error: "Failed to start negotiation" });
-    }
-  });
-
-  app.post("/api/negotiations/:id/stop", async (req, res) => {
-    try {
-      await negotiationEngine.stopNegotiation(req.params.id);
-      res.json({ message: "Negotiation stopped successfully" });
-    } catch (error) {
-      console.error("Failed to stop negotiation:", error);
-      res.status(500).json({ error: "Failed to stop negotiation" });
-    }
-  });
 
   // Tactics
   app.get("/api/tactics", async (req, res) => {

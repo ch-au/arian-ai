@@ -100,6 +100,8 @@ export default function SimulationConfirmation() {
   const completedRuns = negotiation.simulationRuns.filter(run => run.status === "completed").length;
   const failedRuns = negotiation.simulationRuns.filter(run => run.status === "failed").length;
   const runningRuns = negotiation.simulationRuns.filter(run => run.status === "running").length;
+  const COST_PER_RUN = 0.11; // Average cost per simulation run
+  const estimatedCost = totalRuns * COST_PER_RUN;
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
@@ -149,6 +151,16 @@ export default function SimulationConfirmation() {
               <p className="text-2xl font-bold text-blue-600">{totalRuns}</p>
               <p className="text-sm text-muted-foreground">
                 {negotiation.selectedTechniques.length} techniques × {negotiation.selectedTactics.length} tactics
+              </p>
+            </div>
+            
+            <div>
+              <h4 className="font-medium">Estimated Cost</h4>
+              <p className="text-2xl font-bold text-green-600">
+                ~${estimatedCost.toFixed(2)}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Based on an average of ${COST_PER_RUN.toFixed(2)} per run.
               </p>
             </div>
             

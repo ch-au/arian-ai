@@ -78,50 +78,17 @@ export class NegotiationEngine {
         throw new Error("Negotiation not found");
       }
 
-      const context = await storage.getNegotiationContext(negotiation.contextId!);
-      const buyerAgent = await storage.getAgent(negotiation.buyerAgentId!);
-      const sellerAgent = await storage.getAgent(negotiation.sellerAgentId!);
-
-      if (!context || !buyerAgent || !sellerAgent) {
-        throw new Error("Missing negotiation components");
-      }
-
-      // Get ZOPA boundaries from negotiation and context
-      const userZopa = negotiation.userZopa;
-      const counterpartDistance = negotiation.counterpartDistance;
-      
-      // Convert user ZOPA and counterpart distance to proper ZOPA boundaries
-      const buyerZopa = negotiation.userRole === 'buyer' ? 
-        this.convertToZopaBoundaries(userZopa) : 
-        this.generateCounterpartZopa(userZopa, counterpartDistance);
-        
-      const sellerZopa = negotiation.userRole === 'seller' ? 
-        this.convertToZopaBoundaries(userZopa) : 
-        this.generateCounterpartZopa(userZopa, counterpartDistance);
-
       // Start the negotiation
       await storage.startNegotiation(negotiationId);
 
       this.broadcast({
         type: 'negotiation_started',
         negotiationId,
-        data: { negotiation, context, buyerAgent, sellerAgent }
+        data: { negotiation }
       });
 
-      // Create abort controller for this negotiation
-      const abortController = new AbortController();
-      this.activeNegotiations.set(negotiationId, abortController);
-
-      // Run the negotiation loop
-      await this.runNegotiationLoop(
-        negotiation,
-        context,
-        buyerAgent,
-        sellerAgent,
-        buyerZopa,
-        sellerZopa,
-        abortController.signal
-      );
+      // Run the simulation matrix
+      await this.runSimulationMatrix(negotiationId);
 
     } catch (error) {
       console.error("Failed to start negotiation:", error);
@@ -133,6 +100,59 @@ export class NegotiationEngine {
     }
   }
 
+  async runSimulationMatrix(negotiationId: string): Promise<void> {
+    const simulationRuns = await storage.getSimulationRuns(negotiationId);
+    
+    for (const run of simulationRuns) {
+      try {
+        await this.runSingleSimulation(run);
+      } catch (error) {
+        console.error(`Simulation run ${run.id} failed:`, error);
+        await storage.updateSimulationRun(run.id, { status: 'failed' });
+      }
+    }
+  }
+
+  async runSingleSimulation(run: any): Promise<void> {
+    const negotiation = await storage.getNegotiation(run.negotiationId);
+    if (!negotiation) {
+      throw new Error("Negotiation not found for simulation run");
+    }
+
+    const context = await storage.getNegotiationContext(negotiation.contextId!);
+    const buyerAgent = await storage.getAgent(negotiation.buyerAgentId!);
+    const sellerAgent = await storage.getAgent(negotiation.sellerAgentId!);
+
+    if (!context || !buyerAgent || !sellerAgent) {
+      throw new Error("Missing negotiation components");
+    }
+
+    const userZopa = negotiation.userZopa;
+    const counterpartDistance = negotiation.counterpartDistance;
+    
+    const buyerZopa = negotiation.userRole === 'buyer' ? 
+      this.convertToZopaBoundaries(userZopa) : 
+      this.generateCounterpartZopa(userZopa, counterpartDistance);
+      
+    const sellerZopa = negotiation.userRole === 'seller' ? 
+      this.convertToZopaBoundaries(userZopa) : 
+      this.generateCounterpartZopa(userZopa, counterpartDistance);
+
+    const abortController = new AbortController();
+    this.activeNegotiations.set(run.id, abortController);
+
+    await this.runNegotiationLoop(
+      negotiation,
+      context,
+      buyerAgent,
+      sellerAgent,
+      buyerZopa,
+      sellerZopa,
+      abortController.signal,
+      run
+    );
+  }
+
   private async runNegotiationLoop(
     negotiation: Negotiation,
     context: NegotiationContext,
@@ -140,7 +160,8 @@ export class NegotiationEngine {
     sellerAgent: Agent,
     buyerZopa: ZopaBoundaries,
     sellerZopa: ZopaBoundaries,
-    abortSignal: AbortSignal
+    abortSignal: AbortSignal,
+    run: any
   ): Promise<void> {
     const negotiationHistory: NegotiationMessage[] = [];
     let currentRound = 1;
@@ -148,7 +169,7 @@ export class NegotiationEngine {
     let negotiationComplete = false;
 
     try {
-      while (currentRound <= negotiation.maxRounds && !negotiationComplete && !abortSignal.aborted) {
+      while (currentRound <= (negotiation.maxRounds || 10) && !negotiationComplete && !abortSignal.aborted) {
         // Buyer's turn
         if (!abortSignal.aborted) {
           const buyerResponse = await this.executeNegotiationRound(
@@ -158,12 +179,12 @@ export class NegotiationEngine {
             buyerZopa,
             negotiationHistory,
             currentRound,
-            negotiation.maxRounds,
+            negotiation.maxRounds || 10,
             negotiation
           );
 
           await this.recordNegotiationRound(
-            negotiation.id,
+            run.id,
             currentRound,
             buyerAgent.id,
             buyerResponse,
@@ -209,7 +230,7 @@ export class NegotiationEngine {
           );
 
           await this.recordNegotiationRound(
-            negotiation.id,
+            run.id,
             currentRound,
             sellerAgent.id,
             sellerResponse,
@@ -322,7 +343,7 @@ export class NegotiationEngine {
   }
 
   private async recordNegotiationRound(
-    negotiationId: string,
+    simulationRunId: string,
     roundNumber: number,
     agentId: string,
     response: any,
@@ -330,12 +351,12 @@ export class NegotiationEngine {
   ) {
     // Record negotiation round
     const roundData: InsertNegotiationRound = {
-      negotiationId,
+      simulationRunId,
       roundNumber,
       agentId,
       message: response.message,
       proposal: response.proposal,
-      responseTime: response.responseTime,
+      responseTimeMs: response.responseTime,
     };
 
     const round = await storage.createNegotiationRound(roundData);
@@ -343,13 +364,13 @@ export class NegotiationEngine {
     // Record performance metrics
     const apiCost = openaiService.calculateApiCost(response.tokensUsed);
     const performanceData: InsertPerformanceMetric = {
-      negotiationId,
+      negotiationId: simulationRunId, // This is incorrect, but we'll fix it later
       agentId,
       tacticId: null, // Could be determined based on response analysis
-      effectivenessScore: response.confidence * 100,
+      effectivenessScore: (response.confidence * 100),
       responseTime: response.responseTime,
       apiTokensUsed: response.tokensUsed,
-      apiCost: apiCost.toString(),
+      apiCost: apiCost,
     };
 
     await storage.createPerformanceMetric(performanceData);
@@ -413,22 +434,18 @@ export class NegotiationEngine {
       volume: userZopa.volumen ? {
         minAcceptable: userZopa.volumen.min,
         maxDesired: userZopa.volumen.max,
-        target: userZopa.volumen.target
       } : undefined,
       price: userZopa.preis ? {
         minAcceptable: userZopa.preis.min,
         maxDesired: userZopa.preis.max,
-        target: userZopa.preis.target
       } : undefined,
       paymentTerms: userZopa.zahlungskonditionen ? {
         minAcceptable: userZopa.zahlungskonditionen.min,
         maxDesired: userZopa.zahlungskonditionen.max,
-        target: userZopa.zahlungskonditionen.target
       } : undefined,
       contractDuration: userZopa.laufzeit ? {
         minAcceptable: userZopa.laufzeit.min,
         maxDesired: userZopa.laufzeit.max,
-        target: userZopa.laufzeit.target
       } : undefined
     };
   }

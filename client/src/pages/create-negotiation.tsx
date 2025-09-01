@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
+import { apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
@@ -8,12 +9,14 @@ import CreateNegotiationForm from "@/components/CreateNegotiationForm";
 export default function CreateNegotiation() {
   const [, setLocation] = useLocation();
 
-  const { data: agents } = useQuery({
+  const { data: agents, isLoading: isLoadingAgents } = useQuery<any[]>({
     queryKey: ["/api/agents"],
+    queryFn: () => apiRequest("GET", "/api/agents").then(res => res.json()),
   });
 
-  const { data: contexts } = useQuery({
+  const { data: contexts, isLoading: isLoadingContexts } = useQuery<any[]>({
     queryKey: ["/api/contexts"],
+    queryFn: () => apiRequest("GET", "/api/contexts").then(res => res.json()),
   });
 
   const handleSuccess = () => {
@@ -45,16 +48,16 @@ export default function CreateNegotiation() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {agents && contexts ? (
-            <CreateNegotiationForm
-              agents={agents}
-              contexts={contexts}
-              onSuccess={handleSuccess}
-            />
-          ) : (
+          {isLoadingAgents || isLoadingContexts ? (
             <div className="text-center py-8">
               <p>Loading agents and contexts...</p>
             </div>
+          ) : (
+            <CreateNegotiationForm
+              agents={agents || []}
+              contexts={contexts || []}
+              onSuccess={handleSuccess}
+            />
           )}
         </CardContent>
       </Card>

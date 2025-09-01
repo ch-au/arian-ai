@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { PersonalityProfile, Agent, NegotiationContext, ZopaBoundaries } from "@shared/schema";
 import { langfuseService } from "./langfuse";
+import { storage } from "../storage";
 
 // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
 const openai = new OpenAI({ 
@@ -349,17 +350,13 @@ Provide analysis in JSON format:
   private async generateTechniqueGuidance(techniques?: string[]): Promise<string> {
     if (!techniques || techniques.length === 0) return '';
     
-    const techniqueMap: Record<string, string> = {
-      'reciprocity': 'Use reciprocity by offering something valuable to encourage the other party to reciprocate. Make small concessions to build goodwill.',
-      'scarcity': 'Emphasize limited time or availability to create urgency. Mention deadlines, limited stock, or competing offers.',
-      'authority': 'Reference your expertise, credentials, or organizational backing to build credibility and trust.',
-      'commitment': 'Make firm commitments and ask for commitments in return. Use phrases like "if we can agree on X, then I can guarantee Y".',
-      'social_proof': 'Reference similar successful deals, industry standards, or what other companies typically do.',
-      'liking': 'Build rapport and find common ground. Show genuine interest in the other party\'s concerns and goals.'
-    };
+    const techniqueDetails = await Promise.all(
+      techniques.map(id => storage.getInfluencingTechnique(id))
+    );
 
-    const guidance = techniques
-      .map(t => techniqueMap[t] || `Apply ${t} technique appropriately`)
+    const guidance = techniqueDetails
+      .filter(t => t)
+      .map(t => `**${t!.name}**: ${t!.anwendung} Key phrases: ${(t!.keyPhrases as string[]).join(", ")}`)
       .join('\n- ');
     
     return `- ${guidance}`;
@@ -368,17 +365,13 @@ Provide analysis in JSON format:
   private async generateTacticGuidance(tactics?: string[]): Promise<string> {
     if (!tactics || tactics.length === 0) return '';
     
-    const tacticMap: Record<string, string> = {
-      'relationship_building': 'Focus on building long-term relationships. Ask about their business goals and show how the deal benefits both parties.',
-      'anchoring': 'Start with an ambitious but reasonable initial offer to anchor expectations. Let your first proposal set the negotiation range.',
-      'concession_pattern': 'Make strategic concessions that decrease in size over time. Show movement while protecting your key interests.',
-      'time_pressure': 'Create appropriate urgency around decision-making. Mention timelines and the cost of delays.',
-      'package_deals': 'Bundle multiple elements together to create value and make trade-offs easier to negotiate.',
-      'information_gathering': 'Ask probing questions to understand their priorities, constraints, and decision-making process.'
-    };
+    const tacticDetails = await Promise.all(
+      tactics.map(id => storage.getNegotiationTactic(id))
+    );
 
-    const guidance = tactics
-      .map(t => tacticMap[t] || `Apply ${t} tactic strategically`)
+    const guidance = tacticDetails
+      .filter(t => t)
+      .map(t => `**${t!.name}**: ${t!.anwendung} Key phrases: ${(t!.keyPhrases as string[]).join(", ")}`)
       .join('\n- ');
     
     return `- ${guidance}`;
