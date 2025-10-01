@@ -17,11 +17,11 @@ interface LiveNegotiationsProps {
 }
 
 export default function LiveNegotiations({ negotiations }: LiveNegotiationsProps) {
-  const { data: agents } = useQuery({
+  const { data: agents } = useQuery<any[]>({
     queryKey: ["/api/agents"],
   });
 
-  const { data: contexts } = useQuery({
+  const { data: contexts } = useQuery<any[]>({
     queryKey: ["/api/contexts"],
   });
 

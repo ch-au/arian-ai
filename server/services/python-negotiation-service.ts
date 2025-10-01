@@ -4,9 +4,11 @@
  */
 
 import { spawn } from 'child_process';
+import { existsSync } from 'fs';
 import { db } from '../storage';
 import { simulationRuns, negotiations, negotiationDimensions, influencingTechniques, negotiationTactics, negotiationContexts } from '../../shared/schema';
 import { eq } from 'drizzle-orm';
+import { createRequestLogger } from './logger';
 
 export interface PythonNegotiationRequest {
   negotiationId: string;
@@ -36,12 +38,18 @@ export interface PythonNegotiationResult {
   conversationLog: Array<{
     round: number;
     agent: string;
-    response: any;
+    message: string;
+    offer?: any;
+    action?: string;
+    internal_analysis?: string;
+    batna_assessment?: number;
+    walk_away_threshold?: number;
   }>;
   langfuseTraceId?: string;
 }
 
 export class PythonNegotiationService {
+  private static log = createRequestLogger('service:python-negotiation');
 
   /**
    * Run a single negotiation using the Python microservice
@@ -99,7 +107,7 @@ export class PythonNegotiationService {
       return result;
       
     } catch (error) {
-      console.error('Python negotiation service error:', error);
+      this.log.error({ err: error, request }, 'Python negotiation service error');
       throw error;
     }
   }
@@ -113,7 +121,10 @@ export class PythonNegotiationService {
     request?: PythonNegotiationRequest
   ): Promise<PythonNegotiationResult> {
     return new Promise((resolve, reject) => {
-      const pythonProcess = spawn('python', args, {
+      const pythonExec = existsSync('./.venv/bin/python')
+        ? './.venv/bin/python'
+        : (existsSync('/usr/bin/python3') ? 'python3' : 'python');
+      const pythonProcess = spawn(pythonExec, args, {
         cwd: process.cwd(),
         env: {
           ...process.env,
@@ -146,31 +157,49 @@ export class PythonNegotiationService {
         }
 
         try {
-          // Parse JSON result from stdout, filtering out ROUND_UPDATE lines
+          // Parse JSON result from stdout, filtering out trace logs and ROUND_UPDATE lines
           const lines = stdout.split('\n');
           let jsonOutput = '';
           
-          // Find the final JSON output (lines that don't start with ROUND_UPDATE)
+          // Find the final JSON output - look for lines that start with { (valid JSON)
+          // and exclude trace logs and ROUND_UPDATE lines
           for (const line of lines) {
-            if (line.trim() && !line.startsWith('ROUND_UPDATE:')) {
+            const trimmedLine = line.trim();
+            if (trimmedLine && 
+                !line.startsWith('ROUND_UPDATE:') && 
+                !line.includes('OpenAI Agents trace:') &&
+                !line.includes('Agent run:') &&
+                !line.includes('Responses API with') &&
+                !line.match(/^\d{2}:\d{2}:\d{2}\.\d{3}/) && // Filter out timestamps
+                (trimmedLine.startsWith('{') || jsonOutput)) {
               jsonOutput += line + '\n';
             }
           }
           
           if (!jsonOutput.trim()) {
+            this.log.error({ args, stdout, stderr }, 'No JSON output from Python script');
             reject(new Error('No JSON output found from Python script'));
             return;
           }
-          
+
           const result = JSON.parse(jsonOutput.trim());
           resolve(result);
         } catch (parseError) {
-          console.error('Failed to parse Python output:', stdout);
+          this.log.error(
+            {
+              err: parseError,
+              stdoutPreview: stdout.substring(0, 500),
+              stderrPreview: stderr.substring(0, 500),
+              args,
+            },
+            'Failed to parse Python output',
+          );
           reject(new Error(`Failed to parse Python script output: ${parseError}`));
         }
       });
 
       pythonProcess.on('error', (error) => {
+        this.log.error({ err: error, args }, 'Failed to start Python process');
         reject(new Error(`Failed to start Python process: ${error.message}`));
       });
     });
@@ -193,10 +222,8 @@ export class PythonNegotiationService {
         try {
           const jsonData = line.substring('ROUND_UPDATE:'.length);
           const roundData = JSON.parse(jsonData);
-          
-          console.log(`Emitting round update for round ${roundData.round}:`, roundData.agent);
-          
-          // Call the callback with the round update
+          this.log.debug({ round: roundData.round, agent: roundData.agent }, 'Emitting round update');
+
           onRoundUpdate({
             round: roundData.round,
             agent: roundData.agent,
@@ -207,7 +234,7 @@ export class PythonNegotiationService {
             negotiationId: request.negotiationId
           });
         } catch (error) {
-          console.warn('Failed to parse round update:', line, error);
+          this.log.warn({ err: error, line }, 'Failed to parse round update');
         }
       }
     }
@@ -301,6 +328,10 @@ export class PythonNegotiationService {
       }
 
       // Resume the negotiation with existing conversation log
+      if (!pausedRun.negotiationId) {
+        throw new Error("Paused simulation run is missing negotiationId");
+      }
+
       const resumeRequest: PythonNegotiationRequest = {
         negotiationId: pausedRun.negotiationId,
         simulationRunId: simulationRunId,
@@ -316,10 +347,16 @@ export class PythonNegotiationService {
         .where(eq(simulationRuns.id, simulationRunId));
 
       // Run the negotiation with existing conversation log
-      return await this.runNegotiationWithResume(resumeRequest, pausedRun.conversationLog, onRoundUpdate);
-      
+      const existingConversation = typeof pausedRun.conversationLog === 'string'
+        ? pausedRun.conversationLog
+        : pausedRun.conversationLog
+        ? JSON.stringify(pausedRun.conversationLog)
+        : null;
+
+      return await this.runNegotiationWithResume(resumeRequest, existingConversation, onRoundUpdate);
+
     } catch (error) {
-      console.error('Resume negotiation error:', error);
+      this.log.error({ err: error, simulationRunId }, 'Resume negotiation error');
       throw error;
     }
   }
@@ -382,11 +419,11 @@ export class PythonNegotiationService {
       
       // Update simulation run with results
       await this.updateSimulationRun(request.simulationRunId, result);
-      
+
       return result;
-      
+
     } catch (error) {
-      console.error('Resume negotiation service error:', error);
+      this.log.error({ err: error, request, existingConversationLog }, 'Resume negotiation service error');
       throw error;
     }
   }
@@ -399,27 +436,30 @@ export class PythonNegotiationService {
     const statusMapping = {
       'DEAL_ACCEPTED': 'completed',
       'TERMINATED': 'completed',        // Polite end is still successful completion
-      'WALK_AWAY': 'failed',           // BATNA-based decision
+      'WALK_AWAY': 'completed',        // BATNA-based decision is a valid completion
       'PAUSED': 'paused',              // New status for paused negotiations  
       'MAX_ROUNDS_REACHED': 'timeout',
       'ERROR': 'failed'
-    };
+    } as const;
     
-    const updateData = {
+    const normalizedConversationLog = Array.isArray(result.conversationLog)
+      ? result.conversationLog
+      : [];
+
+    const dimensionValues = result.finalOffer?.dimension_values ?? {};
+
+    const updateData: any = {
       status: statusMapping[result.outcome] || 'failed',
-      conversationLog: JSON.stringify(result.conversationLog),
+      conversationLog: normalizedConversationLog,
       totalRounds: result.totalRounds,
-      langfuseTraceId: result.langfuseTraceId,
-      outcome: result.outcome  // Store the detailed outcome
+      langfuseTraceId: result.langfuseTraceId || null,
+      outcome: result.outcome, // Store the detailed outcome
+      dimensionResults: dimensionValues
     };
 
     // Only set completedAt for truly completed negotiations (not paused ones)
     if (result.outcome !== 'PAUSED') {
-      updateData['completedAt'] = new Date();
-    }
-
-    if (result.finalOffer) {
-      updateData['dimensionResults'] = JSON.stringify(result.finalOffer.dimension_values || {});
+      updateData.completedAt = new Date();
     }
 
     await db

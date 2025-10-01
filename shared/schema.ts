@@ -135,6 +135,9 @@ export const simulationRuns = pgTable("simulation_runs", {
   dimensionResults: jsonb("dimension_results").default({}).notNull(), // Results per dimension
   personalityArchetype: text("personality_archetype"), // Link to personality type
   metadata: jsonb("metadata").default({}),
+  // Langfuse integration
+  langfuseTraceId: text("langfuse_trace_id"), // Langfuse trace ID for this negotiation
+  outcome: text("outcome"), // Detailed outcome: DEAL_ACCEPTED, TERMINATED, WALK_AWAY, PAUSED, MAX_ROUNDS_REACHED, ERROR
 });
 
 // Negotiation rounds - individual turns in a simulation run

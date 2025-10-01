@@ -11,15 +11,15 @@ export default function Analytics() {
   const [selectedPeriod, setSelectedPeriod] = useState("30");
   const [selectedAgent, setSelectedAgent] = useState("all");
 
-  const { data: performanceReport } = useQuery({
+  const { data: performanceReport } = useQuery<any>({
     queryKey: ["/api/analytics/performance", { agentId: selectedAgent !== "all" ? selectedAgent : undefined }],
   });
 
-  const { data: agents } = useQuery({
+  const { data: agents } = useQuery<any[]>({
     queryKey: ["/api/agents"],
   });
 
-  const { data: tactics } = useQuery({
+  const { data: tactics } = useQuery<any[]>({
     queryKey: ["/api/tactics"],
   });
 

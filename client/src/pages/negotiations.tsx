@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useLocation } from "wouter";
-import { Play, Square, Eye, Plus, Clock, CheckCircle, XCircle, Users, BarChart3, Trash2, AlertTriangle, Edit, Activity } from "lucide-react";
+import { Play, Square, Eye, Plus, Clock, CheckCircle, XCircle, Users, BarChart3, Trash2, AlertTriangle, Edit, Activity, StopCircle, Pause } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useWebSocket } from "@/hooks/use-websocket";
@@ -22,7 +22,7 @@ interface Negotiation {
   contextId: string;
   buyerAgentId: string;
   sellerAgentId: string;
-  status: "configured" | "running" | "completed" | "error";
+  status: "configured" | "running" | "completed" | "error" | "pending";
   createdAt: string;
   startedAt?: string;
   completedAt?: string;
@@ -45,11 +45,11 @@ export default function Negotiations() {
     refetchInterval: 5000,
   });
 
-  const { data: agents } = useQuery({
+  const { data: agents } = useQuery<any[]>({
     queryKey: ["/api/agents"],
   });
 
-  const { data: contexts } = useQuery({
+  const { data: contexts } = useQuery<any[]>({
     queryKey: ["/api/contexts"],
   });
 
@@ -76,6 +76,22 @@ export default function Negotiations() {
 
   const stopNegotiationMutation = useMutation({
     mutationFn: async (negotiationId: string) => {
+      // First get the active queue for this negotiation
+      const queuesResponse = await apiRequest("GET", `/api/simulations/queues?negotiationId=${negotiationId}`);
+      const queues = await queuesResponse.json();
+      
+      // Stop all active queues for this negotiation
+      const activeQueues = queues.filter((q: any) => q.status === 'running' || q.status === 'pending');
+      
+      if (activeQueues.length > 0) {
+        await Promise.all(
+          activeQueues.map((queue: any) => 
+            apiRequest("POST", `/api/simulations/queue/${queue.id}/stop`)
+          )
+        );
+      }
+      
+      // Also call the negotiation stop endpoint as fallback
       const response = await apiRequest("POST", `/api/negotiations/${negotiationId}/stop`);
       return response.json();
     },
@@ -83,12 +99,57 @@ export default function Negotiations() {
       queryClient.invalidateQueries({ queryKey: ["/api/negotiations"] });
       toast({
         title: "Negotiation Stopped",
-        description: "The negotiation has been stopped successfully.",
+        description: "All simulation queues have been stopped successfully.",
       });
     },
     onError: (error) => {
       toast({
         title: "Failed to stop negotiation",
+        description: error instanceof Error ? error.message : "An unknown error occurred",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const stopAllMutation = useMutation({
+    mutationFn: async () => {
+      // Get all running negotiations
+      const runningNegotiations = negotiations?.filter(n => n.status === 'running') || [];
+      
+      // Stop all of them
+      await Promise.all(
+        runningNegotiations.map(async (negotiation) => {
+          try {
+            // Get active queues for this negotiation
+            const queuesResponse = await apiRequest("GET", `/api/simulations/queues?negotiationId=${negotiation.id}`);
+            const queues = await queuesResponse.json();
+            
+            // Stop all active queues
+            const activeQueues = queues.filter((q: any) => q.status === 'running' || q.status === 'pending');
+            
+            if (activeQueues.length > 0) {
+              await Promise.all(
+                activeQueues.map((queue: any) => 
+                  apiRequest("POST", `/api/simulations/queue/${queue.id}/stop`)
+                )
+              );
+            }
+          } catch (error) {
+            console.error(`Failed to stop negotiation ${negotiation.id}:`, error);
+          }
+        })
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/negotiations"] });
+      toast({
+        title: "All Simulations Stopped",
+        description: "All running simulation queues have been stopped successfully.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to stop all simulations",
         description: error instanceof Error ? error.message : "An unknown error occurred",
         variant: "destructive",
       });
@@ -118,17 +179,32 @@ export default function Negotiations() {
   });
 
   // WebSocket connection for real-time updates
-  useWebSocket("/ws", (message) => {
-    if (message.type === 'negotiation_started' || message.type === 'round_completed' || message.type === 'negotiation_completed') {
-      queryClient.invalidateQueries({ queryKey: ["/api/negotiations"] });
-      
-      if (message.type === 'negotiation_completed') {
-        toast({
-          title: "Negotiation Completed",
-          description: `Negotiation ${message.negotiationId} has finished.`,
-        });
+  // Broaden WebSocket handling: also react to queue and simulation events
+  useWebSocket("/ws", {
+    onMessage: (message: any) => {
+      const actionableTypes = new Set([
+        'negotiation_started',
+        'round_completed',
+        'negotiation_completed',
+        'simulation_started',
+        'simulation_completed',
+        'simulation_failed',
+        'simulation_stopped',
+        'queue_progress',
+        'queue_completed'
+      ]);
+
+      if (actionableTypes.has(message.type)) {
+        queryClient.invalidateQueries({ queryKey: ["/api/negotiations"] });
+
+        if (message.type === 'negotiation_completed' || message.type === 'queue_completed') {
+          toast({
+            title: "Negotiation Completed",
+            description: `Negotiation ${message.negotiationId || ''} has finished.`,
+          });
+        }
       }
-    }
+    },
   });
 
   const getStatusColor = (status: string) => {
@@ -191,13 +267,34 @@ export default function Negotiations() {
           <h1 className="text-3xl font-bold tracking-tight text-gray-900">Negotiations</h1>
           <p className="text-gray-600 mt-2">Monitor and manage AI negotiation sessions</p>
         </div>
-        <Button 
-          className="bg-primary hover:bg-primary/90"
-          onClick={() => setLocation("/configure")}
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          New Negotiation
-        </Button>
+        <div className="flex gap-2">
+          {negotiations && negotiations.some(n => n.status === 'running') && (
+            <Button 
+              variant="destructive"
+              onClick={() => stopAllMutation.mutate()}
+              disabled={stopAllMutation.isPending}
+            >
+              {stopAllMutation.isPending ? (
+                <>
+                  <Clock className="mr-2 h-4 w-4 animate-spin" />
+                  Stopping...
+                </>
+              ) : (
+                <>
+                  <StopCircle className="mr-2 h-4 w-4" />
+                  Stop All
+                </>
+              )}
+            </Button>
+          )}
+          <Button 
+            className="bg-primary hover:bg-primary/90"
+            onClick={() => setLocation("/configure")}
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            New Negotiation
+          </Button>
+        </div>
       </div>
 
       {/* Empty State */}
@@ -288,21 +385,32 @@ export default function Negotiations() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <div className="space-y-1">
+                        <div className="space-y-2">
                           <div className="text-sm">
                             <span className="font-medium">{completedRuns}/{totalRuns}</span>
                             <span className="text-muted-foreground ml-1">completed</span>
                           </div>
+                          
+                          {/* Active Simulations Indicator */}
                           {simulationStats.runningRuns > 0 && (
-                            <div className="text-xs text-blue-600">
-                              {simulationStats.runningRuns} running
+                            <div className="flex items-center gap-2 text-xs">
+                              <div className="flex items-center gap-1">
+                                <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                                <span className="text-blue-600 font-medium">{simulationStats.runningRuns} actively running</span>
+                              </div>
                             </div>
                           )}
-                          {simulationStats.pendingRuns > 0 && (
-                            <div className="text-xs text-gray-500">
-                              {simulationStats.pendingRuns} pending
-                            </div>
-                          )}
+                          
+                          {/* Queue Status */}
+                          <div className="flex gap-2 text-xs">
+                            {simulationStats.pendingRuns > 0 && (
+                              <span className="text-gray-600">{simulationStats.pendingRuns} pending</span>
+                            )}
+                            {simulationStats.failedRuns > 0 && (
+                              <span className="text-red-600">{simulationStats.failedRuns} failed</span>
+                            )}
+                          </div>
+                          
                           {totalRuns > 0 && (
                             <Progress value={(completedRuns / totalRuns) * 100} className="h-2" />
                           )}
@@ -329,7 +437,7 @@ export default function Negotiations() {
                           <Button 
                             variant="ghost" 
                             size="sm"
-                            onClick={() => setLocation(`/monitor/${negotiation.id}`)}
+                            onClick={() => setLocation(`/simulation-monitor/${negotiation.id}`)}
                             title="View Details"
                           >
                             <Eye className="h-4 w-4" />

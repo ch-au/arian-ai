@@ -22,6 +22,7 @@ import sys
 import argparse
 import logging
 import time
+from textwrap import dedent
 from typing import Dict, Any, List, Optional
 
 # Configure logging to stderr to avoid interfering with stdout JSON responses
@@ -35,6 +36,15 @@ nest_asyncio.apply()
 from dotenv import load_dotenv
 load_dotenv('.env')
 
+# Disable OpenAI Agents debug output that interferes with JSON parsing
+import os
+os.environ["AGENTS_DEBUG"] = "false"
+os.environ["OPENAI_LOG_LEVEL"] = "error"
+
+# Redirect OpenAI Agents trace output to stderr to prevent stdout contamination
+import sys
+from contextlib import redirect_stdout, redirect_stderr
+
 # Import our modular components (handle both direct execution and module imports)
 try:
     from negotiation_models import (
@@ -43,8 +53,8 @@ try:
     )
     from negotiation_utils import (
         safe_json_parse, analyze_convergence, format_dimensions_for_prompt,
-        generate_dimension_examples, setup_langfuse_tracing, 
-        calculate_dynamic_max_rounds, emit_round_update
+        generate_dimension_examples, generate_dimension_schema, setup_langfuse_tracing, 
+        calculate_dynamic_max_rounds, emit_round_update, set_prompt_info, normalize_model_output
     )
 except ImportError:
     # Handle direct execution from scripts directory
@@ -57,13 +67,13 @@ except ImportError:
     )
     from negotiation_utils import (
         safe_json_parse, analyze_convergence, format_dimensions_for_prompt,
-        generate_dimension_examples, setup_langfuse_tracing, 
-        calculate_dynamic_max_rounds, emit_round_update
+        generate_dimension_examples, generate_dimension_schema, setup_langfuse_tracing, 
+        calculate_dynamic_max_rounds, emit_round_update, set_prompt_info, normalize_model_output
     )
 
 # Import external dependencies
-from agents import Agent, Runner, SQLiteSession
-from langfuse import Langfuse
+from agents import Agent, Runner, SQLiteSession, trace
+from langfuse import get_client, observe, Langfuse
 
 
 class NegotiationService:
@@ -82,6 +92,7 @@ class NegotiationService:
         self.langfuse_prompt = None
         self.trace = None
         
+    @observe()
     async def run_negotiation(self) -> Dict[str, Any]:
         """
         Main orchestration method - runs the entire negotiation.
@@ -156,24 +167,23 @@ class NegotiationService:
             tracing_enabled = setup_langfuse_tracing()
             print(f"DEBUG: Tracing enabled: {tracing_enabled}", file=sys.stderr)
             
-            # Initialize Langfuse client
-            self.langfuse = Langfuse(
-                secret_key=os.getenv("LANGFUSE_SECRET_KEY"),
-                public_key=os.getenv("LANGFUSE_PUBLIC_KEY"),
-                host=os.getenv("LANGFUSE_HOST", NegotiationConfig.LANGFUSE_DEFAULT_HOST),
-                debug=False,
-                flush_at=1,
-                flush_interval=NegotiationConfig.LANGFUSE_FLUSH_INTERVAL,
-                max_retries=NegotiationConfig.LANGFUSE_MAX_RETRIES,
-                timeout=NegotiationConfig.LANGFUSE_TIMEOUT,
-            )
-            
+            # Initialize Langfuse client per integration docs
+            self.langfuse = get_client()
+            try:
+                # Optional health check
+                if hasattr(self.langfuse, "auth_check") and not self.langfuse.auth_check():
+                    print("WARNING: Langfuse client authentication failed. Check keys/host.", file=sys.stderr)
+            except Exception as e:
+                print(f"DEBUG: Langfuse auth_check error (continuing): {e}", file=sys.stderr)
+
             # Get prompt template
             self.langfuse_prompt = self.langfuse.get_prompt("negotiation")
             print(f"DEBUG: Retrieved Langfuse prompt: {self.langfuse_prompt.name} v{self.langfuse_prompt.version}", file=sys.stderr)
-            
-            # Create trace for monitoring
-            self.trace = self._create_langfuse_trace()
+            # Link prompt metadata to OpenAI Agents generation spans via OTel processor
+            try:
+                set_prompt_info(self.langfuse_prompt.name, str(self.langfuse_prompt.version))
+            except Exception as e:
+                print(f"DEBUG: Failed to set prompt info for spans: {e}", file=sys.stderr)
             
             return True
             
@@ -181,29 +191,6 @@ class NegotiationService:
             print(f"ERROR: Service initialization failed: {e}", file=sys.stderr)
             return False
     
-    def _create_langfuse_trace(self):
-        """Create a Langfuse trace for monitoring this negotiation."""
-        negotiation_title = "Unknown"
-        if self.negotiation_data and self.negotiation_data.get('negotiation'):
-            negotiation_title = self.negotiation_data['negotiation'].get('title', 'Unknown')
-            
-        return self.langfuse.trace(
-            name="production_microservice_negotiation",
-            session_id=f"prod_{self.args.negotiation_id}_{self.args.simulation_run_id}",
-            user_id=f"simulation_{self.args.simulation_run_id}",
-            metadata={
-                "negotiation_id": self.args.negotiation_id,
-                "simulation_run_id": self.args.simulation_run_id,
-                "negotiation_title": negotiation_title,
-                "technique_id": self.args.technique_id,
-                "tactic_id": self.args.tactic_id,
-                "max_rounds": self.args.max_rounds,
-                "microservice": True,
-                "langfuse_prompt_name": self.langfuse_prompt.name,
-                "langfuse_prompt_version": self.langfuse_prompt.version,
-            },
-            tags=["production", "openai-agents", "microservice"]
-        )
     
     def _create_agents(self) -> Optional[Dict[str, Agent]]:
         """Create buyer and seller AI agents with proper instructions."""
@@ -246,40 +233,25 @@ class NegotiationService:
     
     def _create_agent_instructions(self, role: str) -> str:
         """
-        Create detailed instructions for an AI agent.
-        
-        This builds the system prompt that tells the agent how to behave.
-        The instructions are customized based on the negotiation data and role.
-        
+        Create STATIC instructions for an AI agent (sections 1-6 and 8).
+        Dynamic round information (section 7) will be passed per-round.
+
         Args:
             role: Either 'BUYER' or 'SELLER'
-            
+
         Returns:
-            Complete system prompt string
+            Static system prompt string
         """
-        # Extract prompt template
-        if isinstance(self.langfuse_prompt.prompt, list):
-            system_message = next((msg for msg in self.langfuse_prompt.prompt if msg['role'] == 'system'), None)
-            prompt_template = system_message['content'] if system_message else ""
-        else:
-            prompt_template = self.langfuse_prompt.prompt
-        
-        # Build variable substitutions
-        variables = self._build_prompt_variables(role)
-        
-        # Replace all template variables
-        complete_instructions = prompt_template
-        for key, value in variables.items():
-            placeholder = '{{' + key + '}}'
-            complete_instructions = complete_instructions.replace(placeholder, str(value))
-        
-        # Add structured output requirements
-        complete_instructions += self._get_structured_output_instructions()
-        
-        return complete_instructions
+        # Build static prompt variables (sections 1-6)
+        variables = self._build_static_prompt_variables(role)
+
+        # Build static template (sections 1-6 and 8)
+        static_template = self._get_static_prompt_template(variables)
+
+        return static_template
     
-    def _build_prompt_variables(self, role: str) -> Dict[str, str]:
-        """Build the variable substitutions for the prompt template."""
+    def _build_static_prompt_variables(self, role: str) -> Dict[str, str]:
+        """Build STATIC variable substitutions for the agent instructions."""
         # Extract data with safe defaults
         negotiation = self.negotiation_data.get('negotiation', {}) if self.negotiation_data else {}
         context = self.negotiation_data.get('context', {}) if self.negotiation_data else {}
@@ -297,6 +269,26 @@ class NegotiationService:
         # Generate dimension information
         dimension_examples = generate_dimension_examples(dimensions)
         dimension_details = format_dimensions_for_prompt(dimensions)
+
+        # Context blobs formatted as compact JSON strings if present
+        try:
+            context_market_conditions = json.dumps(context.get('marketConditions', {}), ensure_ascii=False)
+        except Exception:
+            context_market_conditions = ""
+        try:
+            context_baseline_values = json.dumps(context.get('baselineValues', {}), ensure_ascii=False)
+        except Exception:
+            context_baseline_values = ""
+        try:
+            negotiation_metadata = json.dumps(negotiation.get('metadata', {}), ensure_ascii=False)
+        except Exception:
+            negotiation_metadata = ""
+        
+        # Technique/tactic mappings from CSV-backed columns
+        def _fmt_list_or_str(val):
+            if isinstance(val, list):
+                return ", ".join([str(v) for v in val])
+            return val or ""
         
         return {
             # Role information
@@ -309,17 +301,33 @@ class NegotiationService:
             'relationship_type': negotiation.get('relationshipType', 'first-time'),
             'product_description': negotiation.get('productMarketDescription', 'Business transaction'),
             'additional_comments': negotiation.get('additionalComments', 'Production negotiation run'),
+
+            # Market & Situation
+            'context_description': context.get('description', 'Nicht verfügbar'),
+            'context_market_conditions': context_market_conditions,
+            'context_baseline_values': context_baseline_values,
+            'negotiation_metadata': negotiation_metadata,
             
-            # Personality (simplified for now)
+            # Personality (best-effort placeholders unless joined elsewhere)
             'personality_traits': 'Strategic, professional, goal-oriented',
             'personality_type_name': 'Business Negotiator',
+            'personality_type_description': 'Nicht verfügbar',
+            'personality_behavior': '',
+            'personality_advantages': '',
+            'personality_risks': '',
             'personality_instructions': 'Be professional and strategic',
             
             # Technique and tactic information
             'technique_name': technique.get('name', 'Strategic Negotiation'),
             'technique_description': technique.get('description', technique.get('beschreibung', 'Professional negotiation approach')),
+            'technique_application': technique.get('anwendung', technique.get('application', 'Nicht verfügbar')),
+            'technique_key_aspects': _fmt_list_or_str(technique.get('wichtigeAspekte')),
+            'technique_key_phrases': _fmt_list_or_str(technique.get('keyPhrases')),
             'tactic_name': tactic.get('name', 'Professional Approach'),
             'tactic_description': tactic.get('description', tactic.get('beschreibung', 'Maintain professional standards')),
+            'tactic_application': tactic.get('anwendung', tactic.get('application', 'Nicht verfügbar')),
+            'tactic_key_aspects': _fmt_list_or_str(tactic.get('wichtigeAspekte')),
+            'tactic_key_phrases': _fmt_list_or_str(tactic.get('keyPhrases')),
             
             # Dimensions and boundaries
             'zopa_boundaries': dimension_details,
@@ -344,35 +352,134 @@ class NegotiationService:
             return "Total cost under budget with acceptable quality"
         else:
             return "Revenue above target with satisfied customer"
+
+    def _build_round_message(self, role: str, results: List[Dict[str, Any]], round_num: int) -> str:
+        """
+        Build the dynamic per-round user message (Section 7: RUNDDYNAMIK).
+        """
+        # Get counterpart's last message and offer
+        if results:
+            # Find the last message from the OPPONENT
+            counterpart_role = AgentRole.get_opposite_role(role)
+            counterpart_messages = [r for r in results if r.get("agent") != role]
+            if counterpart_messages:
+                last_counter = counterpart_messages[-1].get("response", {})
+                last_counter_message = last_counter.get("message", "")
+                last_counter_offer = last_counter.get("offer", {}).get("dimension_values", {})
+            else:
+                last_counter_message = "Dies ist die erste Runde der Verhandlung."
+                last_counter_offer = {}
+        else:
+            last_counter_message = "Dies ist die erste Runde der Verhandlung."
+            last_counter_offer = {}
+
+        # Build internal state summary from YOUR OWN recent actions
+        my_recent_rounds = [r for r in results[-3:] if r.get("agent") == role]
+        recent_actions = [r.get("response", {}).get("action", "continue") for r in my_recent_rounds]
+        internal_state_summary = f"Ihre letzten Aktionen: {', '.join(recent_actions) if recent_actions else 'Erste Runde'}. Gesamtrunden bisher: {len(results)}"
+
+        # Get dimension schema for reminder
+        dims = self.negotiation_data.get('dimensions', []) if self.negotiation_data else []
+        schema_inner = generate_dimension_schema(dims)
+
+        return f"""## AKTUELLE RUNDDYNAMIK (Runde {round_num})
+
+Gegenangebot der Gegenseite:
+"{last_counter_message}"
+
+Angebotswerte der Gegenseite: {json.dumps(last_counter_offer, ensure_ascii=False) if last_counter_offer else "Noch kein konkretes Angebot"}
+
+Ihre bisherigen Verhandlungsnotizen: {internal_state_summary}
+
+Bitte antworten Sie mit strukturiertem JSON. Dimension-Schema für offer.dimension_values:
+{{ {schema_inner} }}
+
+ACHTUNG: Geben Sie NUR das JSON aus, ohne Markdown-Formatierung."""
     
+    def _get_static_prompt_template(self, variables: Dict[str, str]) -> str:
+        """Build the complete static prompt template with variables replaced."""
+        # Generate dimension schema for the template
+        dims = self.negotiation_data.get('dimensions', []) if self.negotiation_data else []
+        dimension_schema = generate_dimension_schema(dims)
+
+        template = (
+            f"# Rolle: EXPERT-VERHANDLUNGSAGENT\n"
+            f"Sie vertreten die Perspektive {variables['role_perspective']} in dieser Verhandlung. "
+            f"Bleiben Sie professionell, strategisch und denken Sie mehrdimensional. "
+            f"Alle Antworten müssen auf Deutsch erfolgen.\n\n"
+
+            f"## 1. VERHANDLUNGSKONTEXT\n"
+            f"Ihre Rolle: {variables['agent_role']}\n"
+            f"Titel: \"{variables['negotiation_title']}\"\n"
+            f"Verhandlungstyp: {variables['negotiation_type']}\n"
+            f"Beziehungsstatus: {variables['relationship_type']}\n"
+            f"Produkt- / Leistungsbeschreibung: {variables['product_description']}\n"
+            f"Zusätzliche Hinweise: {variables['additional_comments']}\n\n"
+
+            f"## 2. MARKT- & SITUATIONSEINORDNUNG\n"
+            f"Kontextbeschreibung: {variables['context_description']}\n"
+            f"Marktbedingungen: {variables.get('context_market_conditions', 'Nicht verfügbar')}\n"
+            f"Baseline-Werte / Benchmarks: {variables.get('context_baseline_values', 'Nicht verfügbar')}\n"
+            f"Weitere Metadaten: {variables.get('negotiation_metadata', 'Nicht verfügbar')}\n\n"
+
+            f"## 3. PSYCHOLOGISCHES PROFIL\n"
+            f"Persönlichkeitstyp: {variables.get('personality_type_name', 'Standard')}\n"
+            f"Beschreibung: {variables.get('personality_type_description', 'Professioneller Verhandler')}\n"
+            f"Verhaltensschwerpunkte: {variables.get('personality_behavior', 'Strategisch und zielorientiert')}\n"
+            f"Stärken: {variables.get('personality_advantages', 'Analytisch, geduldig')}\n"
+            f"Risiken: {variables.get('personality_risks', 'Keine besonderen')}\n\n"
+
+            f"## 4. PSYCHOLOGISCHE TECHNIK\n"
+            f"Name: {variables['technique_name']}\n"
+            f"Kernaussage: {variables['technique_description']}\n"
+            f"Praktische Anwendung: {variables['technique_application']}\n"
+            f"Wichtige Aspekte: {variables['technique_key_aspects']}\n"
+            f"Typische Formulierungen: {variables['technique_key_phrases']}\n\n"
+
+            f"## 5. STRATEGISCHE TAKTIK\n"
+            f"Name: {variables['tactic_name']}\n"
+            f"Beschreibung: {variables['tactic_description']}\n"
+            f"Empfohlene Anwendung: {variables['tactic_application']}\n"
+            f"Wichtige Aspekte: {variables['tactic_key_aspects']}\n"
+            f"Schlüsselphrasen: {variables['tactic_key_phrases']}\n\n"
+
+            f"## 6. VERHANDLUNGSDIMENSIONEN & ZIELE\n"
+            f"Dimensionen und Grenzen:\n"
+            f"{variables['dimension_details']}\n\n"
+            f"Hinweise:\n"
+            f"- Halten Sie sich strikt an die Min/Max-Grenzen je Dimension.\n"
+            f"- Priorität 1 = kritische Dimension, Priorität 3 = flexibel.\n"
+            f"- Beispiele für Angebotswerte: {variables['dimension_examples']}\n\n"
+
+            f"## 8. ANTWORTFORMAT (zwingend gültiges JSON):\n"
+            f"{{\n"
+            f"  \"message\": \"Ihre professionelle Antwort (Deutsch). Gehen Sie auf das letzte Gegenangebot ein.\",\n"
+            f"  \"action\": \"continue|accept|terminate|walk_away|pause\",\n"
+            f"  \"offer\": {{\n"
+            f"    \"dimension_values\": {{ {dimension_schema} }},\n"
+            f"    \"confidence\": 0.0-1.0,\n"
+            f"    \"reasoning\": \"Kurze Begründung Ihrer Angebotslogik\"\n"
+            f"  }},\n"
+            f"  \"internal_analysis\": \"Interne Einschätzung zum Verhandlungsstand\",\n"
+            f"  \"batna_assessment\": 0.0-1.0,\n"
+            f"  \"walk_away_threshold\": 0.0-1.0\n"
+            f"}}\n\n"
+
+            f"### Anforderungen:\n"
+            f"- Beziehen Sie sich explizit auf das letzte Angebot der Gegenseite\n"
+            f"- Begründen Sie jede Veränderung an den Dimensionen\n"
+            f"- Verwenden Sie Technik und Taktik subtil, ohne sie zu benennen\n"
+            f"- Vermeiden Sie Werte außerhalb der zulässigen Grenzen\n"
+            f"- Bleiben Sie konsistent mit Ihrer Rolle und Persönlichkeit\n"
+            f"- KRITISCH: Antworten Sie NUR mit JSON, keine Markdown-Codeblöcke"
+        )
+        return template
+
     def _get_structured_output_instructions(self) -> str:
-        """Get the structured output requirements for agents."""
-        return """
-
-CRITICAL: You MUST respond with structured JSON matching this exact schema:
-
-{
-    "message": "Your professional negotiation message to the counterpart",
-    "action": "continue" | "accept" | "terminate" | "walk_away" | "pause",
-    "offer": {
-        "dimension_values": {<DIMENSIONS_GO_HERE>},
-        "confidence": 0.8,
-        "reasoning": "Brief explanation of your offer logic"
-    },
-    "internal_analysis": "Your private assessment of negotiation state and strategy",
-    "batna_assessment": 0.7,
-    "walk_away_threshold": 0.3
-}
-
-ACTIONS EXPLAINED:
-- "continue": Keep negotiating (default)
-- "accept": Accept the counterpart's latest offer  
-- "terminate": End negotiations politely without agreement
-- "walk_away": Leave due to unacceptable terms
-- "pause": Temporarily pause to consult stakeholders
-
-The response will be parsed as JSON - do not include markdown formatting or code blocks."""
+        """DEPRECATED - now integrated into _get_static_prompt_template."""
+        return ""  # Empty since we moved this into the static template
     
+    @observe()
     async def _execute_negotiation_rounds(self, agents: Dict[str, Agent]) -> List[Dict[str, Any]]:
         """
         Execute the actual negotiation rounds between agents.
@@ -385,78 +492,131 @@ The response will be parsed as JSON - do not include markdown formatting or code
         Returns:
             List of round results
         """
-        # Initialize session and conversation
-        session = SQLiteSession(f"production_{self.args.simulation_run_id}")
-        results = self._load_existing_conversation()
-        
-        # Calculate dynamic round limit
-        dimensions = self.negotiation_data.get('dimensions', []) if self.negotiation_data else []
-        max_rounds = calculate_dynamic_max_rounds(self.args.max_rounds, dimensions)
-        
-        print(f"DEBUG: Starting negotiation with max {max_rounds} rounds", file=sys.stderr)
-        
-        # Initialize first message
-        current_message = self._get_starting_message(results)
-        final_outcome = NegotiationOutcome.ERROR  # Default
-        
-        try:
-            round_num = len(results)
-            while round_num < max_rounds:
-                round_num += 1
-                
-                # Determine which agent's turn it is
-                role = AgentRole.BUYER if round_num % 2 == 1 else AgentRole.SELLER
-                agent = agents[role]
-                
-                print(f"DEBUG: Round {round_num} - {role} turn", file=sys.stderr)
-                
-                # Execute round
-                response_data = await self._execute_single_round(
-                    agent, role, current_message, round_num, max_rounds
+        # Get negotiation title for trace name
+        negotiation_title = "Unknown"
+        if self.negotiation_data and self.negotiation_data.get('negotiation'):
+            negotiation_title = self.negotiation_data['negotiation'].get('title', 'Unknown')
+
+        # Use trace context manager from agents library
+        with trace(
+            workflow_name=f"production_negotiation_{negotiation_title}",
+            metadata={
+                "negotiation_id": str(self.args.negotiation_id),
+                "simulation_run_id": str(self.args.simulation_run_id),
+                "negotiation_title": str(negotiation_title),
+                "technique_id": str(self.args.technique_id) if self.args.technique_id else None,
+                "tactic_id": str(self.args.tactic_id) if self.args.tactic_id else None,
+                "max_rounds": str(self.args.max_rounds),
+                "microservice": "true",
+                "langfuse_prompt_name": str(self.langfuse_prompt.name),
+                "langfuse_prompt_version": str(self.langfuse_prompt.version),
+            }
+        ) as current_trace:
+            # Store trace ID for later use
+            self._trace_id = current_trace.trace_id
+
+            # Initialize session and conversation
+            session = SQLiteSession(f"production_{self.args.simulation_run_id}")
+            results = self._load_existing_conversation()
+
+            # Calculate dynamic round limit
+            dimensions = self.negotiation_data.get('dimensions', []) if self.negotiation_data else []
+            max_rounds = calculate_dynamic_max_rounds(self.args.max_rounds, dimensions)
+
+            print(f"DEBUG: Starting negotiation with max {max_rounds} rounds", file=sys.stderr)
+
+            # Build per-round messages dynamically based on latest state
+            final_outcome = NegotiationOutcome.ERROR  # Default
+
+            try:
+                round_num = len(results)
+                while round_num < max_rounds:
+                    round_num += 1
+
+                    # Determine which agent's turn it is
+                    role = AgentRole.BUYER if round_num % 2 == 1 else AgentRole.SELLER
+                    agent = agents[role]
+
+                    print(f"DEBUG: Round {round_num} - {role} turn", file=sys.stderr)
+
+                    # Build dynamic per-round message (Section 7)
+                    round_message = self._build_round_message(role, results, round_num)
+
+                    # Execute round
+                    response_data = await self._execute_single_round(
+                        agent, role, round_message, round_num, max_rounds
+                    )
+
+                    if not response_data:
+                        break  # Error occurred
+
+                    # Store result
+                    results.append({
+                        "round": round_num,
+                        "agent": role,
+                        "response": response_data
+                    })
+
+                    # Emit real-time update
+                    emit_round_update(round_num, role, response_data)
+                    # Check for termination
+                    action = response_data.get("action", "continue")
+                    final_outcome = self._determine_outcome(action, response_data)
+
+                    if final_outcome != NegotiationOutcome.ERROR:
+                        break
+
+                    # Check for convergence and possible extension
+                    if self._should_extend_negotiation(round_num, max_rounds, results):
+                        max_rounds = min(round_num + 3, NegotiationConfig.ABSOLUTE_MAX_ROUNDS)
+                        print(f"DEBUG: Extending negotiation to {max_rounds} rounds due to convergence", file=sys.stderr)
+
+                # Set final outcome if still running
+                if final_outcome == NegotiationOutcome.ERROR:
+                    final_outcome = NegotiationOutcome.MAX_ROUNDS_REACHED
+
+                print(f"DEBUG: Negotiation completed with outcome: {final_outcome}", file=sys.stderr)
+
+            except Exception as e:
+                print(f"ERROR: Negotiation execution failed: {e}", file=sys.stderr)
+                final_outcome = NegotiationOutcome.ERROR
+
+            # Store final outcome for result processing
+            self._final_outcome = final_outcome
+
+            # Update Langfuse trace with input and output data while in trace context
+            try:
+                negotiation_title = "Unknown"
+                if self.negotiation_data and self.negotiation_data.get('negotiation'):
+                    negotiation_title = self.negotiation_data['negotiation'].get('title', 'Unknown')
+
+                trace_input = {
+                    "negotiation_title": negotiation_title,
+                    "negotiation_id": self.args.negotiation_id,
+                    "simulation_run_id": self.args.simulation_run_id,
+                    "technique_id": self.args.technique_id,
+                    "tactic_id": self.args.tactic_id,
+                    "max_rounds": self.args.max_rounds
+                }
+
+                # Create a preview of the results
+                trace_output = {
+                    "final_outcome": final_outcome,
+                    "total_rounds": len(results),
+                    "final_offer": results[-1]["response"].get("offer") if results else None,
+                    "conversation_summary": f"{len(results)} rounds completed"
+                }
+
+                langfuse_client = get_client()
+                langfuse_client.update_current_trace(
+                    input=trace_input,
+                    output=trace_output
                 )
-                
-                if not response_data:
-                    break  # Error occurred
-                
-                # Store result
-                results.append({
-                    "round": round_num,
-                    "agent": role,
-                    "response": response_data
-                })
-                
-                # Emit real-time update
-                emit_round_update(round_num, role, response_data)
-                
-                # Check for termination
-                action = response_data.get("action", "continue")
-                final_outcome = self._determine_outcome(action, response_data)
-                
-                if final_outcome != NegotiationOutcome.ERROR:
-                    break
-                
-                # Prepare next round message
-                if round_num < max_rounds:
-                    current_message = self._prepare_next_message(role, response_data, round_num)
-                
-                # Check for convergence and possible extension
-                if self._should_extend_negotiation(round_num, max_rounds, results):
-                    max_rounds = min(round_num + 3, NegotiationConfig.ABSOLUTE_MAX_ROUNDS)
-                    print(f"DEBUG: Extending negotiation to {max_rounds} rounds due to convergence", file=sys.stderr)
-            
-            # Set final outcome if still running
-            if final_outcome == NegotiationOutcome.ERROR:
-                final_outcome = NegotiationOutcome.MAX_ROUNDS_REACHED
-            
-            print(f"DEBUG: Negotiation completed with outcome: {final_outcome}", file=sys.stderr)
-            
-        except Exception as e:
-            print(f"ERROR: Negotiation execution failed: {e}", file=sys.stderr)
-            final_outcome = NegotiationOutcome.ERROR
-        
-        # Store final outcome for result processing
-        self._final_outcome = final_outcome
-        return results
+                print(f"DEBUG: Updated Langfuse trace with input/output data (in context)", file=sys.stderr)
+            except Exception as e:
+                print(f"WARNING: Failed to update Langfuse trace in context: {e}", file=sys.stderr)
+
+            return results
     
     def _load_existing_conversation(self) -> List[Dict[str, Any]]:
         """Load existing conversation if resuming a negotiation."""
@@ -481,60 +641,30 @@ The response will be parsed as JSON - do not include markdown formatting or code
             # Fresh start
             return "Hallo, guten Tag! Ich freue mich auf unsere Verhandlung."
     
-    async def _execute_single_round(self, agent: Agent, role: str, message: str, 
+    async def _execute_single_round(self, agent: Agent, role: str, message: str,
                                    round_num: int, max_rounds: int) -> Optional[Dict[str, Any]]:
         """Execute a single negotiation round."""
-        span = self.trace.span(
-            name=f"round_{round_num}_{role.lower()}_response",
-            input={
-                "message": message[:200] + "..." if len(message) > 200 else message,
-                "round": round_num,
-                "agent_role": role
-            },
-            metadata={
-                "agent_role": role,
-                "negotiation_round": round_num,
-                "total_rounds": max_rounds,
-            },
-            level="DEFAULT"
-        )
-        
         try:
             # Execute agent
             start_time = time.time()
             result = await Runner.run(agent, message, session=SQLiteSession(f"production_{self.args.simulation_run_id}"))
             execution_time = time.time() - start_time
-            
+
             # Parse response
             response_data = safe_json_parse(result.final_output)
-            
-            # Update span with results
-            span.update(
-                output={
-                    "structured_response": response_data,
-                    "action_taken": response_data.get('action', 'unknown'),
-                    "offer_confidence": response_data.get('offer', {}).get('confidence', 0),
-                },
-                level="DEFAULT",
-                status_message="Round completed successfully"
-            )
-            
-            # Add confidence score
-            confidence = response_data.get('offer', {}).get('confidence', 0)
-            span.score(name="offer_confidence", value=confidence, comment=f"Agent confidence: {confidence}")
-            
+            # Normalize/validate model output to reduce failures and enforce numeric dimension values
+            try:
+                dims = self.negotiation_data.get('dimensions', []) if self.negotiation_data else []
+                response_data = normalize_model_output(response_data, dims)
+            except Exception:
+                # Do not fail the round on normalization issues
+                pass
+
             return response_data
-            
+
         except Exception as e:
             print(f"ERROR: Round {round_num} failed: {e}", file=sys.stderr)
-            span.update(
-                output={"error": str(e)},
-                level="ERROR",
-                status_message=f"Failed: {str(e)}"
-            )
             return None
-        finally:
-            span.end()
     
     def _determine_outcome(self, action: str, response_data: Dict[str, Any]) -> str:
         """Determine if the negotiation should end based on agent action."""
@@ -592,41 +722,83 @@ Make your negotiation response using your complete strategy."""
         """Finalize and format the negotiation results."""
         final_offer = results[-1]["response"].get("offer") if results else None
         outcome = getattr(self, '_final_outcome', NegotiationOutcome.ERROR)
-        success_score = NegotiationOutcome.get_success_score(outcome)
-        
-        # Update trace with final information
-        if self.trace:
-            self.trace.update(
-                output={
-                    "outcome": outcome,
-                    "total_rounds": len(results),
-                    "final_offer": final_offer,
-                    "successful_completion": outcome in [NegotiationOutcome.DEAL_ACCEPTED, NegotiationOutcome.TERMINATED],
-                },
-                level="DEFAULT",
-                status_message=f"Negotiation completed: {outcome}"
-            )
-            
-            self.trace.score(
-                name="negotiation_success",
-                value=success_score,
-                comment=f"Outcome: {outcome}"
-            )
-            
-            # Flush to Langfuse
-            try:
-                self.langfuse.flush()
-                print(f"DEBUG: Trace flushed to Langfuse: {self.trace.get_trace_url()}", file=sys.stderr)
-            except Exception as e:
-                print(f"WARNING: Trace flush failed: {e}", file=sys.stderr)
-        
-        return {
+
+        # Flatten conversation log structure to match frontend expectations
+        conversation_log = []
+        for result in results:
+            response_data = result.get("response", {})
+            conversation_log.append({
+                "round": result.get("round", 0),
+                "agent": result.get("agent", ""),
+                "message": response_data.get("message", ""),
+                "offer": response_data.get("offer", {}),
+                "action": response_data.get("action", "continue"),
+                "internal_analysis": response_data.get("internal_analysis", ""),
+                "batna_assessment": response_data.get("batna_assessment", 0.5),
+                "walk_away_threshold": response_data.get("walk_away_threshold", 0.3)
+            })
+
+        print(f"DEBUG: Flattened conversation log with {len(conversation_log)} rounds", file=sys.stderr)
+        if conversation_log:
+            print(f"DEBUG: Sample conversation entry: {json.dumps(conversation_log[0], indent=2)[:200]}...", file=sys.stderr)
+
+        # Create the final result
+        final_result = {
             "outcome": outcome,
             "totalRounds": len(results),
             "finalOffer": final_offer,
-            "conversationLog": results,
-            "langfuseTraceId": self.trace.id if self.trace else None
+            "conversationLog": conversation_log,  # Use flattened structure
+            "langfuseTraceId": getattr(self, '_trace_id', None)
         }
+
+        # Update Langfuse trace with complete input/output data
+        try:
+            langfuse_client = get_client()
+            
+            # Prepare input data for tracing
+            trace_input = {
+                "negotiation_id": self.args.negotiation_id,
+                "simulation_run_id": self.args.simulation_run_id,
+                "technique_id": self.args.technique_id,
+                "tactic_id": self.args.tactic_id,
+                "max_rounds": self.args.max_rounds,
+                "negotiation_context": self.negotiation_data.get('context', {}) if self.negotiation_data else {},
+                "agents_config": {
+                    "buyer_role": self.negotiation_data.get('userRole') if self.negotiation_data else None,
+                    "negotiation_type": self.negotiation_data.get('negotiationType') if self.negotiation_data else None
+                }
+            }
+            
+            # Prepare output data for tracing
+            trace_output = {
+                "outcome": outcome,
+                "total_rounds": len(results),
+                "final_offer": final_offer,
+                "success": outcome not in ['MAX_ROUNDS_REACHED', 'ERROR'],
+                "conversation_summary": f"Negotiation completed with {len(results)} rounds, outcome: {outcome}"
+            }
+            
+            # Add metadata
+            trace_metadata = {
+                "service": "negotiation_agent_service",
+                "version": "1.0.0",
+                "langfuse_prompt_name": str(self.langfuse_prompt.name) if self.langfuse_prompt else None,
+                "langfuse_prompt_version": str(self.langfuse_prompt.version) if self.langfuse_prompt else None,
+            }
+            
+            langfuse_client.update_current_trace(
+                input=trace_input,
+                output=trace_output,
+                metadata=trace_metadata,
+                tags=["negotiation", "openai-agents", "production"],
+                session_id=self.args.simulation_run_id,
+                user_id=self.args.negotiation_id
+            )
+            print(f"DEBUG: Updated Langfuse trace with complete input/output data", file=sys.stderr)
+        except Exception as e:
+            print(f"WARNING: Failed to update Langfuse trace with input/output: {e}", file=sys.stderr)
+
+        return final_result
 
 
 async def main():

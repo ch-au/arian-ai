@@ -15,7 +15,7 @@ This document outlines the production-ready integration of OpenAI Agents with La
 
 ### Key Files
 
-- `server/services/negotiation-engine-production.ts` - Production engine
+- `docs/archive/negotiation-engine-production.ts` - Production engine reference
 - `test_langfuse_fixed.py` - Working implementation example
 - `.env` - Required environment variables
 

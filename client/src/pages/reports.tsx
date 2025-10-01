@@ -87,7 +87,7 @@ export default function Reports() {
     },
   ]);
 
-  const { data: agents } = useQuery({
+  const { data: agents } = useQuery<any[]>({
     queryKey: ["/api/agents"],
   });
 

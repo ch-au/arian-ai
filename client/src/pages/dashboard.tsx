@@ -9,15 +9,15 @@ import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 
 export default function Dashboard() {
-  const { data: metrics } = useQuery({
+  const { data: metrics } = useQuery<any>({
     queryKey: ["/api/dashboard/metrics"],
   });
 
-  const { data: successTrends } = useQuery({
+  const { data: successTrends } = useQuery<any[]>({
     queryKey: ["/api/dashboard/success-trends"],
   });
 
-  const { data: topAgents } = useQuery({
+  const { data: topAgents } = useQuery<any[]>({
     queryKey: ["/api/dashboard/top-agents"],
   });
 

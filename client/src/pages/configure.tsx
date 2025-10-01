@@ -32,7 +32,7 @@ export default function Configure() {
   const isEditMode = !!editId;
   
   // Load existing negotiation data if in edit mode
-  const { data: existingNegotiation, isLoading: isLoadingExisting } = useQuery({
+  const { data: existingNegotiation, isLoading: isLoadingExisting } = useQuery<any>({
     queryKey: [`/api/negotiations/${editId}`],
     enabled: isEditMode,
   });

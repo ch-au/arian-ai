@@ -1,0 +1,13 @@
+# OpenAI Agents SDK + Langfuse tracing deps
+# Pin to versions available on PyPI as of Sept 2025
+openai-agents==0.3.1
+langfuse>=2.47.0
+nest_asyncio>=1.6.0
+python-dotenv>=1.0.1
+
+# Logfire instrumentation (includes OpenTelemetry patching for OpenAI Agents)
+pydantic-ai[logfire]>=0.0.20
+
+# Explicit OTLP exporter to ensure spans reach Langfuse
+opentelemetry-sdk>=1.26.0
+opentelemetry-exporter-otlp-proto-http>=1.26.0

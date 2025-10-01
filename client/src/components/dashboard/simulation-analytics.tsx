@@ -360,11 +360,11 @@ export const LiveNegotiationStats: React.FC<{ currentNegotiation: any }> = ({
   if (!currentNegotiation || !currentNegotiation.rounds.length) return null;
 
   const lastRound = currentNegotiation.rounds[currentNegotiation.rounds.length - 1];
-  const offerHistory = currentNegotiation.rounds.filter(r => r.offer?.dimension_values?.Price);
+  const offerHistory = currentNegotiation.rounds.filter((r: any) => r.offer?.dimension_values?.Price);
   
   const priceRange = offerHistory.length > 1 ? {
-    min: Math.min(...offerHistory.map(r => r.offer.dimension_values.Price)),
-    max: Math.max(...offerHistory.map(r => r.offer.dimension_values.Price)),
+    min: Math.min(...offerHistory.map((r: any) => r.offer.dimension_values.Price)),
+    max: Math.max(...offerHistory.map((r: any) => r.offer.dimension_values.Price)),
     current: lastRound?.offer?.dimension_values?.Price || 0
   } : null;
 

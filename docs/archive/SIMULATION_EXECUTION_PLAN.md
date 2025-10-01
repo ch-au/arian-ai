@@ -258,7 +258,7 @@ interface ResumeRequest {
 1. **Database Schema**: Add enhanced simulation_runs and simulation_queue tables
 2. **Queue API**: Create queue management endpoints  
 3. **Basic UI**: Simulation monitor page with queue display
-4. **Integration**: Connect with existing negotiation-engine-production.ts
+4. **Integration**: Connect with existing archive version of the production negotiation engine (`docs/archive/negotiation-engine-production.ts`)
 
 ### Phase 2: Execution Engine (1.5 days)
 1. **Queue Processor**: Background job to execute simulations sequentially

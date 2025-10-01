@@ -12,6 +12,7 @@ import {
   InsertPerformanceMetric,
 } from "@shared/schema";
 import type { PythonNegotiationResult } from './python-negotiation-service';
+import { createRequestLogger } from "./logger";
 
 export interface NegotiationUpdate {
   type: 'negotiation_started' | 'round_completed' | 'negotiation_completed' | 'error';
@@ -22,31 +23,32 @@ export interface NegotiationUpdate {
 export class NegotiationEngine {
   private wss: WebSocketServer;
   private activeNegotiations: Map<string, AbortController> = new Map();
+  private log = createRequestLogger('service:negotiation-engine');
 
   constructor(server: Server) {
     this.wss = new WebSocketServer({ 
       server, 
       path: '/ws',
-      verifyClient: (info) => {
+      verifyClient: (_info: any) => {
         // Add authentication here if needed
         return true;
       }
     });
 
     this.wss.on('connection', (ws: WebSocket) => {
-      console.log('WebSocket client connected');
+      this.log.debug({ event: 'ws_connected' }, 'WebSocket client connected');
       
       ws.on('message', (message) => {
         try {
           const data = JSON.parse(message.toString());
           this.handleWebSocketMessage(ws, data);
         } catch (error) {
-          console.error('Invalid WebSocket message:', error);
+          this.log.warn({ err: error }, 'Invalid WebSocket message');
         }
       });
 
       ws.on('close', () => {
-        console.log('WebSocket client disconnected');
+        this.log.debug({ event: 'ws_disconnected' }, 'WebSocket client disconnected');
       });
     });
   }
@@ -92,7 +94,7 @@ export class NegotiationEngine {
       await this.runSimulationMatrix(negotiationId);
 
     } catch (error) {
-      console.error("Failed to start negotiation:", error);
+      this.log.error({ err: error, negotiationId }, "Failed to start negotiation");
       this.broadcast({
         type: 'error',
         negotiationId,
@@ -108,7 +110,7 @@ export class NegotiationEngine {
       try {
         await this.runSingleSimulation(run);
       } catch (error) {
-        console.error(`Simulation run ${run.id} failed:`, error);
+        this.log.error({ err: error, runId: run.id }, "Simulation run failed");
         await storage.updateSimulationRun(run.id, { status: 'failed' });
       }
     }
@@ -124,7 +126,7 @@ export class NegotiationEngine {
     const { PythonNegotiationService } = await import('./python-negotiation-service');
     
     try {
-      console.log(`Running simulation ${run.id} using Python OpenAI Agents`);
+      this.log.info({ runId: run.id }, 'Running simulation with Python OpenAI Agents');
       
       // Call Python agents service
       const result = await PythonNegotiationService.runNegotiation(
@@ -149,7 +151,7 @@ export class NegotiationEngine {
       await this.processSimulationResult(negotiation, result);
       
     } catch (error) {
-      console.error(`Python agents simulation failed for run ${run.id}:`, error);
+      this.log.error({ err: error, runId: run.id }, 'Python agents simulation failed');
       
       // Update run status to failed
       await storage.updateSimulationRun(run.id, { status: 'failed' });
@@ -169,7 +171,7 @@ export class NegotiationEngine {
 
   private async processSimulationResult(negotiation: Negotiation, result: PythonNegotiationResult): Promise<void> {
     try {
-      console.log(`Processing simulation result for negotiation ${negotiation.id}`);
+      this.log.debug({ negotiationId: negotiation.id }, 'Processing simulation result');
       
       // The PythonNegotiationService already handles database updates
       // So we just need to broadcast the completion
@@ -186,7 +188,7 @@ export class NegotiationEngine {
       });
       
     } catch (error) {
-      console.error('Error processing simulation result:', error);
+      this.log.error({ err: error, negotiationId: negotiation.id }, 'Error processing simulation result');
       throw error;
     }
   }
@@ -218,7 +220,8 @@ export class NegotiationEngine {
             negotiationHistory,
             currentRound,
             negotiation.maxRounds || 10,
-            negotiation
+            negotiation,
+            run.id
           );
 
           await this.recordNegotiationRound(
@@ -264,7 +267,8 @@ export class NegotiationEngine {
             negotiationHistory,
             currentRound,
             negotiation.maxRounds || 10,
-            negotiation
+            negotiation,
+            run.id
           );
 
           await this.recordNegotiationRound(
@@ -331,7 +335,7 @@ export class NegotiationEngine {
       });
 
     } catch (error) {
-      console.error("Negotiation loop error:", error);
+      this.log.error({ err: error, negotiationId: negotiation.id }, 'Negotiation loop error');
       this.broadcast({
         type: 'error',
         negotiationId: negotiation.id,
@@ -350,7 +354,8 @@ export class NegotiationEngine {
     negotiationHistory: NegotiationMessage[],
     roundNumber: number,
     maxRounds: number,
-    negotiation: Negotiation
+    negotiation: Negotiation,
+    simulationRunId: string
   ) {
     const startTime = Date.now();
 
@@ -375,7 +380,7 @@ export class NegotiationEngine {
       
       return response;
     } catch (error) {
-      console.error(`Failed to execute negotiation round for ${role}:`, error);
+      this.log.error({ err: error, role, simulationRunId }, 'Failed to execute negotiation round');
       throw error;
     }
   }
@@ -405,10 +410,10 @@ export class NegotiationEngine {
       negotiationId: simulationRunId, // This is incorrect, but we'll fix it later
       agentId,
       tacticId: null, // Could be determined based on response analysis
-      effectivenessScore: (response.confidence * 100),
+      effectivenessScore: (response.confidence * 100).toString(),
       responseTime: response.responseTime,
       apiTokensUsed: response.tokensUsed,
-      apiCost: apiCost,
+      apiCost: apiCost.toString(),
     };
 
     await storage.createPerformanceMetric(performanceData);

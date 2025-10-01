@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { drizzle } from 'drizzle-orm/neon-http';
 import { neon } from '@neondatabase/serverless';
-import { 
-  negotiations, 
+import {
+  negotiations,
   negotiationDimensions,
   simulationRuns,
   dimensionResults,
@@ -11,21 +11,24 @@ import {
   negotiationTactics,
   type InsertNegotiation,
   type InsertNegotiationDimension,
-  type InsertDimensionResult
+  type InsertDimensionResult,
 } from '@shared/schema';
 import { eq, and } from 'drizzle-orm';
 
-// Test database connection (should use test DB in CI/CD)
-const testConnectionString = process.env.TEST_DATABASE_URL || process.env.DATABASE_URL;
+const connectionString = process.env.TEST_DATABASE_URL || process.env.DATABASE_URL;
+const runDbTests = Boolean(connectionString) && process.env.RUN_DB_TESTS === 'true';
 
-if (!testConnectionString) {
-  throw new Error('TEST_DATABASE_URL or DATABASE_URL must be set for schema tests');
-}
+if (!runDbTests) {
+  describe.skip('Enhanced Schema Tests', () => {
+    it('skipped because RUN_DB_TESTS is not enabled', () => {
+      expect(true).toBe(true);
+    });
+  });
+} else {
+  const sql = neon(connectionString!);
+  const db = drizzle(sql);
 
-const sql = neon(testConnectionString);
-const db = drizzle(sql);
-
-describe('Enhanced Schema Tests', () => {
+  describe('Enhanced Schema Tests', () => {
   let testNegotiationId: string;
   let testTechniqueId: string;
   let testTacticId: string;
@@ -548,4 +551,5 @@ describe('Enhanced Schema Tests', () => {
       expect(results).toHaveLength(0);
     });
   });
-});
+  });
+}

@@ -5,8 +5,9 @@
 
 import { db } from '../storage';
 import { simulationQueue, simulationRuns, negotiations, influencingTechniques, negotiationTactics, personalityTypes } from '../../shared/schema';
-import { eq, and, or, lt, count, sum } from 'drizzle-orm';
+import { eq, and, or, lt, count, sum, desc } from 'drizzle-orm';
 import { PythonNegotiationService } from './python-negotiation-service';
+import { createRequestLogger } from './logger';
 
 // Import WebSocket functionality
 let negotiationEngine: any = null;
@@ -18,7 +19,7 @@ export function setNegotiationEngine(engine: any) {
 
 // WebSocket event types
 export interface SimulationEvent {
-  type: 'simulation_started' | 'simulation_completed' | 'simulation_failed' | 'queue_progress' | 'queue_completed' | 'negotiation_round';
+  type: 'simulation_started' | 'simulation_completed' | 'simulation_failed' | 'simulation_stopped' | 'queue_progress' | 'queue_completed' | 'negotiation_round';
   queueId: string;
   negotiationId: string;
   data: any;
@@ -63,6 +64,11 @@ export interface ExecuteRequest {
 }
 
 export class SimulationQueueService {
+  private static log = createRequestLogger('service:simulation-queue')
+  private static processingQueues = new Set<string>()
+  private static processingInterval: NodeJS.Timeout | null = null;
+  // Consider a running simulation stale if no completion after this duration
+  private static readonly STALE_RUNNING_MS = 10 * 60 * 1000; // 10 minutes
   
   /**
    * Broadcast simulation event via WebSocket
@@ -180,6 +186,21 @@ export class SimulationQueueService {
     
     return queue.id;
   }
+
+  /**
+   * Get queues by negotiation ID
+   */
+  static async getQueuesByNegotiation(negotiationId: string): Promise<any[]> {
+    this.log.info(`Getting queues for negotiation ${negotiationId}`);
+    
+    const queues = await db
+      .select()
+      .from(simulationQueue)
+      .where(eq(simulationQueue.negotiationId, negotiationId))
+      .orderBy(desc(simulationQueue.createdAt));
+    
+    return queues;
+  }
   
   /**
    * Get queue status with current progress
@@ -210,19 +231,42 @@ export class SimulationQueueService {
       )
     );
     
+    // Calculate actual counts from simulation results (not from stale queue table)
+    const [completedCount] = await db
+      .select({ count: count(simulationRuns.id) })
+      .from(simulationRuns)
+      .where(and(
+        eq(simulationRuns.queueId, queueId),
+        eq(simulationRuns.status, 'completed')
+      ));
+    
+    const [failedCount] = await db
+      .select({ count: count(simulationRuns.id) })
+      .from(simulationRuns)
+      .where(and(
+        eq(simulationRuns.queueId, queueId),
+        or(
+          eq(simulationRuns.status, 'failed'),
+          eq(simulationRuns.status, 'timeout')
+        )
+      ));
+    
+    const actualCompletedCount = completedCount.count || 0;
+    const actualFailedCount = failedCount.count || 0;
+    
     // Calculate estimated time remaining
     const avgDuration = 60; // seconds
-    const remainingCount = queue.totalSimulations - (queue.completedCount || 0);
+    const remainingCount = queue.totalSimulations - actualCompletedCount - actualFailedCount;
     const estimatedTimeRemaining = remainingCount * avgDuration;
     
-    const progressPercentage = Math.round(((queue.completedCount || 0) / queue.totalSimulations) * 100);
+    const progressPercentage = Math.round(((actualCompletedCount + actualFailedCount) / queue.totalSimulations) * 100);
     
     return {
       id: queue.id,
       status: queue.status as any,
       totalSimulations: queue.totalSimulations,
-      completedCount: queue.completedCount || 0,
-      failedCount: queue.failedCount || 0,
+      completedCount: actualCompletedCount,
+      failedCount: actualFailedCount,
       estimatedTimeRemaining,
       currentSimulation,
       progressPercentage,
@@ -243,7 +287,6 @@ export class SimulationQueueService {
         eq(simulationRuns.queueId, queueId),
         eq(simulationRuns.status, 'failed')
       ))
-      .limit(count)
       .returning({ id: simulationRuns.id });
     
     console.log(`[SIMULATION-QUEUE] Reset ${updatedRows.length} simulations to pending`);
@@ -251,9 +294,155 @@ export class SimulationQueueService {
   }
 
   /**
+   * Restart failed/timeout simulations by setting them back to pending
+   */
+  static async restartFailedSimulations(queueId: string): Promise<number> {
+    this.log.info(`Restarting failed/timeout simulations for queue ${queueId}`);
+    
+    const updatedRows = await db.update(simulationRuns)
+      .set({ 
+        status: 'pending',
+        actualCost: '0'
+      })
+      .where(and(
+        eq(simulationRuns.queueId, queueId),
+        or(
+          eq(simulationRuns.status, 'failed'),
+          eq(simulationRuns.status, 'timeout')
+        )
+      ))
+      .returning({ id: simulationRuns.id, runNumber: simulationRuns.runNumber });
+    
+    if (updatedRows.length > 0) {
+      // Update queue status to pending if it was completed
+      await db.update(simulationQueue)
+        .set({ status: 'pending' })
+        .where(eq(simulationQueue.id, queueId));
+    }
+    
+    this.log.info(`Restarted ${updatedRows.length} failed simulations`);
+    return updatedRows.length;
+  }
+
+  /**
+   * Start the background processor if not already running
+   */
+  static startBackgroundProcessor(): void {
+    if (this.processingInterval) {
+      return; // Already running
+    }
+    
+    this.log.info('Starting background queue processor');
+    this.processingInterval = setInterval(async () => {
+      try {
+        await this.processAllQueues();
+      } catch (error) {
+        this.log.error({ err: error }, 'Background processor error');
+      }
+    }, 2000); // Check every 2 seconds
+  }
+
+  /**
+   * Stop the background processor
+   */
+  static stopBackgroundProcessor(): void {
+    if (this.processingInterval) {
+      clearInterval(this.processingInterval);
+      this.processingInterval = null;
+      this.log.info('Stopped background queue processor');
+    }
+  }
+
+  /**
+   * Process all active queues
+   */
+  static async processAllQueues(): Promise<void> {
+    // First, mark stale running simulations as timeout
+    await this.timeoutStaleRunningSimulations();
+
+    // Find all queues that should be running
+    const activeQueues = await db
+      .select({ id: simulationQueue.id })
+      .from(simulationQueue)
+      .where(or(
+        eq(simulationQueue.status, 'pending'),
+        eq(simulationQueue.status, 'running')
+      ));
+
+    for (const queue of activeQueues) {
+      if (!this.processingQueues.has(queue.id)) {
+        this.processQueue(queue.id);
+      }
+    }
+  }
+
+  /**
+   * Process a single queue continuously
+   */
+  static async processQueue(queueId: string): Promise<void> {
+    if (this.processingQueues.has(queueId)) {
+      return; // Already processing
+    }
+
+    this.processingQueues.add(queueId);
+    this.log.info(`Starting queue processor for ${queueId}`);
+
+    try {
+      while (true) {
+        const hasNext = await this.executeNext(queueId);
+        if (!hasNext) {
+          this.log.info(`Queue ${queueId} completed - no more simulations`);
+          break;
+        }
+        
+        // Small delay between simulations to prevent overwhelming the system
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    } catch (error) {
+      this.log.error({ err: error, queueId }, 'Queue processing failed');
+      await this.updateQueueStatus(queueId, 'failed');
+    } finally {
+      this.processingQueues.delete(queueId);
+      this.log.info(`Stopped queue processor for ${queueId}`);
+    }
+  }
+
+  /**
+   * Start/resume a queue - sets status to pending and begins execution
+   */
+  static async startQueue(queueId: string): Promise<void> {
+    this.log.info(`Starting/resuming queue ${queueId}`);
+    
+    // Check if there are any pending simulations
+    const [pendingCount] = await db
+      .select({ count: count(simulationRuns.id) })
+      .from(simulationRuns)
+      .where(and(
+        eq(simulationRuns.queueId, queueId),
+        eq(simulationRuns.status, 'pending')
+      ));
+    
+    if ((pendingCount.count || 0) === 0) {
+      throw new Error('No pending simulations to start. Try restarting failed simulations first.');
+    }
+    
+    // Set queue status to pending
+    await db.update(simulationQueue)
+      .set({ status: 'pending' })
+      .where(eq(simulationQueue.id, queueId));
+    
+    this.log.info(`Queue ${queueId} is now ready to start with ${pendingCount.count} pending simulations`);
+    
+    // Ensure background processor is running
+    this.startBackgroundProcessor();
+  }
+
+  /**
    * Execute next simulation in queue
    */
   static async executeNext(queueId: string): Promise<boolean> {
+    this.log.info(`Checking for next simulation in queue ${queueId}`);
+    
     // Get next pending simulation
     let [nextSimulation] = await db.select()
       .from(simulationRuns)
@@ -266,26 +455,17 @@ export class SimulationQueueService {
       .orderBy(simulationRuns.executionOrder)
       .limit(1);
     
-    // If no pending simulations, look for failed simulations that can be retried
-    if (!nextSimulation) {
-      [nextSimulation] = await db.select()
-        .from(simulationRuns)
-        .where(
-          and(
-            eq(simulationRuns.queueId, queueId),
-            eq(simulationRuns.status, 'failed')
-            // Note: For now, retry all failed simulations to debug the issue
-          )
-        )
-        .orderBy(simulationRuns.executionOrder)
-        .limit(1);
-    }
+    // Do NOT auto-retry failed simulations. They are only retried via the restart-failed endpoint.
     
     if (!nextSimulation) {
       // No more simulations to run (no pending, no retryable failed)
+      this.log.info(`No more simulations to run in queue ${queueId}, marking as completed`);
       await this.updateQueueStatus(queueId, 'completed');
       return false;
     }
+    
+    this.log.info(`Found simulation to execute: ${nextSimulation.id} (Run #${nextSimulation.runNumber})`);
+    
     
     // Mark simulation as running (reset if it was failed)
     await db.update(simulationRuns)
@@ -336,80 +516,71 @@ export class SimulationQueueService {
         });
       };
 
-      // Execute the negotiation using Python service with mock data for testing
-      let result;
-      try {
-        result = await PythonNegotiationService.runNegotiation({
-          negotiationId: nextSimulation.negotiationId || '',
-          simulationRunId: nextSimulation.id,
-          techniqueId: nextSimulation.techniqueId || '',
-          tacticId: nextSimulation.tacticId || '',
-          maxRounds: 6,
-          queueId: queueId
-        }, onRoundUpdate);
-      } catch (error) {
-        // If Python fails, create a mock successful result for testing
-        console.log(`[SIMULATION-QUEUE] Python failed, creating mock result for testing:`, error.message);
-        
-        // Emit mock round updates to test the real-time feature
-        setTimeout(() => {
-          onRoundUpdate({
-            round: 1,
-            agent: 'BUYER',
-            message: 'Hello, I would like to start with an offer of €10,000 with 10 day delivery.',
-            offer: { dimension_values: { Price: 10000, Delivery: 10, Payment_Terms: 'Net 30' } }
-          });
-        }, 500);
-        
-        setTimeout(() => {
-          onRoundUpdate({
-            round: 2,
-            agent: 'SELLER', 
-            message: 'Thank you for your offer. I can do €11,500 with the same delivery terms.',
-            offer: { dimension_values: { Price: 11500, Delivery: 10, Payment_Terms: 'Net 30' } }
-          });
-        }, 1500);
-        
-        setTimeout(() => {
-          onRoundUpdate({
-            round: 3,
-            agent: 'BUYER',
-            message: 'Let me meet you in the middle at €10,750. That works for our budget.',
-            offer: { dimension_values: { Price: 10750, Delivery: 10, Payment_Terms: 'Net 30' } }
-          });
-        }, 2500);
-        
-        // Create mock result
-        result = {
-          outcome: 'DEAL_ACCEPTED',
-          totalRounds: 3,
-          finalOffer: {
-            dimension_values: { Price: 10750, Delivery: 10, Payment_Terms: 'Net 30' }
-          },
-          conversationLog: [
-            { round: 1, agent: 'BUYER', response: { message: 'Mock conversation', offer: {} } },
-            { round: 2, agent: 'SELLER', response: { message: 'Mock conversation', offer: {} } },
-            { round: 3, agent: 'BUYER', response: { message: 'Mock conversation', offer: {} } }
-          ]
-        };
-        
-        // Wait for mock rounds to complete
-        await new Promise(resolve => setTimeout(resolve, 3000));
+      // Execute the negotiation using Python service
+      this.log.info(`Starting negotiation with Python service for simulation ${nextSimulation.id}`);
+      
+      // Check if simulation was stopped before we start
+      const [currentSim] = await db.select()
+        .from(simulationRuns)
+        .where(eq(simulationRuns.id, nextSimulation.id));
+      
+      if (!currentSim || currentSim.status === 'failed') {
+        this.log.info(`Simulation ${nextSimulation.id} was stopped before execution, skipping`);
+        return false;
       }
       
-      // Calculate estimated cost (rough estimate: $0.12 per simulation)
-      const estimatedCost = 0.12;
+      const result = await PythonNegotiationService.runNegotiation({
+        negotiationId: nextSimulation.negotiationId || '',
+        simulationRunId: nextSimulation.id,
+        techniqueId: nextSimulation.techniqueId || '',
+        tacticId: nextSimulation.tacticId || '',
+        maxRounds: 6,
+        queueId: queueId
+      }, onRoundUpdate);
       
-      // Mark simulation as completed 
+      this.log.info(`Negotiation completed with outcome: ${result.outcome}, rounds: ${result.totalRounds}`);
+
+      // Guard against stop: if this run was marked non-running meanwhile, skip updating results
+      const [latest] = await db.select({ status: simulationRuns.status })
+        .from(simulationRuns)
+        .where(eq(simulationRuns.id, nextSimulation.id));
+      if (!latest || latest.status !== 'running') {
+        this.log.info({ simulationId: nextSimulation.id, status: latest?.status }, 'Skipping result write; run was stopped externally');
+        return true; // Continue processing other simulations
+      }
+      
+      // Calculate actual cost based on rounds (more accurate than fixed estimate)
+      const estimatedCostPerRound = 0.006; // ~$0.006 per round based on token usage
+      const actualCost = result.totalRounds * estimatedCostPerRound;
+      
+      // Determine proper status based on outcome
+      let status = 'failed'; // Default fallback
+      if (result.outcome === 'DEAL_ACCEPTED' || result.outcome === 'TERMINATED' || result.outcome === 'WALK_AWAY') {
+        status = 'completed';
+      } else if (result.outcome === 'PAUSED') {
+        status = 'paused';
+      } else if (result.outcome === 'MAX_ROUNDS_REACHED') {
+        status = 'timeout';
+      } else {
+        status = 'failed';
+      }
+      
+      // Mark simulation as completed with real data
+      const normalizedConversationLog = Array.isArray(result.conversationLog)
+        ? result.conversationLog
+        : [];
+
+      const dimensionValues = result.finalOffer?.dimension_values ?? {};
+
       await db.update(simulationRuns)
-        .set({ 
-          status: result.outcome === 'DEAL_ACCEPTED' ? 'completed' : 
-                  result.outcome === 'TERMINATED' ? 'failed' : 'timeout',
+        .set({
+          status: status,
           completedAt: new Date(),
-          conversationLog: JSON.stringify(result.conversationLog),
+          conversationLog: normalizedConversationLog,
           totalRounds: result.totalRounds,
-          dimensionResults: result.finalOffer ? JSON.stringify(result.finalOffer.dimension_values || {}) : null,
-          actualCost: estimatedCost.toString(),
+          dimensionResults: dimensionValues,
+          actualCost: actualCost.toString(),
+          outcome: result.outcome, // Store the detailed outcome
           crashRecoveryData: null // Clear recovery data
         })
         .where(eq(simulationRuns.id, nextSimulation.id));
@@ -445,7 +616,7 @@ export class SimulationQueueService {
           runNumber: nextSimulation.runNumber,
           outcome: result.outcome,
           totalRounds: result.totalRounds,
-          cost: estimatedCost,
+          cost: actualCost,
           completed: completedCount.count || 0,
           total: (await this.getQueueStatus(queueId)).totalSimulations
         }
@@ -485,7 +656,7 @@ export class SimulationQueueService {
       return true;
       
     } catch (error) {
-      console.error(`Simulation ${nextSimulation.id} failed:`, error);
+      this.log.error({ err: error, simulationId: nextSimulation.id }, `Simulation ${nextSimulation.id} failed`);
       
       // Increment retry count
       const newRetryCount = (nextSimulation.retryCount || 0) + 1;
@@ -591,22 +762,82 @@ export class SimulationQueueService {
   }
   
   /**
-   * Stop queue execution (mark remaining as cancelled)
+   * Stop queue execution (mark remaining as cancelled and stop running simulations)
    */
   static async stopQueue(queueId: string): Promise<void> {
-    // Mark all pending simulations as cancelled
-    await db.update(simulationRuns)
-      .set({ status: 'failed' })
+    this.log.info(`Stopping queue ${queueId} - cancelling pending and running simulations`);
+    // Fetch the queue to get negotiation id
+    const [queue] = await db.select({ id: simulationQueue.id, negotiationId: simulationQueue.negotiationId, totalSimulations: simulationQueue.totalSimulations })
+      .from(simulationQueue)
+      .where(eq(simulationQueue.id, queueId));
+    
+    // Mark all pending AND running simulations as failed/cancelled
+    const updatedRuns = await db.update(simulationRuns)
+      .set({ 
+        status: 'failed',
+        completedAt: new Date() // Mark as completed so they don't get picked up again
+      })
       .where(
         and(
           eq(simulationRuns.queueId, queueId),
-          eq(simulationRuns.status, 'pending')
+          or(
+            eq(simulationRuns.status, 'pending'),
+            eq(simulationRuns.status, 'running')
+          )
         )
-      );
+      )
+      .returning({ id: simulationRuns.id, status: simulationRuns.status, runNumber: simulationRuns.runNumber });
     
-    await db.update(simulationQueue)
-      .set({ status: 'completed' })
-      .where(eq(simulationQueue.id, queueId));
+    this.log.info(`Stopped ${updatedRuns.length} simulations in queue ${queueId}`);
+    
+    // Update queue status using helper (also syncs parent negotiation)
+    await this.updateQueueStatus(queueId, 'completed');
+    
+    // Broadcast stop event for any running simulations
+    updatedRuns.forEach(run => {
+      this.broadcastEvent({
+        type: 'simulation_stopped',
+        queueId,
+        negotiationId: queue?.negotiationId || '',
+        data: {
+          simulationId: run.id,
+          runNumber: run.runNumber,
+          reason: 'manually_stopped'
+        }
+      });
+    });
+
+    // Broadcast queue completion/progress state
+    try {
+      const status = await this.getQueueStatus(queueId);
+      if (status.completedCount + status.failedCount >= status.totalSimulations) {
+        this.broadcastEvent({
+          type: 'queue_completed',
+          queueId,
+          negotiationId: queue?.negotiationId || '',
+          data: {
+            totalSimulations: status.totalSimulations,
+            completed: status.completedCount,
+            failed: status.failedCount,
+            totalCost: status.actualCost
+          }
+        });
+      } else {
+        this.broadcastEvent({
+          type: 'queue_progress',
+          queueId,
+          negotiationId: queue?.negotiationId || '',
+          data: {
+            completed: status.completedCount,
+            failed: status.failedCount,
+            total: status.totalSimulations,
+            percentage: status.progressPercentage
+          }
+        });
+      }
+    } catch (err) {
+      this.log.warn({ err, queueId }, 'Failed to broadcast queue status after stop');
+    }
   }
   
   /**
@@ -706,10 +937,32 @@ export class SimulationQueueService {
     });
     
     // Convert string costs to numbers for frontend compatibility
-    return results.map(result => ({
-      ...result,
-      actualCost: result.actualCost ? parseFloat(result.actualCost) : 0
-    }));
+    return results.map(result => {
+      let parsedConversationLog: any = result.conversationLog;
+      if (typeof parsedConversationLog === 'string') {
+        try {
+          parsedConversationLog = JSON.parse(parsedConversationLog);
+        } catch (error) {
+          parsedConversationLog = [];
+        }
+      }
+
+      let parsedDimensionResults: any = result.dimensionResults;
+      if (typeof parsedDimensionResults === 'string') {
+        try {
+          parsedDimensionResults = JSON.parse(parsedDimensionResults);
+        } catch (error) {
+          parsedDimensionResults = {};
+        }
+      }
+
+      return {
+        ...result,
+        conversationLog: parsedConversationLog || [],
+        dimensionResults: parsedDimensionResults || {},
+        actualCost: result.actualCost ? parseFloat(result.actualCost) : 0
+      };
+    });
   }
 
   /**
@@ -734,7 +987,31 @@ export class SimulationQueueService {
       .where(eq(simulationRuns.negotiationId, negotiationId))
       .orderBy(simulationRuns.executionOrder);
       
-      return results;
+      return results.map(result => {
+        let parsedConversationLog: any = result.conversationLog;
+        if (typeof parsedConversationLog === 'string') {
+          try {
+            parsedConversationLog = JSON.parse(parsedConversationLog);
+          } catch (error) {
+            parsedConversationLog = [];
+          }
+        }
+
+        let parsedDimensionResults: any = result.dimensionResults;
+        if (typeof parsedDimensionResults === 'string') {
+          try {
+            parsedDimensionResults = JSON.parse(parsedDimensionResults);
+          } catch (error) {
+            parsedDimensionResults = {};
+          }
+        }
+
+        return {
+          ...result,
+          conversationLog: parsedConversationLog || [],
+          dimensionResults: parsedDimensionResults || {}
+        };
+      });
     } catch (error) {
       console.log(`No simulation results found for negotiation ${negotiationId}`);
       return [];
@@ -749,7 +1026,7 @@ export class SimulationQueueService {
       const [queue] = await db.select({ id: simulationQueue.id })
         .from(simulationQueue)
         .where(eq(simulationQueue.negotiationId, negotiationId))
-        .orderBy(simulationQueue.createdAt) // Get the latest queue
+        .orderBy(desc(simulationQueue.createdAt)) // Get the latest queue
         .limit(1);
       
       return queue?.id || null;
@@ -762,14 +1039,127 @@ export class SimulationQueueService {
   private static async updateQueueStatus(queueId: string, status: string): Promise<void> {
     const updates: any = { status };
     
-    if (status === 'running' && status !== 'running') {
+    // Update queue timestamps
+    if (status === 'running') {
       updates.startedAt = new Date();
     } else if (status === 'completed') {
       updates.completedAt = new Date();
+    } else if (status === 'paused') {
+      updates.pausedAt = new Date();
     }
     
-    await db.update(simulationQueue)
+    // Apply queue status update
+    const [updatedQueue] = await db.update(simulationQueue)
       .set(updates)
-      .where(eq(simulationQueue.id, queueId));
+      .where(eq(simulationQueue.id, queueId))
+      .returning({ id: simulationQueue.id, negotiationId: simulationQueue.negotiationId });
+
+    // Best-effort sync of parent negotiation.status for dashboard consistency
+    try {
+      if (updatedQueue?.negotiationId) {
+        let negotiationStatus: 'running' | 'completed' | 'pending' | 'failed' | 'configured' = 'pending';
+        if (status === 'running') negotiationStatus = 'running';
+        else if (status === 'completed') negotiationStatus = 'completed';
+        else if (status === 'failed') negotiationStatus = 'failed';
+        else if (status === 'paused') negotiationStatus = 'running'; // treat paused as running for overview
+
+        await db.update(negotiations)
+          .set({ status: negotiationStatus })
+          .where(eq(negotiations.id, updatedQueue.negotiationId));
+      }
+    } catch (err) {
+      this.log.warn({ err, queueId }, 'Failed to sync negotiation status');
+    }
+  }
+
+  /**
+   * Mark stale running simulations as timeout
+   */
+  private static async timeoutStaleRunningSimulations(): Promise<void> {
+    try {
+      const cutoff = new Date(Date.now() - this.STALE_RUNNING_MS);
+      const staleRuns = await db.select({
+        id: simulationRuns.id,
+        queueId: simulationRuns.queueId,
+        negotiationId: simulationRuns.negotiationId,
+        runNumber: simulationRuns.runNumber
+      })
+      .from(simulationRuns)
+      .where(and(
+        eq(simulationRuns.status, 'running'),
+        lt(simulationRuns.startedAt, cutoff)
+      ));
+
+      if (staleRuns.length === 0) {
+        return;
+      }
+
+      this.log.info({ count: staleRuns.length }, 'Timing out stale running simulations');
+
+      // Mark all as timeout
+      const staleIds = staleRuns.map(r => r.id);
+      await db.update(simulationRuns)
+        .set({ status: 'timeout', completedAt: new Date() })
+        .where(or(...staleIds.map(id => eq(simulationRuns.id, id))));
+
+      // Broadcast and update queues per affected queue
+      const byQueue = new Map<string, typeof staleRuns>();
+      for (const run of staleRuns) {
+        const key = (run.queueId || '') as string;
+        if (!key) continue;
+        const list = (byQueue.get(key) || []) as any;
+        (list as any).push(run);
+        byQueue.set(key, list as any);
+      }
+
+      for (const entry of Array.from(byQueue.entries())) {
+        const [queueId, runs] = entry;
+        const negotiationId = (runs[0]?.negotiationId || '') as string;
+
+        for (const run of runs) {
+          this.broadcastEvent({
+            type: 'simulation_failed',
+            queueId,
+            negotiationId,
+            data: {
+              simulationId: run.id,
+              runNumber: run.runNumber,
+              error: 'timeout'
+            }
+          });
+        }
+
+        // Update queue status and broadcast progress/completion
+        const status = await this.getQueueStatus(queueId);
+        if (status.completedCount + status.failedCount >= status.totalSimulations) {
+          await this.updateQueueStatus(queueId, 'completed');
+          this.broadcastEvent({
+            type: 'queue_completed',
+            queueId,
+            negotiationId,
+            data: {
+              totalSimulations: status.totalSimulations,
+              completed: status.completedCount,
+              failed: status.failedCount,
+              totalCost: status.actualCost
+            }
+          });
+        } else {
+          this.broadcastEvent({
+            type: 'queue_progress',
+            queueId,
+            negotiationId,
+            data: {
+              completed: status.completedCount,
+              failed: status.failedCount,
+              total: status.totalSimulations,
+              percentage: status.progressPercentage
+            }
+          });
+        }
+      }
+    } catch (err) {
+      this.log.warn({ err }, 'Failed to timeout stale simulations');
+    }
   }
 }

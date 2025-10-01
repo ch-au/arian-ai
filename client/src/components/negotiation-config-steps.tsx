@@ -22,7 +22,7 @@ export interface NegotiationConfig {
   selectedTechniques: string[];
   selectedTactics: string[];
   counterpartPersonality: string;
-  zopaDistance: "close" | "medium" | "far" | "";
+  zopaDistance: "close" | "medium" | "far" | "all-distances" | "";
 }
 
 export interface DimensionConfig {
@@ -636,7 +636,7 @@ interface CounterpartStepProps {
 }
 
 export function CounterpartStep({ config, onChange }: CounterpartStepProps) {
-  const { data: personalities = [], isLoading } = useQuery({
+  const { data: personalities = [], isLoading } = useQuery<any[]>({
     queryKey: ["/api/personality-types"],
   });
 

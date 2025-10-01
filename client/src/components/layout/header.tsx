@@ -33,7 +33,7 @@ const pageTitles: Record<string, { title: string; description: string }> = {
 export default function Header() {
   const [location] = useLocation();
   
-  const { data: systemStatus } = useQuery({
+  const { data: systemStatus } = useQuery<any>({
     queryKey: ["/api/system/status"],
     refetchInterval: 30000, // Refresh every 30 seconds
   });

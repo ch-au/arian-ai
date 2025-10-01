@@ -17,6 +17,34 @@ try:
 except ImportError:
     from negotiation_models import NegotiationConfig
 
+# OpenTelemetry processor to link Langfuse Prompt metadata to generation spans
+from contextvars import ContextVar
+from typing import Optional as _Optional
+from opentelemetry import context as context_api
+from opentelemetry.sdk.trace.export import Span, SpanProcessor
+
+prompt_info_var = ContextVar("prompt_info", default=None)
+
+class LangfuseProcessor(SpanProcessor):
+    def on_start(self, span: 'Span', parent_context: _Optional[context_api.Context] = None) -> None:
+        try:
+            # Generation spans from OpenAI Agents SDK begin with 'Responses API'
+            if span.name.startswith('Responses API'):
+                prompt_info = prompt_info_var.get()
+                if prompt_info:
+                    span.set_attribute('langfuse.prompt.name', prompt_info.get("name"))
+                    span.set_attribute('langfuse.prompt.version', prompt_info.get("version"))
+        except Exception:
+            # Never break tracing on metadata issues
+            pass
+
+def set_prompt_info(name: str, version: str) -> None:
+    """Expose a helper to set the prompt info in ContextVar so spans can be linked."""
+    try:
+        prompt_info_var.set({"name": name, "version": version})
+    except Exception:
+        pass
+
 
 def safe_json_parse(raw_output: str) -> Dict[str, Any]:
     """
@@ -222,7 +250,7 @@ def generate_dimension_examples(dimensions: List[Dict[str, Any]]) -> str:
         "Price": 3300
     """
     if not dimensions:
-        return '"Price": 12000, "Volume": 14, "Delivery": 14, "Payment_Terms": "Net 30"'
+        return '"Price": 12000, "Volume": 14, "Delivery": 14, "Payment_Terms": 30'
     
     examples = []
     for dim in dimensions:
@@ -240,6 +268,133 @@ def generate_dimension_examples(dimensions: List[Dict[str, Any]]) -> str:
         examples.append(f'"{name}": {formatted_value}')
     
     return ', '.join(examples)
+
+
+def generate_dimension_schema(dimensions: List[Dict[str, Any]]) -> str:
+    """
+    Generate a JSON key schema for offer.dimension_values.
+    Returns a comma-separated key:value list (without surrounding braces)
+    so callers can embed it directly into a JSON block.
+
+    Example output:
+        "Price": 0, "Delivery": 0, "Volume": 0
+    """
+    if not dimensions:
+        return '"Wert": 0'
+
+    keys = []
+    for dim in dimensions:
+        name = dim.get('name', 'Dimension')
+        keys.append(f'"{name}": 0')
+    return ', '.join(keys)
+
+
+def _extract_numeric(value: Any) -> Optional[float]:
+    """
+    Extract a numeric value from mixed inputs like "Net 30", "30 days", "10.5%", or raw numbers.
+    Returns None if no numeric content is found.
+    """
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        # Replace comma decimals with dot, then find the first number
+        s = value.replace(',', '.')
+        m = re.search(r'[-+]?\d*\.?\d+', s)
+        if m:
+            try:
+                return float(m.group(0))
+            except Exception:
+                return None
+    return None
+
+
+def normalize_model_output(response: Dict[str, Any], dimensions: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Normalize and validate the model output to reduce 'failed' runs:
+    - Ensure action is one of the allowed set (default 'continue')
+    - Coerce offer.dimension_values to numeric values, extracting numbers from strings like "Net 30"
+    - Clamp values to dimension min/max when available
+    - Clamp confidence/batna_assessment/walk_away_threshold to [0,1]
+    Returns a mutated copy of the response dict.
+    """
+    allowed_actions = {"continue", "accept", "terminate", "walk_away", "pause"}
+    resp = response or {}
+
+    # Ensure top-level keys exist
+    offer = resp.get("offer") or {}
+    dim_vals = offer.get("dimension_values") or {}
+
+    # Build dimension lookup
+    dim_index: Dict[str, Dict[str, Any]] = {}
+    for d in (dimensions or []):
+        name = d.get("name")
+        if not name:
+            continue
+        try:
+            min_v = _safe_float_convert(d.get("minValue", d.get("min")))
+            max_v = _safe_float_convert(d.get("maxValue", d.get("max")))
+            unit = d.get("unit", "") or ""
+        except Exception:
+            min_v, max_v, unit = None, None, ""
+        dim_index[name] = {"min": min_v, "max": max_v, "unit": unit}
+
+    # Normalize each provided dimension
+    normalized_dims: Dict[str, Any] = {}
+    for key, raw in dim_vals.items():
+        val = _extract_numeric(raw)
+        meta = dim_index.get(key)
+        if val is None and meta:
+            # Fall back to target if present or midpoint of range
+            target = d.get("targetValue") if (d := next((x for x in dimensions if x.get("name") == key), None)) else None
+            val = _safe_float_convert(target) if target is not None else None
+
+        if val is None:
+            # Skip unknown or non-numeric after best-effort
+            continue
+
+        # Clamp to min/max if known
+        if meta:
+            mn = meta.get("min")
+            mx = meta.get("max")
+            if isinstance(mn, (int, float)):
+                val = max(val, float(mn))
+            if isinstance(mx, (int, float)):
+                val = min(val, float(mx))
+            # Round to integer for typical units (currency, time, percent)
+            unit_lower = (meta.get("unit") or "").lower()
+            if unit_lower in ['usd', 'eur', 'gbp', 'currency', '$', '€', '£', 'days', 'months', 'years', 'weeks'] or '%' in unit_lower:
+                val = int(round(val))
+
+        normalized_dims[key] = val
+
+    # Replace with normalized map
+    offer["dimension_values"] = normalized_dims
+    resp["offer"] = offer
+
+    # Normalize action
+    action = (resp.get("action") or "continue").lower()
+    if action not in allowed_actions:
+        action = "continue"
+    resp["action"] = action
+
+    # Clamp confidence
+    conf = offer.get("confidence")
+    conf_num = _extract_numeric(conf) if conf is not None else None
+    if conf_num is None:
+        conf_num = 0.5
+    conf_num = max(0.0, min(1.0, float(conf_num)))
+    offer["confidence"] = conf_num
+
+    # Clamp BATNA and threshold
+    for k in ("batna_assessment", "walk_away_threshold"):
+        v = resp.get(k)
+        v_num = _extract_numeric(v) if v is not None else None
+        if v_num is None:
+            v_num = 0.5 if k == "batna_assessment" else 0.3
+        v_num = max(0.0, min(1.0, float(v_num)))
+        resp[k] = v_num
+
+    return resp
 
 
 def _safe_float_convert(value: Any) -> float:
@@ -268,7 +423,7 @@ def _format_example_value(value: float, unit: str) -> str:
     
     # Payment terms
     elif 'net' in unit_lower:
-        return f'"Net {int(value)}"'
+        return str(int(value))
     
     # Default numeric format
     else:
@@ -309,11 +464,14 @@ def setup_langfuse_tracing() -> bool:
         
         # Configure and initialize logfire
         import logfire
+        # Per Langfuse OpenAI Agents docs: replace deprecated trace_sample_rate with sampling
         logfire.configure(
             service_name='negotiation_agent_service',
-            send_to_logfire=False,  # Only send to Langfuse
-            trace_sample_rate=1.0,
+            send_to_logfire=False,  # Only send to Langfuse via OTLP
+            sampling=logfire.SamplingOptions(head=1.0),
+            additional_span_processors=[LangfuseProcessor()],  # Link prompt to generation spans
         )
+        # Automatically patch the OpenAI Agents SDK to emit OTLP spans
         logfire.instrument_openai_agents()
         
         print(f"DEBUG: OpenTelemetry tracing configured for Langfuse at {host}", file=sys.stderr)

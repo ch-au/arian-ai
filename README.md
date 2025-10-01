@@ -46,6 +46,14 @@ npm run db:seed    # Add sample data
 npm run dev        # Start development server
 ```
 
+> **Tip:** The development toolchain now disables Browserslist network lookups by default, so `npm run dev` starts reliably even when you're offline or behind a restrictive firewall. If you want to refresh the Browserslist cache manually, run `npx update-browserslist-db@latest` when you have connectivity.
+
+**If the page is blank:**
+- Confirm the dev server is reachable: `curl -I http://localhost:5173/` (or hit the Express proxy at `http://localhost:3000/`).
+- If `curl` hangs, restart `npm run dev` and ensure port `5173` is free (`lsof -i :5173`).
+- Hard-reload the browser with cache disabled so Vite can deliver the transformed modules (`/@vite/client`, `/src/main.tsx`).
+- When in doubt, stop all dev processes and start `npm run dev` fresh—Vite will rebind to the port and inject the React bundle.
+
 **Access the application:**
 - Frontend: http://localhost:5173
 - Backend API: http://localhost:3000
@@ -95,11 +103,14 @@ arian-ai/
 
 ## 📚 Documentation
 
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** - System design and technical details
-- **[DEVELOPMENT.md](DEVELOPMENT.md)** - Development workflows and patterns
-- **[TESTING_GUIDE.md](TESTING_GUIDE.md)** - Testing strategies and examples
-- **[docs/SIMULATION_QUEUE.md](docs/SIMULATION_QUEUE.md)** - Simulation queue processing and status model
-- **[docs/](docs/)** - Additional technical documentation
+- **[docs/README.md](docs/README.md)** - Documentation index and contribution guidelines
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - System map and service boundaries
+- **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)** - Day-to-day development workflow
+- **[docs/DATA_MODEL_SPECIFICATION.md](docs/DATA_MODEL_SPECIFICATION.md)** - Database schema reference
+- **[docs/SIMULATION_QUEUE.md](docs/SIMULATION_QUEUE.md)** - Queue execution model
+- **[docs/TESTING_GUIDE.md](docs/TESTING_GUIDE.md)** - Validation checklist and commands
+- **[AGENTS.md](docs/AGENTS.md)** - LLM agent operations and logging expectations
+- Historical planning docs now live under `docs/archive/`
 
 ## 🔬 Core Concepts
 

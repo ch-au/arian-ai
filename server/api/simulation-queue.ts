@@ -36,6 +36,32 @@ router.post('/queue/:negotiationId', async (req, res) => {
 });
 
 /**
+ * GET /api/simulations/queues
+ * Get queues by negotiation ID
+ */
+router.get('/queues', async (req, res) => {
+  try {
+    const { negotiationId } = req.query;
+    
+    if (!negotiationId) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'negotiationId query parameter is required' 
+      });
+    }
+    
+    const queues = await SimulationQueueService.getQueuesByNegotiation(negotiationId as string);
+    res.json(queues);
+  } catch (error) {
+    console.error('Failed to get queues:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    });
+  }
+});
+
+/**
  * GET /api/simulations/queue/:queueId/status
  * Get current queue status and progress
  */
@@ -232,6 +258,51 @@ router.get('/queue/by-negotiation/:negotiationId', async (req, res) => {
     }
   } catch (error) {
     console.error('Failed to find queue by negotiation:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    });
+  }
+});
+
+/**
+ * POST /api/simulations/queue/:queueId/restart-failed
+ * Restart failed/timeout simulations
+ */
+router.post('/queue/:queueId/restart-failed', async (req, res) => {
+  try {
+    const { queueId } = req.params;
+    const restartedCount = await SimulationQueueService.restartFailedSimulations(queueId);
+    
+    res.json({ 
+      success: true, 
+      message: `Restarted ${restartedCount} failed simulations`,
+      restartedCount 
+    });
+  } catch (error) {
+    console.error('Failed to restart failed simulations:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    });
+  }
+});
+
+/**
+ * POST /api/simulations/queue/:queueId/start
+ * Start/resume a queue
+ */
+router.post('/queue/:queueId/start', async (req, res) => {
+  try {
+    const { queueId } = req.params;
+    await SimulationQueueService.startQueue(queueId);
+    
+    res.json({ 
+      success: true, 
+      message: 'Queue started/resumed successfully' 
+    });
+  } catch (error) {
+    console.error('Failed to start queue:', error);
     res.status(500).json({ 
       success: false, 
       error: error instanceof Error ? error.message : 'Unknown error' 

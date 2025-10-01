@@ -253,6 +253,9 @@ export const SimulationResultsTable: React.FC<SimulationTableProps> = ({
       // Tactic filter
       if (filters.tacticFilter !== 'all' && result.tacticId !== filters.tacticFilter) return false;
 
+      // Outcome filter
+      if (filters.outcomeFilter !== 'all' && result.outcome !== filters.outcomeFilter) return false;
+
       // Cost range filter
       const cost = result.actualCost || 0;
       if (cost < filters.costRange.min || cost > filters.costRange.max) return false;
@@ -466,6 +469,28 @@ export const SimulationResultsTable: React.FC<SimulationTableProps> = ({
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* Outcome Filter */}
+              <div>
+                <label className="text-xs font-medium text-gray-700 mb-1 block">Outcome</label>
+                <Select
+                  value={filters.outcomeFilter}
+                  onValueChange={(value) => setFilters(prev => ({ ...prev, outcomeFilter: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Outcomes</SelectItem>
+                    <SelectItem value="DEAL_ACCEPTED">Deal Accepted</SelectItem>
+                    <SelectItem value="TERMINATED">Terminated</SelectItem>
+                    <SelectItem value="WALK_AWAY">Walk Away</SelectItem>
+                    <SelectItem value="PAUSED">Paused</SelectItem>
+                    <SelectItem value="MAX_ROUNDS_REACHED">Max Rounds</SelectItem>
+                    <SelectItem value="ERROR">Error</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
         )}
@@ -545,7 +570,7 @@ export const SimulationResultsTable: React.FC<SimulationTableProps> = ({
                 )}
               </button>
             </div>
-            <div>Outcome (All Dimensions)</div>
+            <div>Result</div>
             <div>
               <button
                 onClick={() => handleSort('totalRounds')}
@@ -589,26 +614,42 @@ export const SimulationResultsTable: React.FC<SimulationTableProps> = ({
                   />
                   <span className="font-mono font-semibold">{result.runNumber}</span>
                 </div>
-                <div className="truncate">{getTechniqueName(result.techniqueId)}</div>
-                <div className="truncate">{getTacticName(result.tacticId)}</div>
+                <div className="min-w-0" title={getTechniqueName(result.techniqueId)}>
+                  <span className="truncate block">{getTechniqueName(result.techniqueId)}</span>
+                </div>
+                <div className="min-w-0" title={getTacticName(result.tacticId)}>
+                  <span className="truncate block">{getTacticName(result.tacticId)}</span>
+                </div>
                 <div>
-                  <Badge 
+                  <Badge
                     variant={
                       result.status === 'completed' ? 'default' :
                       result.status === 'running' ? 'secondary' :
                       result.status === 'failed' ? 'destructive' : 'outline'
                     }
                     className="text-xs"
+                    title={result.outcome ? `Outcome: ${result.outcome}` : undefined}
                   >
                     <statusConfig.icon className="h-3 w-3 mr-1" />
-                    {result.status.toUpperCase()}
+                    {result.outcome || result.status.toUpperCase()}
                   </Badge>
                 </div>
-                <div className="font-medium">
-                  {result.status === 'completed' ? (
-                    <span className="text-green-600">
-                      DEAL ({formatDealValue(result.dimensionResults)})
-                    </span>
+                <div className="font-medium text-sm">
+                  {result.outcome ? (
+                    <div className={cn(
+                      "font-semibold",
+                      result.outcome === 'DEAL' ? "text-green-600" :
+                      result.outcome === 'WALK_AWAY' ? "text-orange-600" :
+                      result.outcome === 'TIMEOUT' ? "text-yellow-600" :
+                      "text-gray-600"
+                    )}>
+                      <div>{result.outcome}</div>
+                      {result.dimensionResults && (
+                        <div className="text-xs text-gray-500 mt-1">{formatDealValue(result.dimensionResults)}</div>
+                      )}
+                    </div>
+                  ) : result.status === 'completed' ? (
+                    <span className="text-green-600">Completed</span>
                   ) : result.status === 'failed' ? (
                     <span className="text-red-600">Failed</span>
                   ) : result.status === 'running' ? (
@@ -627,7 +668,7 @@ export const SimulationResultsTable: React.FC<SimulationTableProps> = ({
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      {result.status === 'completed' && result.conversationLog && (
+                      {(result.status === 'completed' || result.status === 'failed' || result.conversationLog) && (
                         <DropdownMenuItem onClick={() => onViewConversation(result)}>
                           <Eye className="h-4 w-4 mr-2" />
                           View Conversation
