@@ -190,7 +190,13 @@ export function ReviewStep({
                         className="flex items-center gap-1 text-xs text-blue-600 hover:underline"
                       >
                         <ExternalLink className="h-3 w-3" />
-                        {new URL(item.quelle).hostname}
+                        {(() => {
+                          try {
+                            return new URL(item.quelle).hostname;
+                          } catch {
+                            return item.quelle;
+                          }
+                        })()}
                       </a>
                     )}
                   </div>
