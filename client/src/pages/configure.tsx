@@ -2,87 +2,150 @@ import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { WizardForm, WizardStep } from "@/components/wizard-form";
-import { BasicContextStep, DimensionsStep, TechniquesStep, TacticsStep, CounterpartStep, NegotiationConfig, DimensionConfig } from "@/components/negotiation-config-steps";
 import { useToast } from "@/hooks/use-toast";
+import { useTranslation } from "react-i18next";
 
-const initialConfig: NegotiationConfig = {
-  title: "",
-  userRole: "",
-  negotiationType: "",
-  relationshipType: "",
-  productMarketDescription: "",
-  additionalComments: "",
-  dimensions: [],
-  selectedTechniques: [],
-  selectedTactics: [],
-  counterpartPersonality: "",
-  zopaDistance: ""
+// Phase 2 Components
+import { GrundeinstellungenStep, GrundeinstellungenData } from "@/components/configure/GrundeinstellungenStep";
+import { DimensionenStep, DimensionenData } from "@/components/configure/DimensionenStep";
+import { TaktikenTechnikenStep, TaktikenTechnikenData } from "@/components/configure/TaktikenTechnikenStep";
+import { GegenseiteStep, GegenseiteData } from "@/components/configure/GegenseiteStep";
+import { ReviewStep, MarketIntelligenceItem } from "@/components/configure/ReviewStep";
+
+// Phase 2 Combined Configuration
+interface Phase2Config {
+  grundeinstellungen: GrundeinstellungenData;
+  dimensionen: DimensionenData;
+  taktikenTechniken: TaktikenTechnikenData;
+  gegenseite: GegenseiteData;
+  marketIntelligence: MarketIntelligenceItem[];
+}
+
+const initialConfig: Phase2Config = {
+  grundeinstellungen: {
+    title: "",
+    userRole: "buyer",
+    negotiationType: "one-shot",
+    companyKnown: false,
+    counterpartKnown: false,
+    negotiationFrequency: "yearly",
+    powerBalance: 50,
+    maxRounds: 5,
+    wichtigerKontext: "",
+  },
+  dimensionen: {
+    produkte: [],
+    konditionen: [],
+  },
+  taktikenTechniken: {
+    selectedTacticIds: [],
+    selectedTechniqueIds: [],
+  },
+  gegenseite: {
+    beschreibungGegenseite: "",
+    verhandlungsModus: "moderat",
+    geschätzteDistanz: {
+      volumen: 0,
+      preis: 0,
+      laufzeit: 0,
+      zahlungskonditionen: 0,
+    },
+  },
+  marketIntelligence: [],
 };
 
 export default function Configure() {
   const [location, setLocation] = useLocation();
   const [currentStep, setCurrentStep] = useState(0);
-  const [config, setConfig] = useState<NegotiationConfig>(initialConfig);
+  const [config, setConfig] = useState<Phase2Config>(initialConfig);
   const [isCompleting, setIsCompleting] = useState(false);
+  const [isLoadingIntelligence, setIsLoadingIntelligence] = useState(false);
   const { toast } = useToast();
+  const { t } = useTranslation('configure');
   
-  // Parse URL parameters to detect edit mode
-  const urlParams = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
-  const editId = urlParams.get('edit');
-  const isEditMode = !!editId;
-  
-  // Load existing negotiation data if in edit mode
-  const { data: existingNegotiation, isLoading: isLoadingExisting } = useQuery<any>({
-    queryKey: [`/api/negotiations/${editId}`],
-    enabled: isEditMode,
+  // Load tactics and techniques
+  const { data: tactics = [] } = useQuery<any[]>({
+    queryKey: ['/api/negotiation-tactics'],
   });
 
-  // Pre-populate form when existing negotiation data loads
-  useEffect(() => {
-    console.log('Edit mode:', isEditMode, 'Existing negotiation data:', existingNegotiation);
-    if (existingNegotiation && isEditMode) {
-      console.log('Populating form with existing data:', existingNegotiation);
-      setConfig({
-        title: existingNegotiation.title || "",
-        userRole: existingNegotiation.userRole || "",
-        negotiationType: existingNegotiation.negotiationType || "",
-        relationshipType: existingNegotiation.relationshipType || "",
-        productMarketDescription: existingNegotiation.productMarketDescription || "",
-        additionalComments: existingNegotiation.additionalComments || "",
-        dimensions: existingNegotiation.dimensions || [],
-        selectedTechniques: existingNegotiation.selectedTechniques || [],
-        selectedTactics: existingNegotiation.selectedTactics || [],
-        counterpartPersonality: existingNegotiation.counterpartPersonality || "",
-        zopaDistance: existingNegotiation.zopaDistance || ""
-      });
-    }
-  }, [existingNegotiation, isEditMode]);
+  const { data: techniques = [] } = useQuery<any[]>({
+    queryKey: ['/api/influencing-techniques'],
+  });
 
-  const updateConfig = (updates: Partial<NegotiationConfig>) => {
-    setConfig(prev => ({ ...prev, ...updates }));
+  const updateGrundeinstellungen = (updates: Partial<GrundeinstellungenData>) => {
+    setConfig(prev => ({
+      ...prev,
+      grundeinstellungen: { ...prev.grundeinstellungen, ...updates },
+    }));
+  };
+
+  const updateDimensionen = (updates: Partial<DimensionenData>) => {
+    setConfig(prev => ({
+      ...prev,
+      dimensionen: { ...prev.dimensionen, ...updates },
+    }));
+  };
+
+  const updateTaktikenTechniken = (updates: Partial<TaktikenTechnikenData>) => {
+    setConfig(prev => ({
+      ...prev,
+      taktikenTechniken: { ...prev.taktikenTechniken, ...updates },
+    }));
+  };
+
+  const updateGegenseite = (updates: Partial<GegenseiteData>) => {
+    setConfig(prev => ({
+      ...prev,
+      gegenseite: { ...prev.gegenseite, ...updates },
+    }));
+  };
+
+  const handleGenerateIntelligence = async () => {
+    setIsLoadingIntelligence(true);
+    try {
+      // TODO: Implement Gemini Flash market intelligence API call (Sprint 3)
+      // Placeholder for now
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      setConfig(prev => ({
+        ...prev,
+        marketIntelligence: [
+          {
+            aspekt: "Beispiel Marktanalyse - noch nicht implementiert",
+            quelle: "https://example.com",
+            relevanz: "mittel" as const,
+          },
+        ],
+      }));
+    } catch (error) {
+      toast({
+        title: "Fehler",
+        description: "Marktanalyse konnte nicht generiert werden",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingIntelligence(false);
+    }
   };
 
   const validateStep = (stepIndex: number): boolean => {
     switch (stepIndex) {
-      case 0: // Basic Context
+      case 0: // Grundeinstellungen
         return !!(
-          config.title.trim() &&
-          config.userRole &&
-          config.negotiationType &&
-          config.relationshipType
+          config.grundeinstellungen.title.trim() &&
+          config.grundeinstellungen.userRole &&
+          config.grundeinstellungen.negotiationType
         );
-      case 1: // Dimensions
-        return config.dimensions.length > 0 && 
-          config.dimensions.every(d => 
-            d.name.trim() && 
-            d.minValue < d.targetValue && 
-            d.targetValue < d.maxValue
-          );
-      case 2: // Techniques
-        return config.selectedTechniques.length > 0;
-      case 3: // Tactics
-        return config.selectedTactics.length > 0;
-      case 4: // Counterpart - no validation needed, fields are optional
+      case 1: // Dimensionen
+        return config.dimensionen.produkte.length > 0 || config.dimensionen.konditionen.length > 0;
+      case 2: // Taktiken & Techniken
+        return (
+          config.taktikenTechniken.selectedTacticIds.length > 0 &&
+          config.taktikenTechniken.selectedTechniqueIds.length > 0
+        );
+      case 3: // Gegenseite - optional
+        return true;
+      case 4: // Review - always valid
         return true;
       default:
         return true;
@@ -93,80 +156,78 @@ export default function Configure() {
 
   const handleComplete = async () => {
     setIsCompleting(true);
-    
+
     try {
-      if (isEditMode) {
-        // Update existing negotiation
-        console.log("Updating negotiation with config:", config);
-        
-        const response = await fetch(`/api/negotiations/${editId}`, {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(config),
-        });
+      // Map Phase 2 config to backend API format
+      const apiPayload = {
+        // Grundeinstellungen
+        title: config.grundeinstellungen.title,
+        userRole: config.grundeinstellungen.userRole,
+        negotiationType: config.grundeinstellungen.negotiationType,
+        companyKnown: config.grundeinstellungen.companyKnown,
+        counterpartKnown: config.grundeinstellungen.counterpartKnown,
+        negotiationFrequency: config.grundeinstellungen.negotiationFrequency,
+        powerBalance: config.grundeinstellungen.powerBalance,
+        maxRounds: config.grundeinstellungen.maxRounds,
+        wichtigerKontext: config.grundeinstellungen.wichtigerKontext,
 
-        if (!response.ok) {
-          let errorMessage = "Failed to update negotiation";
-          try {
-            const errorData = await response.json();
-            errorMessage = errorData.error || errorMessage;
-            console.error("API Error:", errorData);
-          } catch (parseError) {
-            console.error("Failed to parse error response:", parseError);
-            errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-          }
-          throw new Error(errorMessage);
+        // Dimensionen
+        produkte: config.dimensionen.produkte,
+        konditionen: config.dimensionen.konditionen,
+
+        // Taktiken & Techniken
+        selectedTacticIds: config.taktikenTechniken.selectedTacticIds,
+        selectedTechniqueIds: config.taktikenTechniken.selectedTechniqueIds,
+
+        // Gegenseite
+        beschreibungGegenseite: config.gegenseite.beschreibungGegenseite,
+        verhandlungsModus: config.gegenseite.verhandlungsModus,
+        geschätzteDistanz: config.gegenseite.geschätzteDistanz,
+
+        // Market Intelligence
+        marketIntelligence: config.marketIntelligence,
+      };
+
+      console.log("Creating Phase 2 negotiation:", apiPayload);
+
+      const response = await fetch("/api/negotiations/phase2", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(apiPayload),
+      });
+
+      if (!response.ok) {
+        let errorMessage = "Failed to create negotiation";
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+          console.error("API Error:", errorData);
+        } catch (parseError) {
+          console.error("Failed to parse error response:", parseError);
+          errorMessage = `HTTP ${response.status}: ${response.statusText}`;
         }
-
-        const result = await response.json();
-        
-        toast({
-          title: "Negotiation Updated",
-          description: `"${config.title}" has been updated successfully.`,
-        });
-      } else {
-        // Create new negotiation
-        console.log("Creating negotiation with config:", config);
-        
-        const response = await fetch("/api/negotiations/enhanced", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(config),
-        });
-
-        if (!response.ok) {
-          let errorMessage = "Failed to create negotiation";
-          try {
-            const errorData = await response.json();
-            errorMessage = errorData.error || errorMessage;
-            console.error("API Error:", errorData);
-          } catch (parseError) {
-            console.error("Failed to parse error response:", parseError);
-            errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-          }
-          throw new Error(errorMessage);
-        }
-
-        const result = await response.json();
-        
-        toast({
-          title: "Negotiation Created",
-          description: `"${config.title}" has been created successfully with ${result.dimensionsCount} dimensions.`,
-        });
+        throw new Error(errorMessage);
       }
-      
+
+      const result = await response.json();
+
+      toast({
+        title: "Verhandlung erstellt",
+        description: `"${config.grundeinstellungen.title}" wurde erfolgreich erstellt.`,
+      });
+
       // Redirect to negotiations list
       setLocation("/negotiations");
-      
     } catch (error) {
-      console.error(isEditMode ? "Error updating negotiation:" : "Error creating negotiation:", error);
+      console.error("Error creating negotiation:", error);
       toast({
-        title: isEditMode ? "Update Failed" : "Creation Failed",
-        description: error instanceof Error ? error.message : `There was an error ${isEditMode ? 'updating' : 'creating'} the negotiation. Please try again.`,
+        title: "Fehler",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Es gab einen Fehler beim Erstellen der Verhandlung.",
         variant: "destructive",
       });
     } finally {
@@ -176,82 +237,82 @@ export default function Configure() {
 
   const steps: WizardStep[] = [
     {
-      id: "context",
-      title: "Basic Context",
-      description: "Define the fundamental parameters of your negotiation",
+      id: "grundeinstellungen",
+      title: t('steps.grundeinstellungen'),
+      description: "Grundlegende Verhandlungsparameter festlegen",
       component: (
-        <BasicContextStep 
-          config={config} 
-          onChange={updateConfig}
+        <GrundeinstellungenStep
+          data={config.grundeinstellungen}
+          onChange={updateGrundeinstellungen}
         />
-      )
+      ),
     },
     {
-      id: "dimensions",
-      title: "Dimensions & ZOPA",
-      description: "Set up the negotiation parameters and your Zone of Possible Agreement",
+      id: "dimensionen",
+      title: t('steps.dimensionen'),
+      description: "Produkte und Konditionen definieren",
       component: (
-        <DimensionsStep 
-          config={config} 
-          onChange={updateConfig}
+        <DimensionenStep
+          data={config.dimensionen}
+          onChange={updateDimensionen}
+          userRole={config.grundeinstellungen.userRole}
         />
-      )
+      ),
     },
     {
-      id: "techniques",
-      title: "Influencing Techniques",
-      description: "Choose psychological techniques to influence the negotiation",
+      id: "taktiken",
+      title: t('steps.taktiken'),
+      description: "Taktiken und Techniken auswählen",
       component: (
-        <TechniquesStep 
-          config={config} 
-          onChange={updateConfig}
+        <TaktikenTechnikenStep
+          data={config.taktikenTechniken}
+          onChange={updateTaktikenTechniken}
+          availableTactics={tactics}
+          availableTechniques={techniques}
         />
-      )
+      ),
     },
     {
-      id: "tactics",
-      title: "Negotiation Tactics",
-      description: "Select strategic approaches for the negotiation",
+      id: "gegenseite",
+      title: t('steps.gegenseite'),
+      description: "Verhandlungspartner beschreiben",
       component: (
-        <TacticsStep 
-          config={config} 
-          onChange={updateConfig}
+        <GegenseiteStep
+          data={config.gegenseite}
+          onChange={updateGegenseite}
         />
-      )
+      ),
     },
     {
-      id: "counterpart",
-      title: "Counterpart Configuration",
-      description: "Define your negotiation counterpart and simulation parameters",
+      id: "review",
+      title: t('steps.review'),
+      description: "Überprüfen und starten",
       component: (
-        <CounterpartStep 
-          config={config} 
-          onChange={updateConfig}
+        <ReviewStep
+          negotiationTitle={config.grundeinstellungen.title}
+          userRole={config.grundeinstellungen.userRole}
+          negotiationType={config.grundeinstellungen.negotiationType}
+          productCount={config.dimensionen.produkte.length}
+          conditionCount={config.dimensionen.konditionen.length}
+          tacticCount={config.taktikenTechniken.selectedTacticIds.length}
+          techniqueCount={config.taktikenTechniken.selectedTechniqueIds.length}
+          verhandlungsModus={config.gegenseite.verhandlungsModus}
+          onGenerateIntelligence={handleGenerateIntelligence}
+          marketIntelligence={config.marketIntelligence}
+          isLoadingIntelligence={isLoadingIntelligence}
         />
-      )
-    }
+      ),
+    },
   ];
-
-  // Show loading state while loading existing negotiation data
-  if (isEditMode && isLoadingExisting) {
-    return (
-      <div className="space-y-8">
-        <div className="text-center">
-          <h1 className="text-3xl font-bold tracking-tight text-gray-900">Loading Configuration...</h1>
-          <p className="text-gray-600 mt-2">Please wait while we load the negotiation data</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-8">
       <div className="text-center">
         <h1 className="text-3xl font-bold tracking-tight text-gray-900">
-          {isEditMode ? "Edit Negotiation Configuration" : "Configure Negotiation"}
+          {t('title')}
         </h1>
         <p className="text-gray-600 mt-2">
-          {isEditMode ? "Update your negotiation parameters" : "Setup your negotiation parameters step by step"}
+          Konfigurieren Sie Ihre Verhandlung Schritt für Schritt
         </p>
       </div>
 
@@ -262,7 +323,7 @@ export default function Configure() {
         onComplete={handleComplete}
         canProceed={canProceed}
         isCompleting={isCompleting}
-        completionText={isEditMode ? "Update Configuration" : "Create Negotiation"}
+        completionText="Simulation starten"
       />
     </div>
   );
