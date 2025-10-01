@@ -42,9 +42,8 @@ def generate_market_intelligence(negotiation_context: dict) -> list[dict]:
     # Google Search Tool aktivieren
     tools = [types.Tool(google_search=types.GoogleSearch())]
 
-    # Generate Content Config mit Thinking Budget
+    # Generate Content Config (ohne thinking_config - nicht supported von flash-exp)
     generate_content_config = types.GenerateContentConfig(
-        thinking_config=types.ThinkingConfig(thinking_budget=-1),
         tools=tools,
     )
 

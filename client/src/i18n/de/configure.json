@@ -103,13 +103,16 @@
       "description": "Es werden {{count}} Simulationen erstellt (alle Kombinationen)"
     },
     "selected": "ausgewählt",
+    "selectAll": "Alle auswählen",
+    "deselectAll": "Alle abwählen",
     "tactics": {
       "title": "Verhandlungstaktiken",
       "description": "Wählen Sie strategische Taktiken aus",
       "categories": {
         "integrative": "Integrativ",
         "competitive": "Kompetitiv",
-        "defensive": "Defensiv"
+        "defensive": "Defensiv",
+        "undefined": "Andere"
       }
     },
     "techniques": {

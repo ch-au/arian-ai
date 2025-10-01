@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { AlertCircle } from 'lucide-react';
 
 export interface TaktikenTechnikenData {
@@ -62,6 +63,22 @@ export function TaktikenTechnikenStep({
     onChange({ selectedTechniqueIds: newSelection });
   };
 
+  const selectAllTactics = () => {
+    onChange({ selectedTacticIds: availableTactics.map((t) => t.id) });
+  };
+
+  const deselectAllTactics = () => {
+    onChange({ selectedTacticIds: [] });
+  };
+
+  const selectAllTechniques = () => {
+    onChange({ selectedTechniqueIds: availableTechniques.map((t) => t.id) });
+  };
+
+  const deselectAllTechniques = () => {
+    onChange({ selectedTechniqueIds: [] });
+  };
+
   const getCategoryBadgeVariant = (category: TacticOption['category']) => {
     switch (category) {
       case 'integrative':
@@ -75,20 +92,24 @@ export function TaktikenTechnikenStep({
     }
   };
 
-  const getCategoryLabel = (category: TacticOption['category']) => {
+  const getCategoryLabel = (category: TacticOption['category'] | 'undefined') => {
+    if (category === 'undefined' || !category) {
+      return t('taktikenTechniken.tactics.categories.undefined');
+    }
     return t(`taktikenTechniken.tactics.categories.${category}`);
   };
 
-  // Group tactics by category
+  // Group tactics by category (handle undefined categories)
   const tacticsByCategory = availableTactics.reduce(
     (acc, tactic) => {
-      if (!acc[tactic.category]) {
-        acc[tactic.category] = [];
+      const category = tactic.category || 'undefined';
+      if (!acc[category]) {
+        acc[category] = [];
       }
-      acc[tactic.category].push(tactic);
+      acc[category].push(tactic);
       return acc;
     },
-    {} as Record<TacticOption['category'], TacticOption[]>
+    {} as Record<string, TacticOption[]>
   );
 
   const totalCombinations = data.selectedTacticIds.length * data.selectedTechniqueIds.length;
@@ -111,14 +132,38 @@ export function TaktikenTechnikenStep({
       {/* Negotiation Tactics */}
       <Card>
         <CardHeader>
-          <CardTitle>{t('taktikenTechniken.tactics.title')}</CardTitle>
-          <CardDescription>
-            {t('taktikenTechniken.tactics.description')} ({data.selectedTacticIds.length}{' '}
-            {t('taktikenTechniken.selected')})
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>{t('taktikenTechniken.tactics.title')}</CardTitle>
+              <CardDescription>
+                {t('taktikenTechniken.tactics.description')} ({data.selectedTacticIds.length}{' '}
+                {t('taktikenTechniken.selected')})
+              </CardDescription>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={selectAllTactics}
+                disabled={data.selectedTacticIds.length === availableTactics.length}
+              >
+                {t('taktikenTechniken.selectAll')}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={deselectAllTactics}
+                disabled={data.selectedTacticIds.length === 0}
+              >
+                {t('taktikenTechniken.deselectAll')}
+              </Button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="space-y-6">
-          {(Object.keys(tacticsByCategory) as TacticOption['category'][]).map((category) => (
+          {Object.keys(tacticsByCategory).map((category) => (
             <div key={category} className="space-y-3">
               <div className="flex items-center gap-2">
                 <h4 className="font-semibold text-sm">{getCategoryLabel(category)}</h4>
@@ -156,11 +201,35 @@ export function TaktikenTechnikenStep({
       {/* Influencing Techniques */}
       <Card>
         <CardHeader>
-          <CardTitle>{t('taktikenTechniken.techniques.title')}</CardTitle>
-          <CardDescription>
-            {t('taktikenTechniken.techniques.description')} ({data.selectedTechniqueIds.length}{' '}
-            {t('taktikenTechniken.selected')})
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>{t('taktikenTechniken.techniques.title')}</CardTitle>
+              <CardDescription>
+                {t('taktikenTechniken.techniques.description')} ({data.selectedTechniqueIds.length}{' '}
+                {t('taktikenTechniken.selected')})
+              </CardDescription>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={selectAllTechniques}
+                disabled={data.selectedTechniqueIds.length === availableTechniques.length}
+              >
+                {t('taktikenTechniken.selectAll')}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={deselectAllTechniques}
+                disabled={data.selectedTechniqueIds.length === 0}
+              >
+                {t('taktikenTechniken.deselectAll')}
+              </Button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           {availableTechniques.map((technique) => (
