@@ -488,5 +488,158 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
     }
   });
 
+  /**
+   * POST /api/negotiations/phase2
+   * Create negotiation with Phase 2 enhanced configuration
+   */
+  router.post("/phase2", async (req, res) => {
+    try {
+      const phase2Schema = z.object({
+        // Grundeinstellungen
+        title: z.string().min(1, "Title is required"),
+        userRole: z.enum(["buyer", "seller"]),
+        negotiationType: z.enum(["one-shot", "multi-year"]),
+        companyKnown: z.boolean().optional(),
+        counterpartKnown: z.boolean().optional(),
+        negotiationFrequency: z.enum(["yearly", "quarterly", "monthly", "ongoing"]).optional(),
+        powerBalance: z.number().int().min(0).max(100).optional(),
+        maxRounds: z.number().int().min(1).max(15),
+        marktProduktKontext: z.string().optional(),
+        wichtigerKontext: z.string().optional(),
+
+        // Dimensionen
+        produkte: z.array(
+          z.object({
+            id: z.string(),
+            produktName: z.string(),
+            zielPreis: z.number(),
+            minMaxPreis: z.number(),
+            geschätztesVolumen: z.number().int(),
+          })
+        ).optional(),
+        konditionen: z.array(
+          z.object({
+            id: z.string(),
+            name: z.string(),
+            einheit: z.string().optional(),
+            minWert: z.number().optional(),
+            maxWert: z.number().optional(),
+            zielWert: z.number(),
+            priorität: z.number().int().min(1).max(3),
+          })
+        ).optional(),
+
+        // Taktiken & Techniken
+        selectedTacticIds: z.array(z.string()),
+        selectedTechniqueIds: z.array(z.string()),
+
+        // Gegenseite
+        beschreibungGegenseite: z.string().optional(),
+        verhandlungsModus: z.enum(["kooperativ", "moderat", "aggressiv", "sehr-aggressiv"]).optional(),
+        geschätzteDistanz: z.record(z.string(), z.number()).optional(),
+
+        // Market Intelligence
+        marketIntelligence: z.array(
+          z.object({
+            aspekt: z.string(),
+            quelle: z.string(),
+            relevanz: z.enum(["hoch", "mittel", "niedrig"]),
+          })
+        ).optional(),
+      });
+
+      const validatedData = phase2Schema.parse(req.body);
+
+      console.log("[phase2] Creating negotiation with:", {
+        title: validatedData.title,
+        produkte: validatedData.produkte?.length || 0,
+        konditionen: validatedData.konditionen?.length || 0,
+        tactics: validatedData.selectedTacticIds.length,
+        techniques: validatedData.selectedTechniqueIds.length,
+      });
+
+      // Get agents and contexts (use defaults for now)
+      const agents = await storage.getAllAgents();
+      const contexts = await storage.getAllNegotiationContexts();
+
+      if (agents.length === 0 || contexts.length === 0) {
+        return res.status(400).json({
+          error: "System not initialized",
+          message: "No agents or contexts found. Please run seed data first.",
+        });
+      }
+
+      // Use first buyer and seller agents
+      const buyerAgent = agents.find((a) => a.role === "buyer") || agents[0];
+      const sellerAgent = agents.find((a) => a.role === "seller") || agents[1];
+      const context = contexts[0];
+
+      // Create negotiation with Phase 2 enhanced data
+      // For now, store in negotiation metadata/additional fields
+      const negotiationData = {
+        contextId: context.id,
+        buyerAgentId: buyerAgent.id,
+        sellerAgentId: sellerAgent.id,
+        title: validatedData.title,
+        userRole: validatedData.userRole,
+        negotiationType: validatedData.negotiationType,
+        maxRounds: validatedData.maxRounds,
+
+        // Store Phase 2 data as JSON in relationshipType/productMarketDescription fields temporarily
+        // TODO: Update schema to include Phase 2 fields properly
+        relationshipType: validatedData.counterpartKnown ? "long-standing" : "first",
+        productMarketDescription: validatedData.marktProduktKontext || "",
+        additionalComments: validatedData.wichtigerKontext || "",
+
+        selectedTechniques: validatedData.selectedTechniqueIds,
+        selectedTactics: validatedData.selectedTacticIds,
+
+        counterpartPersonality: validatedData.beschreibungGegenseite || "",
+        zopaDistance: validatedData.verhandlungsModus || "moderat",
+
+        // Default ZOPA for now - will be replaced with products/conditions
+        userZopa: {
+          volumen: { min: 100, max: 1000, target: 500 },
+          preis: { min: 1, max: 10, target: 5 },
+          laufzeit: { min: 1, max: 12, target: 6 },
+          zahlungskonditionen: { min: 14, max: 90, target: 30 },
+        },
+        counterpartDistance: {
+          volumen: 0,
+          preis: 0,
+          laufzeit: 0,
+          zahlungskonditionen: 0,
+        },
+      };
+
+      const negotiation = await storage.createNegotiation(negotiationData);
+
+      // TODO: Store products and conditions in their own tables
+      // For now, acknowledge we received them
+      console.log("[phase2] Phase 2 data received (not yet persisted):", {
+        produkte: validatedData.produkte?.length || 0,
+        konditionen: validatedData.konditionen?.length || 0,
+        marketIntelligence: validatedData.marketIntelligence?.length || 0,
+      });
+
+      res.json({
+        success: true,
+        negotiation,
+        message: "Phase 2 negotiation created successfully",
+        note: "Products, conditions, and market intelligence will be fully integrated in next update",
+      });
+    } catch (error) {
+      console.error("[phase2] Failed to create negotiation:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          error: "Invalid negotiation data",
+          details: error.errors
+        });
+      }
+      const message = error instanceof Error ? error.message : "Failed to create Phase 2 negotiation";
+      res.status(500).json({ error: message });
+    }
+  });
+
   return router;
 }
