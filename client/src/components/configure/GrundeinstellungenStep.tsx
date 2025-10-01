@@ -25,6 +25,7 @@ export interface GrundeinstellungenData {
   negotiationFrequency: 'yearly' | 'quarterly' | 'monthly' | 'ongoing';
   powerBalance: number; // 0-100
   maxRounds: number; // 1-15
+  marktProduktKontext: string; // Markt- und Produktbeschreibung
   wichtigerKontext: string;
 }
 
@@ -199,10 +200,27 @@ export function GrundeinstellungenStep({ data, onChange }: GrundeinstellungenSte
         </CardContent>
       </Card>
 
+      {/* Markt- und Produktkontext */}
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('grundeinstellungen.marktProduktKontext.label')}</CardTitle>
+          <CardDescription>{t('grundeinstellungen.marktProduktKontext.description')}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Textarea
+            value={data.marktProduktKontext}
+            onChange={(e) => onChange({ marktProduktKontext: e.target.value })}
+            placeholder={t('grundeinstellungen.marktProduktKontext.placeholder')}
+            rows={4}
+          />
+        </CardContent>
+      </Card>
+
       {/* Wichtiger Kontext mit Voice Input */}
       <Card>
         <CardHeader>
           <CardTitle>{t('grundeinstellungen.importantContext.label')}</CardTitle>
+          <CardDescription>{t('grundeinstellungen.importantContext.description')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex gap-2">

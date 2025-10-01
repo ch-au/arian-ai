@@ -31,6 +31,7 @@ const initialConfig: Phase2Config = {
     negotiationFrequency: "yearly",
     powerBalance: 50,
     maxRounds: 5,
+    marktProduktKontext: "",
     wichtigerKontext: "",
   },
   dimensionen: {
@@ -44,12 +45,7 @@ const initialConfig: Phase2Config = {
   gegenseite: {
     beschreibungGegenseite: "",
     verhandlungsModus: "moderat",
-    geschätzteDistanz: {
-      volumen: 0,
-      preis: 0,
-      laufzeit: 0,
-      zahlungskonditionen: 0,
-    },
+    geschätzteDistanz: {}, // Dynamic based on products/conditions
   },
   marketIntelligence: [],
 };
@@ -169,6 +165,7 @@ export default function Configure() {
         negotiationFrequency: config.grundeinstellungen.negotiationFrequency,
         powerBalance: config.grundeinstellungen.powerBalance,
         maxRounds: config.grundeinstellungen.maxRounds,
+        marktProduktKontext: config.grundeinstellungen.marktProduktKontext,
         wichtigerKontext: config.grundeinstellungen.wichtigerKontext,
 
         // Dimensionen
@@ -280,6 +277,8 @@ export default function Configure() {
         <GegenseiteStep
           data={config.gegenseite}
           onChange={updateGegenseite}
+          produkte={config.dimensionen.produkte}
+          konditionen={config.dimensionen.konditionen}
         />
       ),
     },

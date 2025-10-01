@@ -16,21 +16,33 @@ import { AlertCircle } from 'lucide-react';
 export interface GegenseiteData {
   beschreibungGegenseite: string;
   verhandlungsModus: 'kooperativ' | 'moderat' | 'aggressiv' | 'sehr-aggressiv';
-  geschätzteDistanz: {
-    volumen: number; // -1 to 1
-    preis: number;
-    laufzeit: number;
-    zahlungskonditionen: number;
-  };
+  geschätzteDistanz: Record<string, number>; // Key = produkt.id oder kondition.id, Value = -1 to 1
+}
+
+interface Produkt {
+  id: string;
+  produktName: string;
+}
+
+interface Kondition {
+  id: string;
+  name: string;
 }
 
 interface GegenseiteStepProps {
   data: GegenseiteData;
   onChange: (data: Partial<GegenseiteData>) => void;
+  produkte: Produkt[];
+  konditionen: Kondition[];
 }
 
-export function GegenseiteStep({ data, onChange }: GegenseiteStepProps) {
+export function GegenseiteStep({ data, onChange, produkte, konditionen }: GegenseiteStepProps) {
   const { t } = useTranslation('configure');
+
+  const allDimensions = [
+    ...produkte.map((p) => ({ id: p.id, name: p.produktName, type: 'product' as const })),
+    ...konditionen.map((k) => ({ id: k.id, name: k.name, type: 'condition' as const })),
+  ];
 
   const getModusBadgeVariant = (modus: GegenseiteData['verhandlungsModus']) => {
     switch (modus) {
@@ -192,105 +204,48 @@ export function GegenseiteStep({ data, onChange }: GegenseiteStepProps) {
             <p className="text-sm text-blue-700">{t('gegenseite.distanz.info')}</p>
           </div>
 
-          {/* Volumen */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <Label>{t('gegenseite.distanz.volumen')}</Label>
-              <span className={`text-sm font-semibold ${getDistanzColor(data.geschätzteDistanz.volumen)}`}>
-                {getDistanzLabel(data.geschätzteDistanz.volumen)}
-              </span>
+          {allDimensions.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <p>{t('gegenseite.distanz.noDimensions')}</p>
             </div>
-            <Slider
-              value={[data.geschätzteDistanz.volumen]}
-              onValueChange={([value]) =>
-                onChange({
-                  geschätzteDistanz: { ...data.geschätzteDistanz, volumen: value },
-                })
-              }
-              min={-1}
-              max={1}
-              step={0.1}
-            />
-            <div className="flex justify-between text-xs text-muted-foreground">
-              <span>{t('gegenseite.distanz.veryFar')}</span>
-              <span>{t('gegenseite.distanz.aligned')}</span>
-            </div>
-          </div>
-
-          {/* Preis */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <Label>{t('gegenseite.distanz.preis')}</Label>
-              <span className={`text-sm font-semibold ${getDistanzColor(data.geschätzteDistanz.preis)}`}>
-                {getDistanzLabel(data.geschätzteDistanz.preis)}
-              </span>
-            </div>
-            <Slider
-              value={[data.geschätzteDistanz.preis]}
-              onValueChange={([value]) =>
-                onChange({
-                  geschätzteDistanz: { ...data.geschätzteDistanz, preis: value },
-                })
-              }
-              min={-1}
-              max={1}
-              step={0.1}
-            />
-            <div className="flex justify-between text-xs text-muted-foreground">
-              <span>{t('gegenseite.distanz.veryFar')}</span>
-              <span>{t('gegenseite.distanz.aligned')}</span>
-            </div>
-          </div>
-
-          {/* Laufzeit */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <Label>{t('gegenseite.distanz.laufzeit')}</Label>
-              <span className={`text-sm font-semibold ${getDistanzColor(data.geschätzteDistanz.laufzeit)}`}>
-                {getDistanzLabel(data.geschätzteDistanz.laufzeit)}
-              </span>
-            </div>
-            <Slider
-              value={[data.geschätzteDistanz.laufzeit]}
-              onValueChange={([value]) =>
-                onChange({
-                  geschätzteDistanz: { ...data.geschätzteDistanz, laufzeit: value },
-                })
-              }
-              min={-1}
-              max={1}
-              step={0.1}
-            />
-            <div className="flex justify-between text-xs text-muted-foreground">
-              <span>{t('gegenseite.distanz.veryFar')}</span>
-              <span>{t('gegenseite.distanz.aligned')}</span>
-            </div>
-          </div>
-
-          {/* Zahlungskonditionen */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <Label>{t('gegenseite.distanz.zahlungskonditionen')}</Label>
-              <span className={`text-sm font-semibold ${getDistanzColor(data.geschätzteDistanz.zahlungskonditionen)}`}>
-                {getDistanzLabel(data.geschätzteDistanz.zahlungskonditionen)}
-              </span>
-            </div>
-            <Slider
-              value={[data.geschätzteDistanz.zahlungskonditionen]}
-              onValueChange={([value]) =>
-                onChange({
-                  geschätzteDistanz: { ...data.geschätzteDistanz, zahlungskonditionen: value },
-                })
-              }
-              min={-1}
-              max={1}
-              step={0.1}
-            />
-            <div className="flex justify-between text-xs text-muted-foreground">
-              <span>{t('gegenseite.distanz.veryFar')}</span>
-              <span>{t('gegenseite.distanz.aligned')}</span>
-            </div>
-          </div>
+          ) : (
+            allDimensions.map((dim) => {
+              const currentValue = data.geschätzteDistanz[dim.id] ?? 0;
+              return (
+                <div key={dim.id} className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label>
+                      {dim.name}
+                      {dim.type === 'product' && (
+                        <span className="ml-2 text-xs text-muted-foreground">(Produkt)</span>
+                      )}
+                      {dim.type === 'condition' && (
+                        <span className="ml-2 text-xs text-muted-foreground">(Kondition)</span>
+                      )}
+                    </Label>
+                    <span className={`text-sm font-semibold ${getDistanzColor(currentValue)}`}>
+                      {getDistanzLabel(currentValue)}
+                    </span>
+                  </div>
+                  <Slider
+                    value={[currentValue]}
+                    onValueChange={([value]) =>
+                      onChange({
+                        geschätzteDistanz: { ...data.geschätzteDistanz, [dim.id]: value },
+                      })
+                    }
+                    min={-1}
+                    max={1}
+                    step={0.1}
+                  />
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>{t('gegenseite.distanz.veryFar')}</span>
+                    <span>{t('gegenseite.distanz.aligned')}</span>
+                  </div>
+                </div>
+              );
+            })
+          )}
         </CardContent>
       </Card>
     </div>

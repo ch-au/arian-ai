@@ -50,8 +50,14 @@
       "label": "Maximale Verhandlungsrunden",
       "description": "Anzahl der Angebot-Reaktion-Zyklen (1-15)"
     },
+    "marktProduktKontext": {
+      "label": "Markt- und Produktkontext",
+      "description": "Beschreiben Sie die Produkte, Dienstleistungen oder Märkte dieser Verhandlung",
+      "placeholder": "z.B. Wir verhandeln über Milka Schokolade 100g Tafeln für den deutschen Einzelhandel. Marktführer mit 23% Marktanteil..."
+    },
     "importantContext": {
       "label": "Wichtiger Verhandlungskontext",
+      "description": "Zusätzliche Hintergrundinformationen zur Verhandlung (optional)",
       "placeholder": "Beschreiben Sie wichtige Hintergrundinformationen...",
       "voiceButton": "Spracheingabe starten"
     }
@@ -145,10 +151,7 @@
       "label": "Geschätzte Distanz zur eigenen Position",
       "description": "Wie weit sind die Positionen der Gegenseite von Ihren eigenen entfernt?",
       "info": "Negative Werte = weit entfernt, Positive Werte = nah/überlappend",
-      "volumen": "Volumen",
-      "preis": "Preis",
-      "laufzeit": "Laufzeit",
-      "zahlungskonditionen": "Zahlungskonditionen",
+      "noDimensions": "Bitte definieren Sie zuerst Produkte oder Konditionen in Screen 2",
       "veryFar": "Sehr weit",
       "far": "Weit",
       "close": "Nah",
