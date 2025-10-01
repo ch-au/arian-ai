@@ -112,6 +112,12 @@ Gib 3-5 der wichtigsten Aspekte zurück."""
             config=generate_content_config,
         )
 
+        # DEBUG: Rohe Response ausgeben
+        print("=== GEMINI RAW RESPONSE ===", file=sys.stderr)
+        print(f"Response object: {response}", file=sys.stderr)
+        print(f"Response text: {response.text}", file=sys.stderr)
+        print("=== END RAW RESPONSE ===", file=sys.stderr)
+
         # Response Text extrahieren
         response_text = response.text.strip()
 
