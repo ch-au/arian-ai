@@ -58,97 +58,132 @@
   },
   "dimensionen": {
     "title": "Verhandlungsdimensionen",
+    "description": "Definieren Sie Produkte und übergreifende Konditionen",
     "konditionen": {
       "title": "Übergreifende Konditionen",
+      "description": "Zusätzliche Verhandlungsdimensionen wie Lieferzeit, Zahlungsziel, etc.",
       "add": "Kondition hinzufügen",
+      "remove": "Entfernen",
       "name": "Name",
-      "unit": "Einheit",
-      "minValue": "Minimalwert",
-      "maxValue": "Maximalwert",
-      "targetValue": "Zielwert",
-      "priority": "Priorität",
-      "priority1": "Must-have",
-      "priority2": "Wichtig",
-      "priority3": "Flexibel"
+      "namePlaceholder": "z.B. Lieferzeit, Zahlungsziel",
+      "einheit": "Einheit",
+      "einheitPlaceholder": "z.B. Tage, Monate, %",
+      "minWert": "Minimalwert",
+      "maxWert": "Maximalwert",
+      "zielWert": "Zielwert",
+      "priorität": "Priorität",
+      "mustHave": "Must-have (1)",
+      "important": "Wichtig (2)",
+      "flexible": "Flexibel (3)"
     },
     "produkte": {
       "title": "Produkte",
+      "description": "Fügen Sie bis zu 10 Produkte hinzu",
       "add": "Produkt hinzufügen",
+      "remove": "Entfernen",
       "produktName": "Produktname",
+      "produktNamePlaceholder": "z.B. Milka Schokolade 100g",
       "zielPreis": "Zielpreis (€)",
       "minPreis": "Min. Preis (€)",
       "maxPreis": "Max. Preis (€)",
       "volumen": "Geschätztes Volumen",
-      "maxLimit": "Maximal 10 Produkte erlaubt",
-      "placeholder": {
-        "name": "z.B. Milka Schokolade 100g",
-        "volumen": "z.B. 10000 Stück"
-      }
+      "maxLimit": "Maximal 10 Produkte erlaubt"
     }
   },
-  "taktiken": {
+  "taktikenTechniken": {
     "title": "Taktiken & Techniken",
-    "techniques": {
-      "title": "Beeinflussung-Techniken",
-      "description": "Wählen Sie psychologische Techniken aus"
+    "info": {
+      "title": "Kombinatorisches Testing",
+      "description": "Es werden {{count}} Simulationen erstellt (alle Kombinationen)"
     },
+    "selected": "ausgewählt",
     "tactics": {
       "title": "Verhandlungstaktiken",
-      "description": "Wählen Sie strategische Taktiken aus"
+      "description": "Wählen Sie strategische Taktiken aus",
+      "categories": {
+        "integrative": "Integrativ",
+        "competitive": "Kompetitiv",
+        "defensive": "Defensiv"
+      }
+    },
+    "techniques": {
+      "title": "Beeinflussungs-Techniken",
+      "description": "Wählen Sie psychologische Techniken aus"
+    },
+    "summary": {
+      "totalCombinations": "Gesamt Kombinationen",
+      "tactics": "Taktiken",
+      "techniques": "Techniken"
     }
   },
   "gegenseite": {
     "title": "Gegenseite konfigurieren",
     "beschreibung": {
       "label": "Beschreibung der Gegenseite",
-      "placeholder": "Beschreiben Sie Ihren Verhandlungspartner...",
-      "voiceButton": "Spracheingabe starten"
+      "description": "Beschreiben Sie Ihren Verhandlungspartner (per Text oder Sprache)",
+      "placeholder": "Beschreiben Sie Ihren Verhandlungspartner: Unternehmensgröße, Marktposition, bekannte Prioritäten, vergangene Verhandlungen..."
     },
-    "verhandlungsModus": {
+    "modus": {
       "label": "Verhandlungsmodus der Gegenseite",
+      "description": "Wie agiert Ihr Verhandlungspartner typischerweise?",
       "kooperativ": "Kooperativ",
-      "kooperativ_desc": "Win-Win fokussiert",
+      "kooperativDesc": "Win-Win fokussiert, sucht gemeinsame Lösungen",
       "moderat": "Moderat",
-      "moderat_desc": "Ausgewogen",
+      "moderatDesc": "Ausgewogener Ansatz zwischen Kooperation und Wettbewerb",
       "aggressiv": "Aggressiv",
-      "aggressiv_desc": "Kompetitiv",
-      "sehr_aggressiv": "Sehr Aggressiv",
-      "sehr_aggressiv_desc": "Zero-sum Mindset"
+      "aggressivDesc": "Kompetitiv, fokussiert auf eigenen Vorteil",
+      "sehrAggressiv": "Sehr Aggressiv",
+      "sehrAggressivDesc": "Zero-sum Mindset, maximiert eigenen Gewinn",
+      "badges": {
+        "kooperativ": "Win-Win",
+        "moderat": "Ausgewogen",
+        "aggressiv": "Kompetitiv",
+        "sehrAggressiv": "Zero-Sum"
+      }
     },
-    "vermuteteDistanz": {
-      "label": "Vermutete Distanz zur eigenen Position",
-      "close": "Nah",
-      "close_desc": "ZOPA-Überschneidung wahrscheinlich",
-      "medium": "Mittel",
-      "medium_desc": "Einigung möglich aber schwierig",
+    "distanz": {
+      "label": "Geschätzte Distanz zur eigenen Position",
+      "description": "Wie weit sind die Positionen der Gegenseite von Ihren eigenen entfernt?",
+      "info": "Negative Werte = weit entfernt, Positive Werte = nah/überlappend",
+      "volumen": "Volumen",
+      "preis": "Preis",
+      "laufzeit": "Laufzeit",
+      "zahlungskonditionen": "Zahlungskonditionen",
+      "veryFar": "Sehr weit",
       "far": "Weit",
-      "far_desc": "Großer Verhandlungsspielraum nötig"
+      "close": "Nah",
+      "veryClose": "Sehr nah",
+      "aligned": "Übereinstimmend"
     }
   },
   "review": {
     "title": "Konfiguration überprüfen",
     "summary": {
-      "title": "Ihre Konfiguration",
-      "negotiation": "Verhandlung",
-      "role": "Rolle",
-      "powerBalance": "Macht-Balance",
-      "maxRounds": "Max Runden",
-      "frequency": "Frequenz",
+      "title": "Zusammenfassung",
+      "description": "Überprüfen Sie Ihre Konfiguration vor dem Start",
       "products": "Produkte",
-      "konditionen": "Konditionen",
-      "techniques": "Techniken",
+      "conditions": "Konditionen",
       "tactics": "Taktiken",
-      "simulationRuns": "Simulationsläufe"
+      "techniques": "Techniken",
+      "totalSimulations": "Gesamt Simulationen",
+      "counterpartMode": "Gegenseite Modus"
     },
-    "marketIntelligence": {
-      "title": "KI-Marktanalyse",
-      "loading": "Analysiere aktuelle Marktdaten...",
-      "reload": "Neu laden",
-      "error": "Fehler beim Laden der Marktdaten",
-      "recommendation": "Empfehlung"
+    "intelligence": {
+      "title": "KI Marktanalyse",
+      "description": "Generieren Sie aktuelle Markteinschätzungen für Ihre Verhandlung",
+      "generate": "Marktanalyse generieren",
+      "generating": "Generiere...",
+      "analyzing": "Analysiere aktuelle Marktdaten mit Gemini Flash...",
+      "noResults": "Keine Ergebnisse verfügbar",
+      "relevanz": {
+        "hoch": "Hoch",
+        "mittel": "Mittel",
+        "niedrig": "Niedrig"
+      }
     },
-    "actions": {
-      "startSimulation": "Simulation starten"
+    "submit": {
+      "readyTitle": "Bereit zum Start",
+      "readyDescription": "Klicken Sie auf 'Simulation starten' um alle Kombinationen zu testen"
     }
   }
 }
