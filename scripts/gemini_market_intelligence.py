@@ -37,13 +37,14 @@ def generate_market_intelligence(negotiation_context: dict) -> list[dict]:
     client = genai.Client(api_key=api_key)
 
     # Model und Tools konfigurieren
-    model_id = "gemini-2.0-flash-exp"
+    model = "gemini-flash-latest"
 
     # Google Search Tool aktivieren
-    tools = [types.Tool(google_search=types.GoogleSearch())]
+    tools = [types.Tool(googleSearch=types.GoogleSearch())]
 
-    # Generate Content Config (ohne thinking_config - nicht supported von flash-exp)
+    # Generate Content Config mit Thinking Budget
     generate_content_config = types.GenerateContentConfig(
+        thinking_config=types.ThinkingConfig(thinking_budget=-1),
         tools=tools,
     )
 
@@ -93,11 +94,21 @@ Relevanz-Stufen:
 
 Gib 3-5 der wichtigsten Aspekte zurück."""
 
+    # Contents strukturieren
+    contents = [
+        types.Content(
+            role="user",
+            parts=[
+                types.Part.from_text(text=prompt),
+            ],
+        ),
+    ]
+
     try:
         # Gemini API Call mit Grounded Search
         response = client.models.generate_content(
-            model=model_id,
-            contents=prompt,
+            model=model,
+            contents=contents,
             config=generate_content_config,
         )
 
