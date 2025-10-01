@@ -1,0 +1,44 @@
+{
+  "title": "Analyse Dashboard",
+  "summary": {
+    "totalRuns": "Gesamt Simulationen",
+    "completedRuns": "Abgeschlossen",
+    "successRate": "Erfolgsquote",
+    "avgRounds": "Ø Runden",
+    "avgCost": "Ø Kosten",
+    "totalCost": "Gesamtkosten",
+    "bestDealValue": "Bester Deal"
+  },
+  "tabs": {
+    "overview": "Übersicht",
+    "heatmap": "Heatmap",
+    "trends": "Trends",
+    "detailed": "Details"
+  },
+  "heatmap": {
+    "title": "Erfolgsquote: Techniken × Taktiken",
+    "xAxis": "Taktiken",
+    "yAxis": "Techniken",
+    "noData": "Keine Daten verfügbar"
+  },
+  "topPerformers": {
+    "title": "Top Performer",
+    "combination": "Kombination",
+    "runs": "Läufe",
+    "successRate": "Erfolgsquote",
+    "avgRounds": "Ø Runden",
+    "avgCost": "Ø Kosten",
+    "noData": "Keine Daten verfügbar"
+  },
+  "export": {
+    "title": "Ergebnisse exportieren",
+    "json": "Als JSON",
+    "csv": "Als CSV",
+    "excel": "Als Excel"
+  },
+  "noResults": {
+    "title": "Keine Simulationsergebnisse",
+    "description": "Starten Sie eine Simulation, um Analysen zu sehen."
+  },
+  "loading": "Lade Analysedaten..."
+}

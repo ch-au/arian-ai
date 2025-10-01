@@ -1,0 +1,154 @@
+{
+  "title": "Neue Verhandlung konfigurieren",
+  "steps": {
+    "grundeinstellungen": "Grundeinstellungen",
+    "dimensionen": "Verhandlungsdimensionen",
+    "taktiken": "Taktiken & Techniken",
+    "gegenseite": "Gegenseite",
+    "review": "Überprüfen"
+  },
+  "grundeinstellungen": {
+    "title": {
+      "label": "Verhandlungstitel",
+      "placeholder": "z.B. Milka Schokolade Jahresvertrag 2025"
+    },
+    "userRole": {
+      "label": "Ihre Rolle",
+      "buyer": "Käufer",
+      "seller": "Verkäufer"
+    },
+    "negotiationType": {
+      "label": "Verhandlungsart",
+      "oneShot": "Einmalig",
+      "multiYear": "Mehrjährig"
+    },
+    "companyKnown": {
+      "label": "Ist das Unternehmen bekannt?",
+      "yes": "Ja, bekanntes Unternehmen",
+      "no": "Nein, erstmaliger Kontakt"
+    },
+    "counterpartKnown": {
+      "label": "Ist der Verhandlungspartner im Unternehmen bekannt?",
+      "yes": "Ja, bekannte Person",
+      "no": "Nein, neue Kontaktperson"
+    },
+    "negotiationFrequency": {
+      "label": "Verhandlungsfrequenz",
+      "yearly": "Jährlich",
+      "quarterly": "Quartalsweise",
+      "monthly": "Monatlich",
+      "ongoing": "Laufend"
+    },
+    "powerBalance": {
+      "label": "Macht-Balance",
+      "sellerPower": "Verkäufer mächtiger",
+      "balanced": "Ausgeglichen",
+      "buyerPower": "Käufer mächtiger",
+      "description": "Wer hat mehr Verhandlungsmacht?"
+    },
+    "maxRounds": {
+      "label": "Maximale Verhandlungsrunden",
+      "description": "Anzahl der Angebot-Reaktion-Zyklen (1-15)"
+    },
+    "importantContext": {
+      "label": "Wichtiger Verhandlungskontext",
+      "placeholder": "Beschreiben Sie wichtige Hintergrundinformationen...",
+      "voiceButton": "Spracheingabe starten"
+    }
+  },
+  "dimensionen": {
+    "title": "Verhandlungsdimensionen",
+    "konditionen": {
+      "title": "Übergreifende Konditionen",
+      "add": "Kondition hinzufügen",
+      "name": "Name",
+      "unit": "Einheit",
+      "minValue": "Minimalwert",
+      "maxValue": "Maximalwert",
+      "targetValue": "Zielwert",
+      "priority": "Priorität",
+      "priority1": "Must-have",
+      "priority2": "Wichtig",
+      "priority3": "Flexibel"
+    },
+    "produkte": {
+      "title": "Produkte",
+      "add": "Produkt hinzufügen",
+      "produktName": "Produktname",
+      "zielPreis": "Zielpreis (€)",
+      "minPreis": "Min. Preis (€)",
+      "maxPreis": "Max. Preis (€)",
+      "volumen": "Geschätztes Volumen",
+      "maxLimit": "Maximal 10 Produkte erlaubt",
+      "placeholder": {
+        "name": "z.B. Milka Schokolade 100g",
+        "volumen": "z.B. 10000 Stück"
+      }
+    }
+  },
+  "taktiken": {
+    "title": "Taktiken & Techniken",
+    "techniques": {
+      "title": "Beeinflussung-Techniken",
+      "description": "Wählen Sie psychologische Techniken aus"
+    },
+    "tactics": {
+      "title": "Verhandlungstaktiken",
+      "description": "Wählen Sie strategische Taktiken aus"
+    }
+  },
+  "gegenseite": {
+    "title": "Gegenseite konfigurieren",
+    "beschreibung": {
+      "label": "Beschreibung der Gegenseite",
+      "placeholder": "Beschreiben Sie Ihren Verhandlungspartner...",
+      "voiceButton": "Spracheingabe starten"
+    },
+    "verhandlungsModus": {
+      "label": "Verhandlungsmodus der Gegenseite",
+      "kooperativ": "Kooperativ",
+      "kooperativ_desc": "Win-Win fokussiert",
+      "moderat": "Moderat",
+      "moderat_desc": "Ausgewogen",
+      "aggressiv": "Aggressiv",
+      "aggressiv_desc": "Kompetitiv",
+      "sehr_aggressiv": "Sehr Aggressiv",
+      "sehr_aggressiv_desc": "Zero-sum Mindset"
+    },
+    "vermuteteDistanz": {
+      "label": "Vermutete Distanz zur eigenen Position",
+      "close": "Nah",
+      "close_desc": "ZOPA-Überschneidung wahrscheinlich",
+      "medium": "Mittel",
+      "medium_desc": "Einigung möglich aber schwierig",
+      "far": "Weit",
+      "far_desc": "Großer Verhandlungsspielraum nötig"
+    }
+  },
+  "review": {
+    "title": "Konfiguration überprüfen",
+    "summary": {
+      "title": "Ihre Konfiguration",
+      "negotiation": "Verhandlung",
+      "role": "Rolle",
+      "powerBalance": "Macht-Balance",
+      "maxRounds": "Max Runden",
+      "frequency": "Frequenz",
+      "products": "Produkte",
+      "konditionen": "Konditionen",
+      "techniques": "Techniken",
+      "tactics": "Taktiken",
+      "simulationRuns": "Simulationsläufe"
+    },
+    "marketIntelligence": {
+      "title": "KI-Marktanalyse",
+      "loading": "Analysiere aktuelle Marktdaten...",
+      "reload": "Neu laden",
+      "error": "Fehler beim Laden der Marktdaten",
+      "recommendation": "Empfehlung"
+    },
+    "actions": {
+      "startSimulation": "Simulation starten"
+    }
+  }
+}
