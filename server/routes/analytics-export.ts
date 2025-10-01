@@ -4,12 +4,15 @@
  * Clean architecture with separated concerns
  */
 
-import { Router } from 'express';
-import { storage } from '../storage';
-import { SimulationQueueService } from '../services/simulation-queue';
-import { createRequestLogger } from '../services/logger';
+import { Router, type Request, type Response } from 'express';
+import { storage } from '../storage.js';
+import { SimulationQueueService } from '../services/simulation-queue.js';
 
-const log = createRequestLogger('routes:analytics-export');
+// Using console.log for now instead of logger to avoid import issues
+const log = {
+  info: (obj: any, msg: string) => console.log(`[analytics-export] ${msg}`, obj),
+  error: (obj: any, msg: string) => console.error(`[analytics-export] ${msg}`, obj)
+};
 
 export function createAnalyticsExportRouter(): Router {
   const router = Router();
@@ -94,7 +97,7 @@ export function createAnalyticsExportRouter(): Router {
  * Pure function - easily testable
  */
 function exportAsCSV(
-  res: any,
+  res: Response,
   negotiation: any,
   results: any[],
   asExcel = false

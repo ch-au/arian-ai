@@ -1,6 +1,7 @@
 import { Router } from "express";
-import { analyticsService } from "../services/analytics";
-import { createAnalyticsExportRouter } from "./analytics-export";
+import { analyticsService } from "../services/analytics.js";
+// TEMPORARILY DISABLED - causing server startup hang (ESM import issue)
+// import { createAnalyticsExportRouter } from "./analytics-export.js";
 
 export function createAnalyticsRouter(): Router {
   const router = Router();
@@ -20,8 +21,9 @@ export function createAnalyticsRouter(): Router {
     }
   });
 
-  // Mount export routes
-  router.use(createAnalyticsExportRouter());
+  // TEMPORARILY DISABLED - Export routes causing server hang
+  // Will be re-enabled after fixing ESM import issues
+  // router.use(createAnalyticsExportRouter());
 
   return router;
 }
