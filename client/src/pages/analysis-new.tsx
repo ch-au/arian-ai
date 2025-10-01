@@ -167,13 +167,26 @@ export default function AnalysisDashboard() {
     queryKey: [`/api/negotiations/${negotiationId}`]
   });
 
-  // Fetch simulation results
+  // Fetch simulation results - first get queue, then results
+  // Step 1: Get queue ID for this negotiation
   const {
-    data: results = [],
-    isLoading: loadingResults
-  } = useQuery<SimulationResult[]>({
-    queryKey: [`/api/simulations/results/${negotiationId}`]
+    data: queueData,
+    isLoading: loadingQueue
+  } = useQuery<any>({
+    queryKey: [`/api/simulations/queue/by-negotiation/${negotiationId}`],
+    enabled: !!negotiationId
   });
+
+  // Step 2: Get results for the queue
+  const {
+    data: resultsResponse,
+    isLoading: loadingResults
+  } = useQuery<any>({
+    queryKey: [`/api/simulations/queue/${queueData?.queueId}/results`],
+    enabled: !!queueData?.queueId
+  });
+
+  const results = resultsResponse?.data || [];
 
   // Fetch techniques and tactics for labeling
   const { data: techniques = [] } = useQuery<any[]>({
@@ -190,7 +203,7 @@ export default function AnalysisDashboard() {
   }, [results]);
 
   // Loading state
-  const isLoading = loadingNegotiation || loadingResults;
+  const isLoading = loadingNegotiation || loadingQueue || loadingResults;
 
   // Error state
   if (!negotiationId) {
