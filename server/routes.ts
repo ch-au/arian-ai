@@ -12,6 +12,7 @@ import { createNegotiationRouter } from "./routes/negotiations";
 import { createStrategyRouter } from "./routes/strategies";
 import { createAnalyticsRouter } from "./routes/analytics";
 import { createSystemRouter } from "./routes/system";
+import marketIntelligenceRouter from "./routes/market-intelligence";
 
 let negotiationEngine: NegotiationEngine;
 
@@ -36,6 +37,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use("/api", createStrategyRouter());
   app.use("/api/analytics", createAnalyticsRouter());
   app.use("/api", createSystemRouter(negotiationEngine));
+  app.use("/api/market-intelligence", marketIntelligenceRouter);
 
   // Simulation queue management routes
   app.use("/api/simulations", simulationQueueRoutes);

@@ -99,24 +99,40 @@ export default function Configure() {
   const handleGenerateIntelligence = async () => {
     setIsLoadingIntelligence(true);
     try {
-      // TODO: Implement Gemini Flash market intelligence API call (Sprint 3)
-      // Placeholder for now
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      const response = await fetch('/api/market-intelligence', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: config.grundeinstellungen.title,
+          marktProduktKontext: config.grundeinstellungen.marktProduktKontext,
+          userRole: config.grundeinstellungen.userRole,
+          produkte: config.dimensionen.produkte,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'API Fehler');
+      }
+
+      const data = await response.json();
 
       setConfig(prev => ({
         ...prev,
-        marketIntelligence: [
-          {
-            aspekt: "Beispiel Marktanalyse - noch nicht implementiert",
-            quelle: "https://example.com",
-            relevanz: "mittel" as const,
-          },
-        ],
+        marketIntelligence: data.intelligence || [],
       }));
-    } catch (error) {
+
+      toast({
+        title: "Marktanalyse erstellt",
+        description: `${data.intelligence?.length || 0} Aspekte gefunden`,
+      });
+    } catch (error: any) {
+      console.error('Market Intelligence Error:', error);
       toast({
         title: "Fehler",
-        description: "Marktanalyse konnte nicht generiert werden",
+        description: error.message || "Marktanalyse konnte nicht generiert werden",
         variant: "destructive",
       });
     } finally {
