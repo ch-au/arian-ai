@@ -121,6 +121,17 @@ Gib 3-5 der wichtigsten Aspekte zurück."""
         # Response Text extrahieren
         response_text = response.text.strip()
 
+        # JSON aus Markdown Code-Blocks extrahieren (falls vorhanden)
+        if response_text.startswith('```'):
+            # Entferne ```json und schließende ```
+            lines = response_text.split('\n')
+            # Erste Zeile (```json) und letzte Zeile (```) entfernen
+            if lines[0].startswith('```'):
+                lines = lines[1:]
+            if lines[-1].strip() == '```':
+                lines = lines[:-1]
+            response_text = '\n'.join(lines).strip()
+
         # JSON parsen
         try:
             result = json.loads(response_text)
