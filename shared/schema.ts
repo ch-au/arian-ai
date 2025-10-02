@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, jsonb, decimal, uuid, unique } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, jsonb, decimal, uuid, unique, index } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -73,11 +73,28 @@ export const negotiations = pgTable("negotiations", {
   counterpartDistance: jsonb("counterpart_distance"), // {volumen: 0, preis: 0, laufzeit: 0, zahlungskonditionen: 0}
   
   sonderinteressen: text("sonderinteressen"), // Special interests/requirements
-  
+
+  // NEW: Outcome tracking and aggregates
+  overallStatus: text("overall_status").default("pending"), // pending, in_progress, completed, cancelled
+  totalSimulationRuns: integer("total_simulation_runs").default(0),
+  completedRuns: integer("completed_runs").default(0),
+  successfulDeals: integer("successful_deals").default(0),
+  averageDealValue: decimal("average_deal_value", { precision: 15, scale: 2 }),
+  bestDealValue: decimal("best_deal_value", { precision: 15, scale: 2 }),
+  worstDealValue: decimal("worst_deal_value", { precision: 15, scale: 2 }),
+
+  // Tactical insights
+  mostEffectiveTechnique: uuid("most_effective_technique").references(() => influencingTechniques.id),
+  mostEffectiveTactic: uuid("most_effective_tactic").references(() => negotiationTactics.id),
+  averageRoundsToCompletion: decimal("average_rounds_to_completion", { precision: 5, scale: 2 }),
+
+  totalCost: decimal("total_cost", { precision: 10, scale: 4 }),
+
   // Timestamps
   createdAt: timestamp("created_at").defaultNow(),
   startedAt: timestamp("started_at"),
   completedAt: timestamp("completed_at"),
+  notes: text("notes"),
   metadata: jsonb("metadata").default({}),
 });
 
@@ -85,17 +102,39 @@ export const negotiations = pgTable("negotiations", {
 export const simulationQueue = pgTable("simulation_queue", {
   id: uuid("id").primaryKey().defaultRandom(),
   negotiationId: uuid("negotiation_id").references(() => negotiations.id, { onDelete: "cascade" }),
-  status: text("status").notNull().default("pending"), // pending, running, completed, failed, paused
-  totalSimulations: integer("total_simulations").notNull(),
+
+  totalSimulations: integer("total_simulations").notNull(), // Total N×M combinations
+  priority: integer("priority").default(0),
+
+  status: text("status").notNull().default("pending"), // pending, running, paused, completed, cancelled, failed
+
+  // Progress tracking
   completedCount: integer("completed_count").default(0),
   failedCount: integer("failed_count").default(0),
+  runningCount: integer("running_count").default(0),
+  pendingCount: integer("pending_count").default(0),
+
+  // Timing
+  createdAt: timestamp("created_at").defaultNow(),
   startedAt: timestamp("started_at"),
   pausedAt: timestamp("paused_at"),
   completedAt: timestamp("completed_at"),
+  estimatedCompletionAt: timestamp("estimated_completion_at"),
+
+  // Resource management
+  maxConcurrent: integer("max_concurrent").default(1),
+  currentConcurrent: integer("current_concurrent").default(0),
+
+  // Cost tracking
   estimatedTotalCost: decimal("estimated_total_cost", { precision: 10, scale: 4 }),
   actualTotalCost: decimal("actual_total_cost", { precision: 10, scale: 4 }).default("0"),
+
+  // Error handling
+  errorCount: integer("error_count").default(0),
+  lastError: text("last_error"),
+
   crashRecoveryCheckpoint: jsonb("crash_recovery_checkpoint"), // Recovery state
-  createdAt: timestamp("created_at").defaultNow(),
+  metadata: jsonb("metadata").default({}),
 });
 
 // Simulation Runs - individual runs for each technique-tactic combination
@@ -115,30 +154,40 @@ export const simulationRuns = pgTable("simulation_runs", {
   startedAt: timestamp("started_at"),
   completedAt: timestamp("completed_at"),
   estimatedDuration: integer("estimated_duration"), // Predicted seconds
-  actualCost: decimal("actual_cost", { precision: 10, scale: 4 }), // OpenAI API cost
-  crashRecoveryData: jsonb("crash_recovery_data"), // State for recovery
   retryCount: integer("retry_count").default(0), // Failed attempts
   maxRetries: integer("max_retries").default(3), // Retry limit
-  // Results
+
+  // Outcome
+  outcome: text("outcome"), // DEAL_ACCEPTED, WALK_AWAY, TERMINATED, PAUSED, MAX_ROUNDS_REACHED, ERROR
+  outcomeReason: text("outcome_reason"),
+
+  // Process metrics
   totalRounds: integer("total_rounds").default(0),
-  finalAgreement: jsonb("final_agreement"), // Final negotiated terms
-  zopaAchieved: boolean("zopa_achieved").default(false), // Whether user's ZOPA was met
-  successScore: decimal("success_score", { precision: 5, scale: 2 }), // 0-100 score
-  // Final negotiated values
-  finalTerms: jsonb("final_terms"), // {volumen: X, preis: Y, laufzeit: Z, zahlungskonditionen: W}
-  dealValue: decimal("deal_value", { precision: 15, scale: 2 }), // Calculated: price * volume
-  // Performance metrics
   avgResponseTimeMs: integer("avg_response_time_ms"),
+
+  // Financial results
+  dealValue: decimal("deal_value", { precision: 15, scale: 2 }), // SUM of productResults.subtotal
+  actualCost: decimal("actual_cost", { precision: 10, scale: 4 }),
+  costEfficiencyScore: decimal("cost_efficiency_score", { precision: 10, scale: 4 }), // dealValue / actualCost
+
+  // Success metrics
+  zopaAchieved: boolean("zopa_achieved").default(false),
+  successScore: decimal("success_score", { precision: 5, scale: 2 }), // 0-100
+  dealValueVsTarget: decimal("deal_value_vs_target", { precision: 10, scale: 2 }), // Percentage
+
+  // Tactical effectiveness
   techniqueEffectivenessScore: decimal("technique_effectiveness_score", { precision: 5, scale: 2 }),
   tacticEffectivenessScore: decimal("tactic_effectiveness_score", { precision: 5, scale: 2 }),
-  // NEW: Enhanced result tracking
-  conversationLog: jsonb("conversation_log").default([]).notNull(), // Array of conversation turns
-  dimensionResults: jsonb("dimension_results").default({}).notNull(), // Results per dimension
-  personalityArchetype: text("personality_archetype"), // Link to personality type
+  tacticalSummary: text("tactical_summary"),
+
+  // Results storage
+  conversationLog: jsonb("conversation_log").default([]).notNull(),
+  otherDimensions: jsonb("other_dimensions").default({}).notNull(), // Non-price terms
+
+  // Debugging
+  crashRecoveryData: jsonb("crash_recovery_data"),
+  langfuseTraceId: text("langfuse_trace_id"),
   metadata: jsonb("metadata").default({}),
-  // Langfuse integration
-  langfuseTraceId: text("langfuse_trace_id"), // Langfuse trace ID for this negotiation
-  outcome: text("outcome"), // Detailed outcome: DEAL_ACCEPTED, TERMINATED, WALK_AWAY, PAUSED, MAX_ROUNDS_REACHED, ERROR
 });
 
 // Negotiation rounds - individual turns in a simulation run
@@ -263,6 +312,56 @@ export const products = pgTable("products", {
   geschätztesVolumen: integer("geschätztes_volumen").notNull(), // Fixed estimated volume - NOT negotiated
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+// NEW: Product Results - stores negotiated price per product per simulation run
+export const productResults = pgTable("product_results", {
+  id: uuid("id").primaryKey().defaultRandom(),
+
+  simulationRunId: uuid("simulation_run_id")
+    .references(() => simulationRuns.id, { onDelete: "cascade" })
+    .notNull(),
+
+  productId: uuid("product_id")
+    .references(() => products.id, { onDelete: "cascade" })
+    .notNull(),
+
+  // Denormalized config (for easy access without joins)
+  productName: text("product_name").notNull(),
+  targetPrice: decimal("target_price", { precision: 15, scale: 4 }).notNull(),
+  minMaxPrice: decimal("min_max_price", { precision: 15, scale: 4 }).notNull(),
+  estimatedVolume: integer("estimated_volume").notNull(),
+
+  // Results
+  agreedPrice: decimal("agreed_price", { precision: 15, scale: 4 }).notNull(),
+
+  // Distance from optimal values
+  priceVsTarget: decimal("price_vs_target", { precision: 10, scale: 2 }),
+  absoluteDeltaFromTarget: decimal("absolute_delta_from_target", { precision: 15, scale: 4 }),
+  priceVsMinMax: decimal("price_vs_min_max", { precision: 10, scale: 2 }),
+  absoluteDeltaFromMinMax: decimal("absolute_delta_from_min_max", { precision: 15, scale: 4 }),
+  withinZopa: boolean("within_zopa").default(true),
+  zopaUtilization: decimal("zopa_utilization", { precision: 5, scale: 2 }),
+
+  // Deal value calculation
+  subtotal: decimal("subtotal", { precision: 15, scale: 2 }).notNull(),
+  targetSubtotal: decimal("target_subtotal", { precision: 15, scale: 2 }).notNull(),
+  deltaFromTargetSubtotal: decimal("delta_from_target_subtotal", { precision: 15, scale: 2 }),
+
+  performanceScore: decimal("performance_score", { precision: 5, scale: 2 }),
+
+  dimensionKey: text("dimension_key"),
+  negotiationRound: integer("negotiation_round"),
+
+  createdAt: timestamp("created_at").defaultNow(),
+  metadata: jsonb("metadata").default({}),
+});
+
+// Indexes for productResults
+export const productResultsSimulationRunIdIdx = index("product_results_simulation_run_id_idx")
+  .on(productResults.simulationRunId);
+
+export const productResultsProductIdIdx = index("product_results_product_id_idx")
+  .on(productResults.productId);
 
 // Relations
 export const agentRelations = relations(agents, ({ many }) => ({
