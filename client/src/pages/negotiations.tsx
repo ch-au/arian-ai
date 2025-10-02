@@ -213,6 +213,7 @@ export default function Negotiations() {
       case "completed": return "bg-blue-500";
       case "error": return "bg-red-500";
       case "configured": return "bg-yellow-500";
+      case "pending": return "bg-yellow-500"; // Same as configured
       default: return "bg-gray-500";
     }
   };
@@ -223,6 +224,7 @@ export default function Negotiations() {
       case "completed": return <CheckCircle className="h-4 w-4" />;
       case "error": return <XCircle className="h-4 w-4" />;
       case "configured": return <AlertTriangle className="h-4 w-4" />;
+      case "pending": return <AlertTriangle className="h-4 w-4" />; // Same as configured
       default: return <Clock className="h-4 w-4" />;
     }
   };
@@ -388,7 +390,9 @@ export default function Negotiations() {
                         <div className="space-y-2">
                           <div className="text-sm">
                             <span className="font-medium">{completedRuns}/{totalRuns}</span>
-                            <span className="text-muted-foreground ml-1">completed</span>
+                            <span className="text-muted-foreground ml-1">
+                              {simulationStats.isPlanned ? "planned" : "completed"}
+                            </span>
                           </div>
                           
                           {/* Active Simulations Indicator */}
@@ -452,7 +456,7 @@ export default function Negotiations() {
                           </Button>
 
                           {(negotiation.status === "configured" || negotiation.status === "pending") && (
-                            <Button 
+                            <Button
                               variant="ghost"
                               size="sm"
                               onClick={() => {
@@ -465,14 +469,15 @@ export default function Negotiations() {
                               <Edit className="h-4 w-4" />
                             </Button>
                           )}
-                          
-                          {negotiation.status === "configured" && (
-                            <Button 
+
+                          {(negotiation.status === "configured" || negotiation.status === "pending") && (
+                            <Button
                               variant="ghost"
                               size="sm"
                               onClick={() => startNegotiationMutation.mutate(negotiation.id)}
                               disabled={startNegotiationMutation.isPending}
                               title="Start Simulation"
+                              className="text-green-600 hover:text-green-700 hover:bg-green-50"
                             >
                               <Play className="h-4 w-4" />
                             </Button>

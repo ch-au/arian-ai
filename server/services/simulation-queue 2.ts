@@ -3,7 +3,7 @@
  * Handles creation, execution, and monitoring of simulation queues with crash recovery
  */
 
-import { db, storage } from '../storage';
+import { db } from '../storage';
 import { simulationQueue, simulationRuns, negotiations, influencingTechniques, negotiationTactics, personalityTypes } from '../../shared/schema';
 import { eq, and, or, lt, count, sum, desc } from 'drizzle-orm';
 import { PythonNegotiationService } from './python-negotiation-service';
@@ -351,12 +351,10 @@ export class SimulationQueueService {
       .where(eq(simulationRuns.id, runId))
       .returning({ runNumber: simulationRuns.runNumber });
 
-    // Update queue status to pending if it was completed and queue exists
-    if (run.queueId) {
-      await db.update(simulationQueue)
-        .set({ status: 'pending' })
-        .where(eq(simulationQueue.id, run.queueId));
-    }
+    // Update queue status to pending if it was completed
+    await db.update(simulationQueue)
+      .set({ status: 'pending' })
+      .where(eq(simulationQueue.id, run.queueId));
 
     this.log.info(`Restarted run #${updatedRun.runNumber}`);
     return { runNumber: updatedRun.runNumber };
@@ -668,10 +666,28 @@ export class SimulationQueueService {
 
       const dimensionValues = result.finalOffer?.dimension_values ?? {};
 
-      // Calculate deal value: SUM of (agreed price × geschätztesVolumen) for ALL products
-      // NOTE: Volume is NOT negotiated - only prices are negotiated
+      // Calculate deal value: agreed price * geschätztesVolumen from product configuration
+      // NOTE: Volume is NOT negotiated - only price is negotiated
       const calculateDealValue = async (dimensions: any, negotiationId: string): Promise<number | null> => {
         if (!dimensions || typeof dimensions !== 'object') return null;
+
+        // Find agreed price from negotiation dimensions (case-insensitive)
+        const entries = Object.entries(dimensions);
+        let agreedPrice: number | null = null;
+
+        for (const [key, value] of entries) {
+          const keyLower = key.toLowerCase();
+          const numValue = typeof value === 'number' ? value : parseFloat(String(value));
+
+          if (keyLower.includes('preis') || keyLower.includes('price')) {
+            agreedPrice = numValue;
+            break;
+          }
+        }
+
+        if (agreedPrice === null || isNaN(agreedPrice)) {
+          return null;
+        }
 
         // Fetch product configuration to get geschätztesVolumen (fixed estimated volume)
         const products = await storage.getProductsByNegotiation(negotiationId);
@@ -681,55 +697,19 @@ export class SimulationQueueService {
           return null;
         }
 
-        // Match each product with its price dimension and calculate total deal value
-        let totalDealValue = 0;
-        let productsMatched = 0;
+        // Use the first product's geschätztesVolumen
+        // TODO: Handle multiple products - for now use the first one
+        const geschätztesVolumen = products[0].geschätztesVolumen;
 
-        for (const product of products) {
-          const productName = product.produktName;
-          const volume = product.geschätztesVolumen;
-
-          if (!volume || volume === 0) {
-            this.log.warn(`Product ${productName} has no geschätztesVolumen, skipping`);
-            continue;
-          }
-
-          // Find the price dimension for this product
-          // Dimension key format: "Preis Oreo", "Preis Milka", "Price ProductName", etc.
-          let productPrice: number | null = null;
-
-          for (const [key, value] of Object.entries(dimensions)) {
-            const keyLower = key.toLowerCase();
-            const productNameLower = productName.toLowerCase();
-
-            // Match if dimension key contains both "preis"/"price" AND the product name
-            if ((keyLower.includes('preis') || keyLower.includes('price')) &&
-                keyLower.includes(productNameLower)) {
-              const numValue = typeof value === 'number' ? value : parseFloat(String(value));
-              if (!isNaN(numValue)) {
-                productPrice = numValue;
-                break;
-              }
-            }
-          }
-
-          if (productPrice !== null && productPrice > 0) {
-            const productDealValue = productPrice * volume;
-            totalDealValue += productDealValue;
-            productsMatched++;
-            this.log.info(`Product "${productName}": €${productPrice} × ${volume} units = €${productDealValue}`);
-          } else {
-            this.log.warn(`No price found for product "${productName}" in dimensions`);
-          }
-        }
-
-        if (productsMatched === 0) {
-          this.log.warn(`No products could be matched with price dimensions`);
+        if (!geschätztesVolumen) {
+          this.log.warn(`Product ${products[0].produktName} has no geschätztesVolumen`);
           return null;
         }
 
-        this.log.info(`Total deal value: €${totalDealValue} (${productsMatched}/${products.length} products)`);
-        return totalDealValue;
+        const dealValue = agreedPrice * geschätztesVolumen;
+        this.log.info(`Deal value calculated: ${agreedPrice} (price) × ${geschätztesVolumen} (volume) = ${dealValue}`);
+
+        return dealValue;
       };
 
       const dealValue = await calculateDealValue(dimensionValues, nextSimulation.negotiationId || '');

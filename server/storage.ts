@@ -13,6 +13,7 @@ import {
   influencingTechniques,
   negotiationTactics,
   personalityTypes,
+  products,
   type User,
   type InsertUser,
   type Agent,
@@ -43,6 +44,8 @@ import { eq, desc, asc, and, gte, lte, avg, count, sum } from "drizzle-orm";
 
 // Re-export db and schema tables for use in other services
 export { db, negotiations, simulationRuns, agents, negotiationDimensions };
+
+// storage is exported at the bottom of the file after the class definition
 
 export interface IStorage {
   // User methods
@@ -718,6 +721,20 @@ export class DatabaseStorage implements IStorage {
   async getPersonalityTypeByName(name: string) {
     const results = await db.select().from(personalityTypes).where(eq(personalityTypes.archetype, name));
     return results.length > 0 ? results[0] : null;
+  }
+
+  // Products methods
+  async createProducts(productsData: Array<{ negotiationId: string; produktName: string; zielPreis: string; minMaxPreis: string; geschätztesVolumen: number }>) {
+    if (productsData.length === 0) return [];
+    return await db.insert(products).values(productsData).returning();
+  }
+
+  async getProductsByNegotiation(negotiationId: string) {
+    return await db.select().from(products).where(eq(products.negotiationId, negotiationId));
+  }
+
+  async deleteProductsByNegotiation(negotiationId: string): Promise<void> {
+    await db.delete(products).where(eq(products.negotiationId, negotiationId));
   }
 }
 

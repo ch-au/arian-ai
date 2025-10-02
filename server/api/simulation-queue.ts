@@ -266,6 +266,28 @@ router.get('/queue/by-negotiation/:negotiationId', async (req, res) => {
 });
 
 /**
+ * GET /api/simulations/queue/:queueId/runs
+ * Get all simulation runs for a queue
+ */
+router.get('/queue/:queueId/runs', async (req, res) => {
+  try {
+    const { queueId } = req.params;
+    const runs = await SimulationQueueService.getQueueRuns(queueId);
+
+    res.json({
+      success: true,
+      data: runs
+    });
+  } catch (error) {
+    console.error('Failed to get queue runs:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+/**
  * POST /api/simulations/queue/:queueId/restart-failed
  * Restart failed/timeout simulations
  */
@@ -273,17 +295,79 @@ router.post('/queue/:queueId/restart-failed', async (req, res) => {
   try {
     const { queueId } = req.params;
     const restartedCount = await SimulationQueueService.restartFailedSimulations(queueId);
-    
-    res.json({ 
-      success: true, 
+
+    res.json({
+      success: true,
       message: `Restarted ${restartedCount} failed simulations`,
-      restartedCount 
+      restartedCount
     });
   } catch (error) {
     console.error('Failed to restart failed simulations:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+/**
+ * GET /api/simulations/system/status
+ * Get system status including background processor
+ */
+router.get('/system/status', async (req, res) => {
+  try {
+    const status = await SimulationQueueService.getSystemStatus();
+    res.json({ success: true, data: status });
+  } catch (error) {
+    console.error('Failed to get system status:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+/**
+ * POST /api/simulations/system/reset-processing
+ * Reset stuck processing queues (debug endpoint)
+ */
+router.post('/system/reset-processing', async (req, res) => {
+  try {
+    SimulationQueueService.resetProcessingQueues();
+    res.json({
+      success: true,
+      message: 'Processing queue set cleared'
+    });
+  } catch (error) {
+    console.error('Failed to reset processing queues:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+/**
+ * POST /api/simulations/run/:runId/restart
+ * Restart a single simulation run
+ */
+router.post('/run/:runId/restart', async (req, res) => {
+  try {
+    const { runId } = req.params;
+    console.log(`[API] Restarting simulation run: ${runId}`);
+    const result = await SimulationQueueService.restartSingleRun(runId);
+
+    res.json({
+      success: true,
+      message: 'Simulation restarted successfully',
+      runNumber: result.runNumber
+    });
+  } catch (error) {
+    console.error('[API] Failed to restart simulation run:', error);
+    console.error('[API] Error stack:', error instanceof Error ? error.stack : 'No stack');
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
     });
   }
 });
@@ -296,14 +380,14 @@ router.post('/queue/:queueId/start', async (req, res) => {
   try {
     const { queueId } = req.params;
     await SimulationQueueService.startQueue(queueId);
-    
-    res.json({ 
-      success: true, 
-      message: 'Queue started/resumed successfully' 
+
+    res.json({
+      success: true,
+      message: 'Queue started/resumed successfully'
     });
   } catch (error) {
     console.error('Failed to start queue:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false, 
       error: error instanceof Error ? error.message : 'Unknown error' 
     });

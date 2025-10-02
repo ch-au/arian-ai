@@ -9,41 +9,12 @@ Each function has a clear, single purpose and good documentation.
 import json
 import os
 import re
-import base64
 import sys
 from typing import Dict, Any, List, Optional
 try:
     from .negotiation_models import NegotiationConfig
 except ImportError:
     from negotiation_models import NegotiationConfig
-
-# OpenTelemetry processor to link Langfuse Prompt metadata to generation spans
-from contextvars import ContextVar
-from typing import Optional as _Optional
-from opentelemetry import context as context_api
-from opentelemetry.sdk.trace.export import Span, SpanProcessor
-
-prompt_info_var = ContextVar("prompt_info", default=None)
-
-class LangfuseProcessor(SpanProcessor):
-    def on_start(self, span: 'Span', parent_context: _Optional[context_api.Context] = None) -> None:
-        try:
-            # Generation spans from OpenAI Agents SDK begin with 'Responses API'
-            if span.name.startswith('Responses API'):
-                prompt_info = prompt_info_var.get()
-                if prompt_info:
-                    span.set_attribute('langfuse.prompt.name', prompt_info.get("name"))
-                    span.set_attribute('langfuse.prompt.version', prompt_info.get("version"))
-        except Exception:
-            # Never break tracing on metadata issues
-            pass
-
-def set_prompt_info(name: str, version: str) -> None:
-    """Expose a helper to set the prompt info in ContextVar so spans can be linked."""
-    try:
-        prompt_info_var.set({"name": name, "version": version})
-    except Exception:
-        pass
 
 
 def safe_json_parse(raw_output: str) -> Dict[str, Any]:
@@ -432,53 +403,36 @@ def _format_example_value(value: float, unit: str) -> str:
 
 def setup_langfuse_tracing() -> bool:
     """
-    Setup OpenTelemetry tracing to send data to Langfuse.
-    
+    Setup Langfuse tracing for OpenAI Agents SDK using official instrumentation.
+
     This enables detailed monitoring of AI agent interactions.
     If setup fails, the service continues without tracing.
-    
+
     Returns:
         True if tracing was configured successfully, False otherwise
-        
+
     Note:
         Requires LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY environment variables.
+        Uses official openinference-instrumentation-openai-agents integration.
     """
     try:
         public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
         secret_key = os.getenv("LANGFUSE_SECRET_KEY")
         host = os.getenv("LANGFUSE_HOST", NegotiationConfig.LANGFUSE_DEFAULT_HOST)
-        
+
         if not public_key or not secret_key:
             print("DEBUG: Langfuse credentials not found, skipping tracing setup", file=sys.stderr)
             return False
-        
-        # Create authentication header for OTLP endpoint
-        auth_string = f"{public_key}:{secret_key}"
-        auth_bytes = auth_string.encode('ascii')
-        auth_b64 = base64.b64encode(auth_bytes).decode('ascii')
-        
-        # Configure OpenTelemetry endpoint
-        otlp_endpoint = f"{host}/api/public/v2/otlp/traces"
-        os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = otlp_endpoint
-        os.environ["OTEL_EXPORTER_OTLP_HEADERS"] = f"Authorization=Basic {auth_b64}"
-        
-        # Configure and initialize logfire
-        import logfire
-        # Per Langfuse OpenAI Agents docs: replace deprecated trace_sample_rate with sampling
-        logfire.configure(
-            service_name='negotiation_agent_service',
-            send_to_logfire=False,  # Only send to Langfuse via OTLP
-            sampling=logfire.SamplingOptions(head=1.0),
-            additional_span_processors=[LangfuseProcessor()],  # Link prompt to generation spans
-        )
-        # Automatically patch the OpenAI Agents SDK to emit OTLP spans
-        logfire.instrument_openai_agents()
-        
-        print(f"DEBUG: OpenTelemetry tracing configured for Langfuse at {host}", file=sys.stderr)
+
+        # Use official OpenAI Agents instrumentation (per Langfuse docs)
+        from openinference.instrumentation.openai_agents import OpenAIAgentsInstrumentor
+        OpenAIAgentsInstrumentor().instrument()
+
+        print(f"DEBUG: Langfuse tracing configured using OpenAIAgentsInstrumentor at {host}", file=sys.stderr)
         return True
-        
+
     except Exception as e:
-        print(f"DEBUG: OpenTelemetry setup failed (continuing without tracing): {e}", file=sys.stderr)
+        print(f"DEBUG: Langfuse tracing setup failed (continuing without tracing): {e}", file=sys.stderr)
         return False
 
 

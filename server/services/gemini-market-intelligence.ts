@@ -1,6 +1,6 @@
 /**
  * Gemini Flash Market Intelligence Service
- * Bridge zu Python Script mit Google Gemini 2.0 Flash + Grounded Search
+ * Bridge zu Python Script mit Google Gemini 2-5 Flash + Grounded Search
  */
 
 import { exec } from 'child_process';

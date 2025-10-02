@@ -53,8 +53,8 @@ try:
     )
     from negotiation_utils import (
         safe_json_parse, analyze_convergence, format_dimensions_for_prompt,
-        generate_dimension_examples, generate_dimension_schema, setup_langfuse_tracing, 
-        calculate_dynamic_max_rounds, emit_round_update, set_prompt_info, normalize_model_output
+        generate_dimension_examples, generate_dimension_schema, setup_langfuse_tracing,
+        calculate_dynamic_max_rounds, emit_round_update, normalize_model_output
     )
 except ImportError:
     # Handle direct execution from scripts directory
@@ -67,12 +67,13 @@ except ImportError:
     )
     from negotiation_utils import (
         safe_json_parse, analyze_convergence, format_dimensions_for_prompt,
-        generate_dimension_examples, generate_dimension_schema, setup_langfuse_tracing, 
-        calculate_dynamic_max_rounds, emit_round_update, set_prompt_info, normalize_model_output
+        generate_dimension_examples, generate_dimension_schema, setup_langfuse_tracing,
+        calculate_dynamic_max_rounds, emit_round_update, normalize_model_output
     )
 
 # Import external dependencies
-from agents import Agent, Runner, SQLiteSession, trace
+from agents import Agent, Runner, SQLiteSession, trace, AgentOutputSchema
+from agents.extensions.models.litellm_model import LitellmModel
 from langfuse import get_client, observe, Langfuse
 
 
@@ -179,11 +180,6 @@ class NegotiationService:
             # Get prompt template
             self.langfuse_prompt = self.langfuse.get_prompt("negotiation")
             print(f"DEBUG: Retrieved Langfuse prompt: {self.langfuse_prompt.name} v{self.langfuse_prompt.version}", file=sys.stderr)
-            # Link prompt metadata to OpenAI Agents generation spans via OTel processor
-            try:
-                set_prompt_info(self.langfuse_prompt.name, str(self.langfuse_prompt.version))
-            except Exception as e:
-                print(f"DEBUG: Failed to set prompt info for spans: {e}", file=sys.stderr)
             
             return True
             
@@ -195,31 +191,41 @@ class NegotiationService:
     def _create_agents(self) -> Optional[Dict[str, Agent]]:
         """Create buyer and seller AI agents with proper instructions."""
         try:
-            # Get model configuration from Langfuse prompt
+            # Get model configuration from Langfuse prompt (respects user's choice)
             model_config = getattr(self.langfuse_prompt, 'config', {})
             model_name = model_config.get('model', NegotiationConfig.DEFAULT_MODEL)
-            
-            # Fix invalid model names
-            if model_name == 'gpt-5-mini':
-                model_name = 'gpt-4o-mini'
-            
-            print(f"DEBUG: Creating agents with model: {model_name}", file=sys.stderr)
-            
+
+            print(f"DEBUG: Creating agents with model from Langfuse: {model_name}", file=sys.stderr)
+
+            # Determine if we should use LiteLLM (for non-OpenAI models)
+            model_obj = self._get_model_object(model_name)
+
+            # Check if model supports structured output
+            supports_structured = self._model_supports_structured_output(model_name)
+
             # Create instructions for both roles
             buyer_instructions = self._create_agent_instructions(AgentRole.BUYER)
             seller_instructions = self._create_agent_instructions(AgentRole.SELLER)
-            
-            # Create the agents
+
+            # Create the agents with structured output using Pydantic (if supported)
+            # Use AgentOutputSchema with strict_json_schema=False for flexibility
+            output_schema = AgentOutputSchema(NegotiationResponse, strict_json_schema=False) if supports_structured else None
+
+            if not supports_structured:
+                print(f"WARNING: Model {model_name} doesn't support structured output - will parse JSON manually", file=sys.stderr)
+
             buyer_agent = Agent(
                 name="Production Buyer Agent",
                 instructions=buyer_instructions,
-                model=model_name
+                model=model_obj,
+                output_type=output_schema  # Enforce structured output
             )
-            
+
             seller_agent = Agent(
-                name="Production Seller Agent", 
+                name="Production Seller Agent",
                 instructions=seller_instructions,
-                model=model_name
+                model=model_obj,
+                output_type=output_schema  # Enforce structured output
             )
             
             return {
@@ -230,7 +236,101 @@ class NegotiationService:
         except Exception as e:
             print(f"ERROR: Agent creation failed: {e}", file=sys.stderr)
             return None
-    
+
+    def _get_model_object(self, model_name: str):
+        """
+        Get the appropriate model object (string for OpenAI, LitellmModel for others).
+
+        Supports LiteLLM format: provider/model-name
+        Examples:
+        - "gpt-4o" or "openai/gpt-4o" -> OpenAI (string)
+        - "anthropic/claude-3-5-sonnet-20241022" -> LiteLLM
+        - "gemini/gemini-2.0-flash-exp" -> LiteLLM
+        - "groq/llama-3.3-70b-versatile" -> LiteLLM
+        """
+        import os
+
+        # If model contains "/" it's a LiteLLM provider/model format
+        if "/" in model_name:
+            provider, model = model_name.split("/", 1)
+
+            # OpenAI models can use native client (faster)
+            if provider.lower() == "openai":
+                print(f"DEBUG: Using native OpenAI client for {model}", file=sys.stderr)
+                return model
+
+            # Get API key for the provider
+            api_key = self._get_provider_api_key(provider)
+
+            if not api_key:
+                print(f"WARNING: No API key found for {provider}, will try without key", file=sys.stderr)
+
+            print(f"DEBUG: Using LiteLLM for {provider}/{model}", file=sys.stderr)
+            return LitellmModel(model=model_name, api_key=api_key)
+
+        # No "/" means it's likely an OpenAI model (backward compatibility)
+        print(f"DEBUG: Using native OpenAI client for {model_name}", file=sys.stderr)
+        return model_name
+
+    def _get_provider_api_key(self, provider: str) -> str:
+        """Get API key for a specific provider."""
+        import os
+
+        # Map provider names to environment variable names
+        provider_env_map = {
+            "anthropic": "ANTHROPIC_API_KEY",
+            "claude": "ANTHROPIC_API_KEY",
+            "gemini": "GEMINI_API_KEY",
+            "google": "GEMINI_API_KEY",
+            "groq": "GROQ_API_KEY",
+            "cohere": "COHERE_API_KEY",
+            "mistral": "MISTRAL_API_KEY",
+            "openrouter": "OPENROUTER_API_KEY",
+            "together": "TOGETHER_API_KEY",
+            "replicate": "REPLICATE_API_KEY",
+            "bedrock": "AWS_ACCESS_KEY_ID",
+            "vertex": "GOOGLE_APPLICATION_CREDENTIALS",
+        }
+
+        env_var = provider_env_map.get(provider.lower(), f"{provider.upper()}_API_KEY")
+        api_key = os.getenv(env_var)
+
+        if api_key:
+            print(f"DEBUG: Found API key for {provider} in {env_var}", file=sys.stderr)
+        else:
+            print(f"DEBUG: No API key found in {env_var} for {provider}", file=sys.stderr)
+
+        return api_key
+
+    def _model_supports_structured_output(self, model_name: str) -> bool:
+        """
+        Check if a model supports structured output with json_schema.
+
+        Models that DON'T support structured output:
+        - gemini-flash-lite-latest
+        - Some older Gemini models
+        - Some Groq models
+
+        Models that DO support it:
+        - OpenAI models (gpt-4o, gpt-4o-mini, etc.)
+        - Claude models
+        - Most Gemini Pro models
+        """
+        # Models known to NOT support structured output
+        unsupported_models = [
+            'gemini-flash-lite',
+            'gemini-1.5-flash-8b',  # Lite variant
+        ]
+
+        # Check if model name contains any unsupported pattern
+        model_lower = model_name.lower()
+        for unsupported in unsupported_models:
+            if unsupported in model_lower:
+                return False
+
+        # Default to True for OpenAI and most other models
+        return True
+
     def _create_agent_instructions(self, role: str) -> str:
         """
         Create STATIC instructions for an AI agent (sections 1-6 and 8).
@@ -245,9 +345,30 @@ class NegotiationService:
         # Build static prompt variables (sections 1-6)
         variables = self._build_static_prompt_variables(role)
 
-        # Build static template (sections 1-6 and 8)
-        static_template = self._get_static_prompt_template(variables)
+        # Use Langfuse prompt if available, otherwise fallback to hardcoded template
+        if self.langfuse_prompt:
+            try:
+                # Compile Langfuse prompt with variables
+                compiled_prompt = self.langfuse_prompt.compile(**variables)
 
+                # Handle different return types from Langfuse
+                if isinstance(compiled_prompt, list):
+                    # If it's a list of messages, extract the text content
+                    compiled_text = ""
+                    for msg in compiled_prompt:
+                        if isinstance(msg, dict) and 'content' in msg:
+                            compiled_text += msg['content'] + "\n"
+                        elif isinstance(msg, str):
+                            compiled_text += msg + "\n"
+                    compiled_prompt = compiled_text.strip()
+
+                print(f"DEBUG: Using Langfuse prompt '{self.langfuse_prompt.name}' v{self.langfuse_prompt.version}", file=sys.stderr)
+                return compiled_prompt
+            except Exception as e:
+                print(f"WARNING: Failed to compile Langfuse prompt, using fallback: {e}", file=sys.stderr)
+
+        # Fallback: Build static template (sections 1-6 and 8)
+        static_template = self._get_static_prompt_template(variables)
         return static_template
     
     def _build_static_prompt_variables(self, role: str) -> Dict[str, str]:
@@ -258,17 +379,23 @@ class NegotiationService:
         technique = self.negotiation_data.get('technique', {}) if self.negotiation_data else {}
         tactic = self.negotiation_data.get('tactic', {}) if self.negotiation_data else {}
         dimensions = self.negotiation_data.get('dimensions', []) if self.negotiation_data else []
-        
+        products = self.negotiation_data.get('products', []) if self.negotiation_data else []
+
         # Ensure all are proper types
         negotiation = negotiation if isinstance(negotiation, dict) else {}
         context = context if isinstance(context, dict) else {}
         technique = technique if isinstance(technique, dict) else {}
         tactic = tactic if isinstance(tactic, dict) else {}
         dimensions = dimensions if isinstance(dimensions, list) else []
-        
+        products = products if isinstance(products, list) else []
+
         # Generate dimension information
         dimension_examples = generate_dimension_examples(dimensions)
         dimension_details = format_dimensions_for_prompt(dimensions)
+        dimension_schema = generate_dimension_schema(dimensions)
+
+        # Format products information for the prompt
+        products_info = self._format_products_for_prompt(products, role)
 
         # Context blobs formatted as compact JSON strings if present
         try:
@@ -294,7 +421,7 @@ class NegotiationService:
             # Role information
             'role_perspective': role,
             'agent_role': role,
-            
+
             # Negotiation context
             'negotiation_title': negotiation.get('title', 'Production Negotiation'),
             'negotiation_type': negotiation.get('negotiationType', 'one-shot'),
@@ -302,10 +429,14 @@ class NegotiationService:
             'product_description': negotiation.get('productMarketDescription', 'Business transaction'),
             'additional_comments': negotiation.get('additionalComments', 'Production negotiation run'),
 
+            # Products information (actual negotiation items with prices and volumes)
+            'products_info': products_info,
+
             # Market & Situation
-            'context_description': context.get('description', 'Nicht verfügbar'),
-            'context_market_conditions': context_market_conditions,
-            'context_baseline_values': context_baseline_values,
+            # IMPORTANT: Use negotiation's own description if available, fallback to context
+            'context_description': negotiation.get('productMarketDescription') or context.get('description', 'Nicht verfügbar'),
+            'context_market_conditions': context_market_conditions if context_market_conditions and context_market_conditions != '{}' else '{}',
+            'context_baseline_values': context_baseline_values if context_baseline_values and context_baseline_values != '{}' else '{}',
             'negotiation_metadata': negotiation_metadata,
             
             # Personality (best-effort placeholders unless joined elsewhere)
@@ -333,7 +464,8 @@ class NegotiationService:
             'zopa_boundaries': dimension_details,
             'dimension_details': dimension_details,
             'dimension_examples': dimension_examples,
-            
+            'dimension_schema': dimension_schema,
+
             # Role-specific objectives
             'role_objectives': self._get_role_objectives(role),
             'primary_success_metric': self._get_primary_metric(role),
@@ -353,9 +485,37 @@ class NegotiationService:
         else:
             return "Revenue above target with satisfied customer"
 
+    def _format_products_for_prompt(self, products: List[Dict], role: str) -> str:
+        """Format product information for the negotiation prompt."""
+        if not products or len(products) == 0:
+            return "Keine spezifischen Produkte definiert."
+
+        product_lines = []
+        for product in products:
+            name = product.get('produktName', 'Unbekanntes Produkt')
+            ziel_preis = product.get('zielPreis', 0)
+            min_max_preis = product.get('minMaxPreis', 0)
+            volumen = product.get('geschätztesVolumen', 0)
+
+            # For buyer: minMaxPreis is max acceptable price
+            # For seller: minMaxPreis is min acceptable price
+            if role == AgentRole.BUYER:
+                product_lines.append(
+                    f"- {name}: Zielpreis €{ziel_preis}, Maximalpreis €{min_max_preis}, "
+                    f"Geschätztes Volumen: {volumen:,} Einheiten"
+                )
+            else:  # SELLER
+                product_lines.append(
+                    f"- {name}: Zielpreis €{ziel_preis}, Minimalpreis €{min_max_preis}, "
+                    f"Geschätztes Volumen: {volumen:,} Einheiten"
+                )
+
+        return "\n".join(product_lines)
+
     def _build_round_message(self, role: str, results: List[Dict[str, Any]], round_num: int) -> str:
         """
         Build the dynamic per-round user message (Section 7: RUNDDYNAMIK).
+        Includes opponent's last response AND your own internal analysis from previous round.
         """
         # Get counterpart's last message and offer
         if results:
@@ -373,28 +533,50 @@ class NegotiationService:
             last_counter_message = "Dies ist die erste Runde der Verhandlung."
             last_counter_offer = {}
 
+        # Get YOUR OWN last internal analysis for continuity
+        my_rounds = [r for r in results if r.get("agent") == role]
+        if my_rounds:
+            last_my_round = my_rounds[-1]
+            my_last_internal = last_my_round.get("response", {}).get("internal_analysis", "")
+            my_last_action = last_my_round.get("response", {}).get("action", "continue")
+        else:
+            my_last_internal = ""
+            my_last_action = ""
+
         # Build internal state summary from YOUR OWN recent actions
         my_recent_rounds = [r for r in results[-3:] if r.get("agent") == role]
         recent_actions = [r.get("response", {}).get("action", "continue") for r in my_recent_rounds]
-        internal_state_summary = f"Ihre letzten Aktionen: {', '.join(recent_actions) if recent_actions else 'Erste Runde'}. Gesamtrunden bisher: {len(results)}"
+        action_summary = f"Ihre letzten Aktionen: {', '.join(recent_actions) if recent_actions else 'Erste Runde'}. Gesamtrunden bisher: {len(results)}"
 
         # Get dimension schema for reminder
         dims = self.negotiation_data.get('dimensions', []) if self.negotiation_data else []
         schema_inner = generate_dimension_schema(dims)
 
-        return f"""## AKTUELLE RUNDDYNAMIK (Runde {round_num})
+        # Build round message with internal analysis context
+        message = f"""## AKTUELLE RUNDDYNAMIK (Runde {round_num})
 
 Gegenangebot der Gegenseite:
 "{last_counter_message}"
 
 Angebotswerte der Gegenseite: {json.dumps(last_counter_offer, ensure_ascii=False) if last_counter_offer else "Noch kein konkretes Angebot"}
+"""
 
-Ihre bisherigen Verhandlungsnotizen: {internal_state_summary}
+        # Add YOUR previous internal analysis for memory continuity
+        if my_last_internal:
+            message += f"""
+Ihre letzte interne Analyse (zur Erinnerung):
+"{my_last_internal}"
 
-Bitte antworten Sie mit strukturiertem JSON. Dimension-Schema für offer.dimension_values:
-{{ {schema_inner} }}
+Ihre letzte Aktion: {my_last_action}
+"""
 
-ACHTUNG: Geben Sie NUR das JSON aus, ohne Markdown-Formatierung."""
+        message += f"""
+Verhandlungsfortschritt: {action_summary}
+
+Ihre Antwort wird automatisch strukturiert. Dimension-Schema für offer.dimension_values:
+{{ {schema_inner} }}"""
+
+        return message
     
     def _get_static_prompt_template(self, variables: Dict[str, str]) -> str:
         """Build the complete static prompt template with variables replaced."""
@@ -415,6 +597,8 @@ ACHTUNG: Geben Sie NUR das JSON aus, ohne Markdown-Formatierung."""
             f"Beziehungsstatus: {variables['relationship_type']}\n"
             f"Produkt- / Leistungsbeschreibung: {variables['product_description']}\n"
             f"Zusätzliche Hinweise: {variables['additional_comments']}\n\n"
+            f"WICHTIG - Zu verhandelnde Produkte:\n"
+            f"{variables['products_info']}\n\n"
 
             f"## 2. MARKT- & SITUATIONSEINORDNUNG\n"
             f"Kontextbeschreibung: {variables['context_description']}\n"
@@ -451,19 +635,31 @@ ACHTUNG: Geben Sie NUR das JSON aus, ohne Markdown-Formatierung."""
             f"- Priorität 1 = kritische Dimension, Priorität 3 = flexibel.\n"
             f"- Beispiele für Angebotswerte: {variables['dimension_examples']}\n\n"
 
-            f"## 8. ANTWORTFORMAT (zwingend gültiges JSON):\n"
+            f"## 8. ANTWORTFORMAT (Strukturierte JSON-Ausgabe):\n"
+            f"WICHTIG: Antworten Sie NUR mit gültigem JSON, keine zusätzlichen Text oder Markdown-Codeblöcke.\n"
+            f"Ihre Antwort muss EXAKT folgende Struktur haben:\n\n"
             f"{{\n"
-            f"  \"message\": \"Ihre professionelle Antwort (Deutsch). Gehen Sie auf das letzte Gegenangebot ein.\",\n"
+            f"  \"message\": \"Ihre professionelle Nachricht an die Gegenseite (auf Deutsch). Gehen Sie explizit auf das letzte Gegenangebot ein.\",\n"
             f"  \"action\": \"continue|accept|terminate|walk_away|pause\",\n"
             f"  \"offer\": {{\n"
             f"    \"dimension_values\": {{ {dimension_schema} }},\n"
-            f"    \"confidence\": 0.0-1.0,\n"
+            f"    \"confidence\": 0.85,\n"
             f"    \"reasoning\": \"Kurze Begründung Ihrer Angebotslogik\"\n"
             f"  }},\n"
-            f"  \"internal_analysis\": \"Interne Einschätzung zum Verhandlungsstand\",\n"
-            f"  \"batna_assessment\": 0.0-1.0,\n"
-            f"  \"walk_away_threshold\": 0.0-1.0\n"
+            f"  \"internal_analysis\": \"Ihre private strategische Einschätzung - wird in der nächsten Runde an Sie zurückgegeben zur Kontinuität\",\n"
+            f"  \"batna_assessment\": 0.7,\n"
+            f"  \"walk_away_threshold\": 0.3\n"
             f"}}\n\n"
+
+            f"### Wichtige Hinweise:\n"
+            f"- **message**: Öffentliche Nachricht, sichtbar für die Gegenseite\n"
+            f"- **action**: Ihre strategische Entscheidung für diese Runde\n"
+            f"- **offer.dimension_values**: Numerische Werte für alle Dimensionen (innerhalb Min/Max)\n"
+            f"- **offer.confidence**: Wie sicher sind Sie bei diesem Angebot?\n"
+            f"- **offer.reasoning**: Private Begründung für Ihr Angebot\n"
+            f"- **internal_analysis**: KRITISCH - Ihre strategischen Gedanken, die Sie in der nächsten Runde wieder sehen werden\n"
+            f"- **batna_assessment**: Wie gut sind Ihre Alternativen außerhalb dieser Verhandlung?\n"
+            f"- **walk_away_threshold**: Unter welchem BATNA-Level würden Sie abbrechen?\n\n"
 
             f"### Anforderungen:\n"
             f"- Beziehen Sie sich explizit auf das letzte Angebot der Gegenseite\n"
@@ -471,7 +667,7 @@ ACHTUNG: Geben Sie NUR das JSON aus, ohne Markdown-Formatierung."""
             f"- Verwenden Sie Technik und Taktik subtil, ohne sie zu benennen\n"
             f"- Vermeiden Sie Werte außerhalb der zulässigen Grenzen\n"
             f"- Bleiben Sie konsistent mit Ihrer Rolle und Persönlichkeit\n"
-            f"- KRITISCH: Antworten Sie NUR mit JSON, keine Markdown-Codeblöcke"
+            f"- Nutzen Sie internal_analysis als Ihr strategisches Gedächtnis"
         )
         return template
 
@@ -515,15 +711,15 @@ ACHTUNG: Geben Sie NUR das JSON aus, ohne Markdown-Formatierung."""
             # Store trace ID for later use
             self._trace_id = current_trace.trace_id
 
-            # Initialize session and conversation
+            # Initialize persistent session for the entire negotiation
+            # Session automatically tracks conversation history across rounds
             session = SQLiteSession(f"production_{self.args.simulation_run_id}")
             results = self._load_existing_conversation()
 
-            # Calculate dynamic round limit
-            dimensions = self.negotiation_data.get('dimensions', []) if self.negotiation_data else []
-            max_rounds = calculate_dynamic_max_rounds(self.args.max_rounds, dimensions)
-
-            print(f"DEBUG: Starting negotiation with max {max_rounds} rounds", file=sys.stderr)
+            # Use configured max rounds directly (no dynamic calculation)
+            max_rounds = self.args.max_rounds
+            print(f"DEBUG: Starting negotiation with configured max {max_rounds} rounds", file=sys.stderr)
+            print(f"DEBUG: Using persistent session: production_{self.args.simulation_run_id}", file=sys.stderr)
 
             # Build per-round messages dynamically based on latest state
             final_outcome = NegotiationOutcome.ERROR  # Default
@@ -542,9 +738,9 @@ ACHTUNG: Geben Sie NUR das JSON aus, ohne Markdown-Formatierung."""
                     # Build dynamic per-round message (Section 7)
                     round_message = self._build_round_message(role, results, round_num)
 
-                    # Execute round
+                    # Execute round with persistent session
                     response_data = await self._execute_single_round(
-                        agent, role, round_message, round_num, max_rounds
+                        agent, role, round_message, round_num, max_rounds, session
                     )
 
                     if not response_data:
@@ -642,28 +838,37 @@ ACHTUNG: Geben Sie NUR das JSON aus, ohne Markdown-Formatierung."""
             return "Hallo, guten Tag! Ich freue mich auf unsere Verhandlung."
     
     async def _execute_single_round(self, agent: Agent, role: str, message: str,
-                                   round_num: int, max_rounds: int) -> Optional[Dict[str, Any]]:
-        """Execute a single negotiation round."""
+                                   round_num: int, max_rounds: int, session: SQLiteSession) -> Optional[Dict[str, Any]]:
+        """Execute a single negotiation round with structured output and persistent session."""
         try:
-            # Execute agent
+            # Execute agent with structured output (Pydantic model) and persistent session
             start_time = time.time()
-            result = await Runner.run(agent, message, session=SQLiteSession(f"production_{self.args.simulation_run_id}"))
+            result = await Runner.run(agent, message, session=session)
             execution_time = time.time() - start_time
 
-            # Parse response
-            response_data = safe_json_parse(result.final_output)
-            # Normalize/validate model output to reduce failures and enforce numeric dimension values
+            # With output_type=NegotiationResponse, final_output is already a Pydantic model
+            # Convert to dict for compatibility with existing code
+            if isinstance(result.final_output, NegotiationResponse):
+                response_data = result.final_output.model_dump()
+                print(f"DEBUG: Received structured response from {role}", file=sys.stderr)
+            else:
+                # Fallback: parse as JSON if not structured (shouldn't happen with output_type set)
+                response_data = safe_json_parse(str(result.final_output))
+                print(f"WARNING: Received unstructured response from {role}, parsed as JSON", file=sys.stderr)
+
+            # Normalize dimension values to ensure they're numeric
             try:
                 dims = self.negotiation_data.get('dimensions', []) if self.negotiation_data else []
                 response_data = normalize_model_output(response_data, dims)
-            except Exception:
-                # Do not fail the round on normalization issues
-                pass
+            except Exception as e:
+                print(f"WARNING: Normalization failed: {e}", file=sys.stderr)
 
             return response_data
 
         except Exception as e:
             print(f"ERROR: Round {round_num} failed: {e}", file=sys.stderr)
+            import traceback
+            traceback.print_exc(file=sys.stderr)
             return None
     
     def _determine_outcome(self, action: str, response_data: Dict[str, Any]) -> str:

@@ -24,15 +24,29 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
             const failedRuns = simulationResults.filter((r) => r.status === "failed").length;
             const pendingRuns = simulationResults.filter((r) => r.status === "pending").length;
 
+            // For configured negotiations without queue, calculate planned simulations
+            let plannedSimulations = 0;
+            if (totalRuns === 0 && (negotiation.status === "configured" || negotiation.status === "pending")) {
+              const techniques = negotiation.selectedTechniques?.length || 0;
+              const tactics = negotiation.selectedTactics?.length || 0;
+
+              // Calculate based on configuration
+              const personalityMultiplier = negotiation.counterpartPersonality === "all-personalities" ? 5 : 1;
+              const distanceMultiplier = negotiation.zopaDistance === "all-distances" ? 3 : 1;
+
+              plannedSimulations = techniques * tactics * personalityMultiplier * distanceMultiplier;
+            }
+
             return {
               ...negotiation,
               simulationStats: {
-                totalRuns,
+                totalRuns: totalRuns > 0 ? totalRuns : plannedSimulations,
                 completedRuns,
                 runningRuns,
                 failedRuns,
                 pendingRuns,
                 successRate: totalRuns > 0 ? Math.round((completedRuns / totalRuns) * 100) : 0,
+                isPlanned: totalRuns === 0 && plannedSimulations > 0, // Flag to indicate planned vs actual
               },
             };
           } catch (error) {
@@ -368,7 +382,7 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
         return res.status(404).json({ error: "Negotiation not found" });
       }
 
-      if (negotiation.status !== "configured") {
+      if (negotiation.status !== "configured" && negotiation.status !== "pending") {
         return res.status(400).json({ error: "Negotiation must be configured before starting" });
       }
 
@@ -414,12 +428,15 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
 
       await storage.updateNegotiationStatus(req.params.id, "running");
 
+      // Auto-start the queue execution
+      await SimulationQueueService.startQueue(queueId);
+
       const personalityMultiplier = personalities.includes("all") ? 5 : personalities.length;
       const distanceMultiplier = zopaDistances.includes("all") ? 3 : zopaDistances.length;
       const totalSimulations = selectedTechniques.length * selectedTactics.length * personalityMultiplier * distanceMultiplier;
 
       res.json({
-        message: "Simulation queue created successfully",
+        message: "Simulation queue created and started successfully",
         queueId,
         totalSimulations,
         breakdown: {
@@ -558,32 +575,41 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
         techniques: validatedData.selectedTechniqueIds.length,
       });
 
-      // Get agents and contexts (use defaults for now)
+      // Get agents
       const agents = await storage.getAllAgents();
-      const contexts = await storage.getAllNegotiationContexts();
 
-      if (agents.length === 0 || contexts.length === 0) {
+      if (agents.length === 0) {
         return res.status(400).json({
           error: "System not initialized",
-          message: "No agents or contexts found. Please run seed data first.",
+          message: "No agents found. Please run seed data first.",
         });
       }
 
-      // Use first buyer and seller agents
-      const buyerAgent = agents.find((a) => a.role === "buyer") || agents[0];
-      const sellerAgent = agents.find((a) => a.role === "seller") || agents[1];
-      const context = contexts[0];
+      // Use first two agents as buyer and seller
+      const buyerAgent = agents[0];
+      const sellerAgent = agents[1] || agents[0]; // Fallback to same agent if only one exists
+
+      // Create a custom context for this phase2 negotiation based on actual data
+      const customContext = await storage.createNegotiationContext({
+        name: validatedData.title,
+        description: validatedData.marktProduktKontext || "Phase 2 negotiation",
+        productInfo: {
+          products: validatedData.produkte || []
+        },
+        marketConditions: validatedData.marketIntelligence || [],
+        baselineValues: {}
+      });
 
       // Create negotiation with Phase 2 enhanced data
-      // For now, store in negotiation metadata/additional fields
       const negotiationData = {
-        contextId: context.id,
+        contextId: customContext.id,
         buyerAgentId: buyerAgent.id,
         sellerAgentId: sellerAgent.id,
         title: validatedData.title,
         userRole: validatedData.userRole,
         negotiationType: validatedData.negotiationType,
         maxRounds: validatedData.maxRounds,
+        status: "configured" as const, // Set status to configured so it can be started
 
         // Store Phase 2 data as JSON in relationshipType/productMarketDescription fields temporarily
         // TODO: Update schema to include Phase 2 fields properly
@@ -614,9 +640,21 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
 
       const negotiation = await storage.createNegotiation(negotiationData);
 
-      // TODO: Store products and conditions in their own tables
-      // For now, acknowledge we received them
-      console.log("[phase2] Phase 2 data received (not yet persisted):", {
+      // Store products with the negotiation
+      if (validatedData.produkte && validatedData.produkte.length > 0) {
+        const productsData = validatedData.produkte.map((p) => ({
+          negotiationId: negotiation.id,
+          produktName: p.produktName,
+          zielPreis: p.zielPreis.toString(),
+          minMaxPreis: p.minMaxPreis.toString(),
+          geschätztesVolumen: p.geschätztesVolumen,
+        }));
+        await storage.createProducts(productsData);
+        console.log(`[phase2] Saved ${productsData.length} products for negotiation ${negotiation.id}`);
+      }
+
+      // TODO: Store conditions and market intelligence
+      console.log("[phase2] Phase 2 data received:", {
         produkte: validatedData.produkte?.length || 0,
         konditionen: validatedData.konditionen?.length || 0,
         marketIntelligence: validatedData.marketIntelligence?.length || 0,
@@ -626,7 +664,7 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
         success: true,
         negotiation,
         message: "Phase 2 negotiation created successfully",
-        note: "Products, conditions, and market intelligence will be fully integrated in next update",
+        productsCount: validatedData.produkte?.length || 0,
       });
     } catch (error) {
       console.error("[phase2] Failed to create negotiation:", error);

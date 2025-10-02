@@ -126,6 +126,7 @@ export const simulationRuns = pgTable("simulation_runs", {
   successScore: decimal("success_score", { precision: 5, scale: 2 }), // 0-100 score
   // Final negotiated values
   finalTerms: jsonb("final_terms"), // {volumen: X, preis: Y, laufzeit: Z, zahlungskonditionen: W}
+  dealValue: decimal("deal_value", { precision: 15, scale: 2 }), // Calculated: price * volume
   // Performance metrics
   avgResponseTimeMs: integer("avg_response_time_ms"),
   techniqueEffectivenessScore: decimal("technique_effectiveness_score", { precision: 5, scale: 2 }),
@@ -252,6 +253,17 @@ export const dimensionResults = pgTable("dimension_results", {
   uniqueDimensionPerRun: unique().on(table.simulationRunId, table.dimensionName),
 }));
 
+// Products table - stores product configuration with fixed volume for deal value calculation
+export const products = pgTable("products", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  negotiationId: uuid("negotiation_id").references(() => negotiations.id, { onDelete: "cascade" }).notNull(),
+  produktName: text("produkt_name").notNull(),
+  zielPreis: decimal("ziel_preis", { precision: 15, scale: 4 }).notNull(),
+  minMaxPreis: decimal("min_max_preis", { precision: 15, scale: 4 }).notNull(),
+  geschätztesVolumen: integer("geschätztes_volumen").notNull(), // Fixed estimated volume - NOT negotiated
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Relations
 export const agentRelations = relations(agents, ({ many }) => ({
   buyerNegotiations: many(negotiations, { relationName: "buyerAgent" }),
@@ -282,6 +294,7 @@ export const negotiationRelations = relations(negotiations, ({ one, many }) => (
   // NEW: Relations to flexible dimensions and queue
   dimensions: many(negotiationDimensions),
   simulationQueue: one(simulationQueue),
+  products: many(products),
 }));
 
 // Simulation Queue Relations
@@ -366,6 +379,14 @@ export const dimensionResultRelations = relations(dimensionResults, ({ one }) =>
   }),
 }));
 
+// Products relations
+export const productsRelations = relations(products, ({ one }) => ({
+  negotiation: one(negotiations, {
+    fields: [products.negotiationId],
+    references: [negotiations.id],
+  }),
+}));
+
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
@@ -401,6 +422,11 @@ export const insertSimulationRunSchema = createInsertSchema(simulationRuns).omit
 export const insertNegotiationRoundSchema = createInsertSchema(negotiationRounds).omit({
   id: true,
   timestamp: true,
+});
+
+export const insertProductSchema = createInsertSchema(products).omit({
+  id: true,
+  createdAt: true,
 });
 
 export const insertTacticSchema = createInsertSchema(tactics).omit({

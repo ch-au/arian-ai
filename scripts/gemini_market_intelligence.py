@@ -92,7 +92,7 @@ Relevanz-Stufen:
 - mittel: Wichtiger Kontext, beeinflusst Strategie
 - niedrig: Hintergrundinformation
 
-Gib 3-5 der wichtigsten Aspekte zurück."""
+Gib 3-5 der wichtigsten Aspekte zurück. Bedenke, vor allem, wie sie für deine Rolle (Käufer/Verkäufer) relevant sind."""
 
     # Contents strukturieren
     contents = [

@@ -5,7 +5,7 @@
 
 import { spawn } from 'child_process';
 import { existsSync } from 'fs';
-import { db } from '../storage';
+import { db, storage } from '../storage';
 import { simulationRuns, negotiations, negotiationDimensions, influencingTechniques, negotiationTactics, negotiationContexts } from '../../shared/schema';
 import { eq } from 'drizzle-orm';
 import { createRequestLogger } from './logger';
@@ -116,7 +116,7 @@ export class PythonNegotiationService {
    * Execute the Python negotiation script
    */
   private static executePythonScript(
-    args: string[], 
+    args: string[],
     onRoundUpdate?: RoundUpdateCallback,
     request?: PythonNegotiationRequest
   ): Promise<PythonNegotiationResult> {
@@ -124,6 +124,10 @@ export class PythonNegotiationService {
       const pythonExec = existsSync('./.venv/bin/python')
         ? './.venv/bin/python'
         : (existsSync('/usr/bin/python3') ? 'python3' : 'python');
+
+      this.log.info(`[PYTHON-EXEC] Spawning: ${pythonExec} ${args[0]}`);
+      this.log.info(`[PYTHON-EXEC] Args: ${JSON.stringify(args.slice(1, 5))}...`); // Log first few args
+
       const pythonProcess = spawn(pythonExec, args, {
         cwd: process.cwd(),
         env: {
@@ -135,11 +139,23 @@ export class PythonNegotiationService {
       let stdout = '';
       let stderr = '';
       let buffer = '';
+      let resolved = false;
+
+      // Add timeout
+      const timeout = setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          this.log.error('[PYTHON-EXEC] ❌ Python script timeout after 5 minutes');
+          pythonProcess.kill('SIGTERM');
+          reject(new Error('Python script execution timeout (5 minutes)'));
+        }
+      }, 5 * 60 * 1000); // 5 minute timeout
 
       pythonProcess.stdout.on('data', (data) => {
         const chunk = data.toString();
         stdout += chunk;
-        
+        this.log.info(`[PYTHON-EXEC] stdout chunk: ${chunk.substring(0, 100)}...`);
+
         // Parse real-time updates from Python output immediately
         if (onRoundUpdate && request) {
           this.parseRoundUpdates(chunk, onRoundUpdate, request);
@@ -147,11 +163,30 @@ export class PythonNegotiationService {
       });
 
       pythonProcess.stderr.on('data', (data) => {
-        stderr += data.toString();
+        const chunk = data.toString();
+        stderr += chunk;
+        this.log.warn(`[PYTHON-EXEC] stderr: ${chunk}`);
+      });
+
+      pythonProcess.on('error', (error) => {
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(timeout);
+          this.log.error({ err: error }, '[PYTHON-EXEC] ❌ Process error');
+          reject(new Error(`Failed to spawn Python process: ${error.message}`));
+        }
       });
 
       pythonProcess.on('close', (code) => {
+        if (resolved) return; // Already handled by timeout or error
+        resolved = true;
+        clearTimeout(timeout);
+
+        this.log.info(`[PYTHON-EXEC] Process closed with code ${code}`);
+
         if (code !== 0) {
+          this.log.error(`[PYTHON-EXEC] ❌ Non-zero exit code: ${code}`);
+          this.log.error(`[PYTHON-EXEC] stderr: ${stderr}`);
           reject(new Error(`Python script failed with code ${code}: ${stderr}`));
           return;
         }
@@ -257,8 +292,11 @@ export class PythonNegotiationService {
     // Get dimensions
     const dimensions = await db
       .select()
-      .from(negotiationDimensions) 
+      .from(negotiationDimensions)
       .where(eq(negotiationDimensions.negotiationId, negotiationId));
+
+    // Get products (for price ranges and volume information)
+    const products = await storage.getProductsByNegotiation(negotiationId);
 
     // Get context if available
     let context = null;
@@ -274,6 +312,7 @@ export class PythonNegotiationService {
     return {
       negotiation,
       dimensions,
+      products,
       context
     };
   }
