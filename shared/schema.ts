@@ -354,14 +354,12 @@ export const productResults = pgTable("product_results", {
 
   createdAt: timestamp("created_at").defaultNow(),
   metadata: jsonb("metadata").default({}),
+}, (table) => {
+  return {
+    simulationRunIdIdx: index("product_results_simulation_run_id_idx").on(table.simulationRunId),
+    productIdIdx: index("product_results_product_id_idx").on(table.productId),
+  };
 });
-
-// Indexes for productResults
-export const productResultsSimulationRunIdIdx = index("product_results_simulation_run_id_idx")
-  .on(productResults.simulationRunId);
-
-export const productResultsProductIdIdx = index("product_results_product_id_idx")
-  .on(productResults.productId);
 
 // Relations
 export const agentRelations = relations(agents, ({ many }) => ({
