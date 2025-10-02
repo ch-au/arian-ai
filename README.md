@@ -103,14 +103,22 @@ arian-ai/
 
 ## 📚 Documentation
 
+### Essential Documentation
+- **[CLAUDE.md](CLAUDE.md)** - Development commands and architecture overview
+- **[MIGRATION_STATUS.md](MIGRATION_STATUS.md)** - Current migration status and known issues ⚠️
+- **[SCHEMA_REDESIGN.md](SCHEMA_REDESIGN.md)** - ProductResults schema design
+- **[MIGRATION_PLAN.md](MIGRATION_PLAN.md)** - Step-by-step migration guide
+
+### Detailed Documentation
 - **[docs/README.md](docs/README.md)** - Documentation index and contribution guidelines
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - System map and service boundaries
 - **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)** - Day-to-day development workflow
 - **[docs/DATA_MODEL_SPECIFICATION.md](docs/DATA_MODEL_SPECIFICATION.md)** - Database schema reference
 - **[docs/SIMULATION_QUEUE.md](docs/SIMULATION_QUEUE.md)** - Queue execution model
 - **[docs/TESTING_GUIDE.md](docs/TESTING_GUIDE.md)** - Validation checklist and commands
-- **[AGENTS.md](docs/AGENTS.md)** - LLM agent operations and logging expectations
-- Historical planning docs now live under `docs/archive/`
+
+### Archive
+- **[docs/archive/](docs/archive/)** - Historical planning and status documents (21 files)
 
 ## 🔬 Core Concepts
 
