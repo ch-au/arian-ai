@@ -345,7 +345,7 @@ export class SimulationQueueService {
         actualCost: '0',
         completedAt: null,
         conversationLog: null,
-        dimensionResults: null,
+        otherDimensions: {},
         crashRecoveryData: null
       })
       .where(eq(simulationRuns.id, runId))
@@ -740,7 +740,7 @@ export class SimulationQueueService {
           completedAt: new Date(),
           conversationLog: normalizedConversationLog,
           totalRounds: result.totalRounds,
-          dimensionResults: dimensionValues,
+          otherDimensions: dimensionValues,
           dealValue: dealValue?.toString() ?? null,
           actualCost: actualCost.toString(),
           outcome: result.outcome, // Store the detailed outcome
@@ -1075,7 +1075,7 @@ export class SimulationQueueService {
       tacticId: simulationRuns.tacticId,
       totalRounds: simulationRuns.totalRounds,
       conversationLog: simulationRuns.conversationLog,
-      dimensionResults: simulationRuns.dimensionResults,
+      otherDimensions: simulationRuns.otherDimensions,
       actualCost: simulationRuns.actualCost,
       startedAt: simulationRuns.startedAt,
       completedAt: simulationRuns.completedAt
@@ -1095,7 +1095,7 @@ export class SimulationQueueService {
         status: results[0].status,
         actualCost: results[0].actualCost,
         totalRounds: results[0].totalRounds,
-        dimensionResults: results[0].dimensionResults
+        otherDimensions: results[0].otherDimensions
       } : null
     });
     
@@ -1110,19 +1110,19 @@ export class SimulationQueueService {
         }
       }
 
-      let parsedDimensionResults: any = result.dimensionResults;
-      if (typeof parsedDimensionResults === 'string') {
+      let parsedOtherDimensions: any = result.otherDimensions;
+      if (typeof parsedOtherDimensions === 'string') {
         try {
-          parsedDimensionResults = JSON.parse(parsedDimensionResults);
+          parsedOtherDimensions = JSON.parse(parsedOtherDimensions);
         } catch (error) {
-          parsedDimensionResults = {};
+          parsedOtherDimensions = {};
         }
       }
 
       return {
         ...result,
         conversationLog: parsedConversationLog || [],
-        dimensionResults: parsedDimensionResults || {},
+        otherDimensions: parsedOtherDimensions || {},
         actualCost: result.actualCost ? parseFloat(result.actualCost) : 0
       };
     });
@@ -1141,7 +1141,7 @@ export class SimulationQueueService {
         tacticId: simulationRuns.tacticId,
         totalRounds: simulationRuns.totalRounds,
         conversationLog: simulationRuns.conversationLog,
-        dimensionResults: simulationRuns.dimensionResults,
+        otherDimensions: simulationRuns.otherDimensions,
         actualCost: simulationRuns.actualCost,
         startedAt: simulationRuns.startedAt,
         completedAt: simulationRuns.completedAt
@@ -1160,19 +1160,19 @@ export class SimulationQueueService {
           }
         }
 
-        let parsedDimensionResults: any = result.dimensionResults;
-        if (typeof parsedDimensionResults === 'string') {
+        let parsedOtherDimensions: any = result.otherDimensions;
+        if (typeof parsedOtherDimensions === 'string') {
           try {
-            parsedDimensionResults = JSON.parse(parsedDimensionResults);
+            parsedOtherDimensions = JSON.parse(parsedOtherDimensions);
           } catch (error) {
-            parsedDimensionResults = {};
+            parsedOtherDimensions = {};
           }
         }
 
         return {
           ...result,
           conversationLog: parsedConversationLog || [],
-          dimensionResults: parsedDimensionResults || {}
+          otherDimensions: parsedOtherDimensions || {}
         };
       });
     } catch (error) {

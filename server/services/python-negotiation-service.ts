@@ -6,7 +6,7 @@
 import { spawn } from 'child_process';
 import { existsSync } from 'fs';
 import { db, storage } from '../storage';
-import { simulationRuns, negotiations, negotiationDimensions, influencingTechniques, negotiationTactics, negotiationContexts } from '../../shared/schema';
+import { simulationRuns, negotiations, negotiationDimensions, influencingTechniques, negotiationTactics, negotiationContexts, products, productResults } from '../../shared/schema';
 import { eq } from 'drizzle-orm';
 import { createRequestLogger } from './logger';
 
@@ -476,16 +476,126 @@ export class PythonNegotiationService {
       'DEAL_ACCEPTED': 'completed',
       'TERMINATED': 'completed',        // Polite end is still successful completion
       'WALK_AWAY': 'completed',        // BATNA-based decision is a valid completion
-      'PAUSED': 'paused',              // New status for paused negotiations  
+      'PAUSED': 'paused',              // New status for paused negotiations
       'MAX_ROUNDS_REACHED': 'timeout',
       'ERROR': 'failed'
     } as const;
-    
+
     const normalizedConversationLog = Array.isArray(result.conversationLog)
       ? result.conversationLog
       : [];
 
     const dimensionValues = result.finalOffer?.dimension_values ?? {};
+
+    // Get simulation run to find negotiationId
+    const [simulationRun] = await db
+      .select()
+      .from(simulationRuns)
+      .where(eq(simulationRuns.id, simulationRunId))
+      .limit(1);
+
+    if (!simulationRun) {
+      throw new Error(`Simulation run not found: ${simulationRunId}`);
+    }
+
+    // Get products for this negotiation to split dimension values
+    if (!simulationRun.negotiationId) {
+      throw new Error(`Simulation run ${simulationRunId} has no negotiationId`);
+    }
+
+    const negotiationProducts = await db
+      .select()
+      .from(products)
+      .where(eq(products.negotiationId, simulationRun.negotiationId));
+
+    // Split dimension values into product prices and other dimensions
+    const productPrices: Record<string, number> = {};
+    const otherDimensions: Record<string, any> = {};
+
+    const productNames = new Set(negotiationProducts.map(p => p.produktName));
+
+    for (const [key, value] of Object.entries(dimensionValues)) {
+      if (productNames.has(key)) {
+        productPrices[key] = Number(value);
+      } else {
+        otherDimensions[key] = value;
+      }
+    }
+
+    // Create productResults records for each product
+    for (const product of negotiationProducts) {
+      const agreedPrice = productPrices[product.produktName];
+
+      if (agreedPrice !== undefined) {
+        // Calculate distance metrics
+        const targetPrice = Number(product.zielPreis) || 0;
+        const minMaxPrice = Number(product.minMaxPreis) || 0;
+
+        const priceVsTarget = targetPrice > 0
+          ? ((agreedPrice - targetPrice) / targetPrice * 100).toFixed(2)
+          : null;
+
+        const absoluteDeltaFromTarget = (agreedPrice - targetPrice).toFixed(4);
+
+        const priceVsMinMax = minMaxPrice > 0
+          ? ((agreedPrice - minMaxPrice) / minMaxPrice * 100).toFixed(2)
+          : null;
+
+        const absoluteDeltaFromMinMax = (agreedPrice - minMaxPrice).toFixed(4);
+
+        // Check if within ZOPA (between minMaxPrice and targetPrice)
+        const withinZopa = agreedPrice >= Math.min(minMaxPrice, targetPrice) &&
+                          agreedPrice <= Math.max(minMaxPrice, targetPrice);
+
+        // Calculate ZOPA utilization (how close to target vs minMax)
+        const zopaRange = Math.abs(targetPrice - minMaxPrice);
+        const zopaUtilization = zopaRange > 0
+          ? ((Math.abs(agreedPrice - minMaxPrice) / zopaRange) * 100).toFixed(2)
+          : null;
+
+        // Calculate subtotals
+        const estimatedVolume = product.geschätztesVolumen || 0;
+        const subtotal = (agreedPrice * estimatedVolume).toFixed(2);
+        const targetSubtotal = (targetPrice * estimatedVolume).toFixed(2);
+        const deltaFromTargetSubtotal = (Number(subtotal) - Number(targetSubtotal)).toFixed(2);
+
+        // Calculate performance score (100% if at target, lower if further away)
+        const performanceScore = targetPrice > 0
+          ? Math.max(0, Math.min(100, 100 - Math.abs(Number(priceVsTarget)))).toFixed(2)
+          : null;
+
+        await db
+          .insert(productResults)
+          .values({
+            simulationRunId: simulationRunId,
+            productId: product.id,
+
+            // Denormalized product config
+            productName: product.produktName,
+            targetPrice: product.zielPreis,
+            minMaxPrice: product.minMaxPreis,
+            estimatedVolume: product.geschätztesVolumen,
+
+            // Results
+            agreedPrice: agreedPrice.toString(),
+
+            // Distance metrics
+            priceVsTarget: priceVsTarget,
+            absoluteDeltaFromTarget: absoluteDeltaFromTarget,
+            priceVsMinMax: priceVsMinMax,
+            absoluteDeltaFromMinMax: absoluteDeltaFromMinMax,
+            withinZopa: withinZopa,
+            zopaUtilization: zopaUtilization,
+
+            // Deal value
+            subtotal: subtotal,
+            targetSubtotal: targetSubtotal,
+            deltaFromTargetSubtotal: deltaFromTargetSubtotal,
+
+            performanceScore: performanceScore,
+          });
+      }
+    }
 
     const updateData: any = {
       status: statusMapping[result.outcome] || 'failed',
@@ -493,7 +603,7 @@ export class PythonNegotiationService {
       totalRounds: result.totalRounds,
       langfuseTraceId: result.langfuseTraceId || null,
       outcome: result.outcome, // Store the detailed outcome
-      dimensionResults: dimensionValues
+      otherDimensions: otherDimensions // Use otherDimensions instead of dimensionResults
     };
 
     // Only set completedAt for truly completed negotiations (not paused ones)
