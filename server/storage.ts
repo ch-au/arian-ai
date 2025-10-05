@@ -736,6 +736,12 @@ export class DatabaseStorage implements IStorage {
   async deleteProductsByNegotiation(negotiationId: string): Promise<void> {
     await db.delete(products).where(eq(products.negotiationId, negotiationId));
   }
+
+  // Negotiation dimensions methods
+  async createNegotiationDimensions(negotiationId: string, dimensionsData: Array<{ negotiationId: string; name: string; minValue: string; maxValue: string; targetValue: string; priority: number; unit: string | null }>) {
+    if (dimensionsData.length === 0) return [];
+    return await db.insert(negotiationDimensions).values(dimensionsData).returning();
+  }
 }
 
 export const storage = new DatabaseStorage();

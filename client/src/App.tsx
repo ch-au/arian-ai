@@ -9,6 +9,7 @@ import Configure from "@/pages/configure";
 import Monitor from "@/pages/monitor";
 import SimulationMonitor from "@/pages/simulation-monitor";
 import AnalysisDashboard from "@/pages/analysis-new";
+import NegotiationAnalysis from "@/pages/negotiation-analysis";
 import Sidebar from "@/components/layout/sidebar";
 import Header from "@/components/layout/header";
 
@@ -23,6 +24,7 @@ function Router() {
       <Route path="/monitor/:id" component={Monitor} />
       <Route path="/simulation-monitor/:negotiationId" component={SimulationMonitor} />
       <Route path="/analysis/:negotiationId" component={AnalysisDashboard} />
+      <Route path="/negotiations/:id/analysis" component={NegotiationAnalysis} />
       <Route component={NotFound} />
     </Switch>
   );

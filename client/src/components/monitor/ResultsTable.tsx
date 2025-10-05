@@ -38,7 +38,8 @@ interface SimulationResult {
   startedAt?: string;
   completedAt?: string;
   conversationLog?: any[];
-  dimensionResults?: any;
+  otherDimensions?: any;
+  dealValue?: number | string;
 }
 
 interface ResultsTableProps {
@@ -47,6 +48,7 @@ interface ResultsTableProps {
   tactics: any[];
   onRestartSingle?: (runId: string) => void;
   restarting?: Record<string, boolean>;
+  negotiationId?: string;
 }
 
 function getStatusBadge(status: string) {
@@ -97,6 +99,7 @@ export function ResultsTable({
   tactics,
   onRestartSingle,
   restarting = {},
+  negotiationId,
 }: ResultsTableProps) {
   const [selectedConversation, setSelectedConversation] = useState<SimulationResult | null>(null);
   const [conversationModalOpen, setConversationModalOpen] = useState(false);
@@ -112,7 +115,7 @@ export function ResultsTable({
   };
 
   const formatDealValue = (result: any) => {
-    // Use calculated dealValue if available (price * volume)
+    // Use calculated dealValue if available (from database)
     if (result.dealValue) {
       const value = typeof result.dealValue === 'string'
         ? parseFloat(result.dealValue)
@@ -120,64 +123,27 @@ export function ResultsTable({
       return `€${value.toLocaleString('de-DE', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
     }
 
-    // Fallback: try to calculate from dimensionResults
-    const dimensionResults = result.dimensionResults;
-    if (!dimensionResults) return "-";
-
-    let parsed = dimensionResults;
-    if (typeof dimensionResults === "string") {
-      try {
-        parsed = JSON.parse(dimensionResults);
-      } catch {
-        return "-";
-      }
-    }
-
-    // Find price dimension (can be "Preis", "Price", "Preis Oreo", etc.)
-    let price = null;
-    let volume = null;
-
-    for (const [key, value] of Object.entries(parsed || {})) {
-      const keyLower = key.toLowerCase();
-      if (keyLower.includes('preis') || keyLower.includes('price')) {
-        price = value;
-      } else if (keyLower.includes('volumen') || keyLower.includes('volume')) {
-        volume = value;
-      }
-    }
-
-    if (price && volume) {
-      const dealValue = parseFloat(String(price)) * parseFloat(String(volume));
-      return `€${dealValue.toLocaleString('de-DE', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-    }
-
-    // Fallback to just showing price (agreed price without volume)
-    return price ? `€${String(price)}` : "-";
+    // otherDimensions doesn't contain price/volume - those are stored separately
+    // If dealValue is not set, show "-"
+    return "-";
   };
 
-  const formatDimensionResults = (result: any) => {
-    const dimensionResults = result.dimensionResults;
-    if (!dimensionResults) return null;
+  const formatOtherDimensions = (result: any) => {
+    const otherDimensions = result.otherDimensions;
+    if (!otherDimensions) return null;
 
-    let parsed = dimensionResults;
-    if (typeof dimensionResults === "string") {
+    let parsed = otherDimensions;
+    if (typeof otherDimensions === "string") {
       try {
-        parsed = JSON.parse(dimensionResults);
+        parsed = JSON.parse(otherDimensions);
       } catch {
         return null;
       }
     }
 
-    // Filter out price dimensions (they're shown in dealValue)
-    const otherDimensions: Record<string, any> = {};
-    for (const [key, value] of Object.entries(parsed || {})) {
-      const keyLower = key.toLowerCase();
-      if (!keyLower.includes('preis') && !keyLower.includes('price')) {
-        otherDimensions[key] = value;
-      }
-    }
-
-    return Object.keys(otherDimensions).length > 0 ? otherDimensions : null;
+    // otherDimensions contains all non-price/volume negotiation terms
+    // (e.g., contract duration, payment terms, delivery, etc.)
+    return Object.keys(parsed || {}).length > 0 ? parsed : null;
   };
 
   const canRestart = (status: string) => {
@@ -198,11 +164,23 @@ export function ResultsTable({
   return (
     <>
       <Card>
-        <CardHeader>
-          <CardTitle>Simulation Results ({results.length})</CardTitle>
-          <CardDescription>
-            View conversations and restart individual simulations
-          </CardDescription>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>Simulation Results ({results.length})</CardTitle>
+            <CardDescription>
+              View conversations and restart individual simulations
+            </CardDescription>
+          </div>
+          {results.some(r => r.status === "completed") && negotiationId && (
+            <Button
+              onClick={() => {
+                window.location.href = `/negotiations/${negotiationId}/analysis`;
+              }}
+              className="ml-auto"
+            >
+              📊 Ergebnisse analysieren
+            </Button>
+          )}
         </CardHeader>
         <CardContent>
           <div className="rounded-md border">
@@ -247,7 +225,7 @@ export function ResultsTable({
                     </TableCell>
                     <TableCell>
                       {(() => {
-                        const otherDims = formatDimensionResults(result);
+                        const otherDims = formatOtherDimensions(result);
                         if (!otherDims) return <span className="text-gray-400 text-xs">-</span>;
                         return (
                           <div className="text-xs space-y-0.5">

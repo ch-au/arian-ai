@@ -482,6 +482,202 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
     }
   });
 
+  // Generate AI evaluation for best simulation run
+  router.post("/:id/analysis/evaluate", async (req, res) => {
+    try {
+      const negotiationId = req.params.id;
+
+      const negotiation = await storage.getNegotiation(negotiationId);
+      if (!negotiation) {
+        return res.status(404).json({ error: "Negotiation not found" });
+      }
+
+      // Get all simulation runs
+      const { SimulationQueueService } = await import("../services/simulation-queue");
+      const runs = await SimulationQueueService.getSimulationResultsByNegotiation(negotiationId);
+
+      // Find best run by deal value
+      const completedRuns = runs.filter(r => r.status === "completed" && r.dealValue);
+      if (completedRuns.length === 0) {
+        return res.status(400).json({ error: "No completed runs found" });
+      }
+
+      const bestRun = completedRuns.reduce((best, current) =>
+        parseFloat(current.dealValue || "0") > parseFloat(best.dealValue || "0") ? current : best
+      );
+
+      // Get technique and tactic names
+      const [allTechniques, allTactics, personalities] = await Promise.all([
+        storage.getAllInfluencingTechniques(),
+        storage.getAllNegotiationTactics(),
+        storage.getAllPersonalityTypes(),
+      ]);
+
+      const technique = allTechniques.find(t => t.id === bestRun.techniqueId);
+      const tactic = allTactics.find(t => t.id === bestRun.tacticId);
+      const personality = personalities.find(p => p.id === bestRun.personalityId);
+
+      if (!technique || !tactic) {
+        return res.status(500).json({ error: "Technique or tactic not found" });
+      }
+
+      // Determine counterpart role and attitude
+      const counterpartRole = negotiation.userRole === "BUYER" ? "SELLER" : "BUYER";
+      const counterpartAttitude = personality?.name || "Standard";
+
+      // Run evaluation
+      const { SimulationEvaluationService } = await import("../services/simulation-evaluation");
+      const evaluation = await SimulationEvaluationService.evaluateAndSave(
+        bestRun.id,
+        bestRun.conversationLog,
+        negotiation.userRole,
+        technique.name,
+        tactic.name,
+        counterpartAttitude,
+      );
+
+      res.json({
+        simulationRunId: bestRun.id,
+        runNumber: bestRun.runNumber,
+        evaluation,
+      });
+    } catch (error) {
+      console.error("Failed to evaluate simulation:", error);
+      res.status(500).json({ error: "Failed to evaluate simulation" });
+    }
+  });
+
+  router.get("/:id/analysis", async (req, res) => {
+    try {
+      const negotiationId = req.params.id;
+
+      // Get negotiation details
+      const negotiation = await storage.getNegotiation(negotiationId);
+      if (!negotiation) {
+        return res.status(404).json({ error: "Negotiation not found" });
+      }
+
+      // Get all simulation runs via queue
+      const { SimulationQueueService } = await import("../services/simulation-queue");
+      const runs = await SimulationQueueService.getSimulationResultsByNegotiation(negotiationId);
+
+      // Get techniques and tactics for name mapping
+      const [allTechniques, allTactics, products] = await Promise.all([
+        storage.getAllInfluencingTechniques(),
+        storage.getAllNegotiationTactics(),
+        storage.getProductsByNegotiation(negotiationId),
+      ]);
+
+      // Transform runs with enhanced data
+      const enhancedRuns = runs.map((run) => {
+        const technique = allTechniques.find(t => t.id === run.techniqueId);
+        const tactic = allTactics.find(t => t.id === run.tacticId);
+        const dealValue = run.dealValue ? parseFloat(run.dealValue) : 0;
+        const efficiency = run.totalRounds > 0 ? dealValue / run.totalRounds : 0;
+
+        return {
+          id: run.id,
+          runNumber: run.runNumber,
+          techniqueId: run.techniqueId,
+          tacticId: run.tacticId,
+          techniqueName: technique?.name || "Unknown",
+          tacticName: tactic?.name || "Unknown",
+          dealValue,
+          totalRounds: run.totalRounds || 0,
+          actualCost: parseFloat(run.actualCost || "0"),
+          outcome: run.outcome,
+          status: run.status,
+          otherDimensions: run.otherDimensions || {},
+          conversationLog: run.conversationLog || [],
+          efficiency,
+          // AI Evaluation fields
+          tacticalSummary: run.tacticalSummary,
+          techniqueEffectivenessScore: run.techniqueEffectivenessScore ? parseFloat(run.techniqueEffectivenessScore) : null,
+          tacticEffectivenessScore: run.tacticEffectivenessScore ? parseFloat(run.tacticEffectivenessScore) : null,
+        };
+      });
+
+      // Calculate summary statistics
+      const completedRuns = enhancedRuns.filter(r => r.status === "completed" && r.dealValue > 0);
+
+      const sortedByDealValue = [...completedRuns].sort((a, b) => b.dealValue - a.dealValue);
+      const sortedByRounds = [...completedRuns].sort((a, b) => a.totalRounds - b.totalRounds);
+      const sortedByEfficiency = [...completedRuns].sort((a, b) => b.efficiency - a.efficiency);
+
+      const summary = {
+        bestDealValue: sortedByDealValue[0] ? {
+          runId: sortedByDealValue[0].id,
+          value: sortedByDealValue[0].dealValue,
+          technique: sortedByDealValue[0].techniqueName,
+          tactic: sortedByDealValue[0].tacticName,
+          rounds: sortedByDealValue[0].totalRounds,
+        } : null,
+        fastestCompletion: sortedByRounds[0] ? {
+          runId: sortedByRounds[0].id,
+          rounds: sortedByRounds[0].totalRounds,
+          technique: sortedByRounds[0].techniqueName,
+          tactic: sortedByRounds[0].tacticName,
+          dealValue: sortedByRounds[0].dealValue,
+        } : null,
+        mostEfficient: sortedByEfficiency[0] ? {
+          runId: sortedByEfficiency[0].id,
+          efficiency: sortedByEfficiency[0].efficiency,
+          technique: sortedByEfficiency[0].techniqueName,
+          tactic: sortedByEfficiency[0].tacticName,
+          dealValue: sortedByEfficiency[0].dealValue,
+          rounds: sortedByEfficiency[0].totalRounds,
+        } : null,
+        avgDealValue: completedRuns.length > 0
+          ? completedRuns.reduce((sum, r) => sum + r.dealValue, 0) / completedRuns.length
+          : 0,
+        avgRounds: completedRuns.length > 0
+          ? completedRuns.reduce((sum, r) => sum + r.totalRounds, 0) / completedRuns.length
+          : 0,
+        totalRuns: runs.length,
+        completedRuns: completedRuns.length,
+      };
+
+      // Create performance matrix (technique × tactic)
+      const matrix: Record<string, any> = {};
+      completedRuns.forEach(run => {
+        const key = `${run.techniqueId}_${run.tacticId}`;
+        if (!matrix[key]) {
+          matrix[key] = {
+            techniqueId: run.techniqueId,
+            techniqueName: run.techniqueName,
+            tacticId: run.tacticId,
+            tacticName: run.tacticName,
+            dealValue: run.dealValue,
+            rounds: run.totalRounds,
+            efficiency: run.efficiency,
+            runId: run.id,
+          };
+        }
+      });
+
+      // Rank runs by deal value
+      const rankedRuns = enhancedRuns.map((run, index) => ({
+        ...run,
+        rank: completedRuns.findIndex(r => r.id === run.id) + 1,
+      }));
+
+      res.json({
+        negotiation: {
+          id: negotiation.id,
+          title: negotiation.title,
+          userRole: negotiation.userRole,
+          productCount: products.length,
+        },
+        runs: rankedRuns,
+        summary,
+        matrix: Object.values(matrix),
+      });
+    } catch (error) {
+      console.error("Failed to get negotiation analysis:", error);
+      res.status(500).json({ error: "Failed to get negotiation analysis" });
+    }
+  });
+
   router.get("/simulation-runs/:runId/status", async (req, res) => {
     try {
       const run = await storage.getSimulationRun(req.params.runId);
@@ -653,7 +849,22 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
         console.log(`[phase2] Saved ${productsData.length} products for negotiation ${negotiation.id}`);
       }
 
-      // TODO: Store conditions and market intelligence
+      // Store conditions (other dimensions) in negotiation_dimensions table
+      if (validatedData.konditionen && validatedData.konditionen.length > 0) {
+        const dimensionsData = validatedData.konditionen.map((k) => ({
+          negotiationId: negotiation.id,
+          name: k.name,
+          minValue: (k.minWert || 0).toString(),
+          maxValue: (k.maxWert || k.zielWert).toString(),
+          targetValue: k.zielWert.toString(),
+          priority: k.priorität,
+          unit: k.einheit || null,
+        }));
+        await storage.createNegotiationDimensions(negotiation.id, dimensionsData);
+        console.log(`[phase2] Saved ${dimensionsData.length} conditions (dimensions) for negotiation ${negotiation.id}`);
+      }
+
+      // TODO: Store market intelligence
       console.log("[phase2] Phase 2 data received:", {
         produkte: validatedData.produkte?.length || 0,
         konditionen: validatedData.konditionen?.length || 0,

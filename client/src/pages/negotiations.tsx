@@ -446,14 +446,26 @@ export default function Negotiations() {
                           >
                             <Eye className="h-4 w-4" />
                           </Button>
-                          <Button 
-                            variant="ghost" 
+                          <Button
+                            variant="ghost"
                             size="sm"
                             onClick={() => setLocation(`/simulation-monitor/${negotiation.id}`)}
                             title="Monitor Simulations"
                           >
                             <Activity className="h-4 w-4" />
                           </Button>
+
+                          {completedRuns > 0 && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setLocation(`/negotiations/${negotiation.id}/analysis`)}
+                              title="Analyse Results"
+                              className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                            >
+                              <BarChart3 className="h-4 w-4" />
+                            </Button>
+                          )}
 
                           {(negotiation.status === "configured" || negotiation.status === "pending") && (
                             <Button

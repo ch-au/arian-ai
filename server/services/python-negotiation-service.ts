@@ -512,15 +512,36 @@ export class PythonNegotiationService {
     const productPrices: Record<string, number> = {};
     const otherDimensions: Record<string, any> = {};
 
-    const productNames = new Set(negotiationProducts.map(p => p.produktName));
+    // Create normalized lookup for product names (remove spaces/underscores for matching)
+    const productNameMap = new Map<string, string>();
+    for (const product of negotiationProducts) {
+      const normalized = product.produktName.toLowerCase().replace(/[_\s]/g, '');
+      productNameMap.set(normalized, product.produktName);
+    }
 
     for (const [key, value] of Object.entries(dimensionValues)) {
-      if (productNames.has(key)) {
-        productPrices[key] = Number(value);
-      } else {
+      const keyLower = key.toLowerCase();
+      const keyNormalized = keyLower.replace(/[_\s]/g, '');
+      let isProductPrice = false;
+
+      // Check if this dimension is a product price
+      for (const [productNormalized, productName] of productNameMap.entries()) {
+        if ((keyNormalized.includes('preis') || keyNormalized.includes('price')) &&
+            keyNormalized.includes(productNormalized)) {
+          productPrices[productName] = Number(value);
+          isProductPrice = true;
+          console.log(`[python-negotiation] Matched dimension "${key}" to product "${productName}" with price ${value}`);
+          break;
+        }
+      }
+
+      if (!isProductPrice) {
         otherDimensions[key] = value;
       }
     }
+
+    // Track total deal value across all products
+    let totalDealValue = 0;
 
     // Create productResults records for each product
     for (const product of negotiationProducts) {
@@ -558,6 +579,9 @@ export class PythonNegotiationService {
         const subtotal = (agreedPrice * estimatedVolume).toFixed(2);
         const targetSubtotal = (targetPrice * estimatedVolume).toFixed(2);
         const deltaFromTargetSubtotal = (Number(subtotal) - Number(targetSubtotal)).toFixed(2);
+
+        // Add to total deal value
+        totalDealValue += Number(subtotal);
 
         // Calculate performance score (100% if at target, lower if further away)
         const performanceScore = targetPrice > 0
@@ -603,7 +627,8 @@ export class PythonNegotiationService {
       totalRounds: result.totalRounds,
       langfuseTraceId: result.langfuseTraceId || null,
       outcome: result.outcome, // Store the detailed outcome
-      otherDimensions: otherDimensions // Use otherDimensions instead of dimensionResults
+      otherDimensions: otherDimensions, // Use otherDimensions instead of dimensionResults
+      dealValue: totalDealValue > 0 ? totalDealValue.toString() : null // Store total deal value
     };
 
     // Only set completedAt for truly completed negotiations (not paused ones)

@@ -6,8 +6,10 @@ This file contains all the data structures used in the negotiation service.
 A junior developer can look here to understand what data flows through the system.
 """
 
-from typing import Dict, Any, Literal, Optional
-from pydantic import BaseModel, Field
+import os
+from typing import Dict, Any, Literal, Optional, List
+from pydantic import BaseModel, Field, field_validator
+from pydantic_settings import BaseSettings
 
 
 class NegotiationOffer(BaseModel):
@@ -31,7 +33,7 @@ class NegotiationOffer(BaseModel):
 class NegotiationResponse(BaseModel):
     """
     Complete response from an agent during negotiation.
-    
+
     This is the main data structure that agents return each round.
     """
     message: str = Field(
@@ -47,12 +49,32 @@ class NegotiationResponse(BaseModel):
         description="Private thoughts - not shared with the other party"
     )
     batna_assessment: float = Field(
-        description="How good are our alternatives? (0.0 = terrible, 1.0 = excellent)", 
+        description="How good are our alternatives? (0.0 = terrible, 1.0 = excellent)",
         default=0.5, ge=0.0, le=1.0
     )
     walk_away_threshold: float = Field(
-        description="Below this score, we should walk away (typically 0.2-0.4)", 
+        description="Below this score, we should walk away (typically 0.2-0.4)",
         default=0.3, ge=0.0, le=1.0
+    )
+
+
+class SimulationEvaluation(BaseModel):
+    """
+    AI-generated evaluation of a completed simulation run.
+
+    Based on Langfuse prompt 'simulation_eval'.
+    Uses structured output to analyze technique/tactic effectiveness.
+    """
+    tactical_summary: str = Field(
+        description="2-3 Sätze zu den Haupterkenntnissen in der Verhandlung mit Blick auf Taktik / Einfluss / Gesprächsführung"
+    )
+    influencing_effectiveness_score: int = Field(
+        ge=1, le=10,
+        description="Bewertung der Influence Technique Effektivität (1-10)"
+    )
+    tactic_effectiveness_score: int = Field(
+        ge=1, le=10,
+        description="Bewertung der Verhandlungstaktik Effektivität (1-10)"
     )
 
 
@@ -63,9 +85,9 @@ class NegotiationConfig:
     All settings in one place so they're easy to find and modify.
     """
     # Model settings
-    DEFAULT_MODEL: str = "gpt-4o"
+    DEFAULT_MODEL: str = "gpt-5"
     DEFAULT_TEMPERATURE: float = 0.7
-    DEFAULT_MAX_TOKENS: int = 2000
+    DEFAULT_MAX_TOKENS: int = 20000
     
     # Negotiation limits
     DEFAULT_MAX_ROUNDS: int = 6

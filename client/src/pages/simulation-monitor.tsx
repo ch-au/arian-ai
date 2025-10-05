@@ -39,7 +39,8 @@ interface SimulationResult {
   startedAt?: string;
   completedAt?: string;
   conversationLog?: any[];
-  dimensionResults?: any;
+  otherDimensions?: any;
+  dealValue?: number | string;
 }
 
 export default function OptimizedSimulationMonitor() {
@@ -394,31 +395,14 @@ export default function OptimizedSimulationMonitor() {
   };
 
   const formatDealValue = (result: any) => {
-    // Use calculated dealValue if available
+    // Use calculated dealValue if available (from database)
     if (result.dealValue) {
       const value = typeof result.dealValue === 'string' ? parseFloat(result.dealValue) : result.dealValue;
       return `€${value.toLocaleString('de-DE', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
     }
 
-    // Fallback to dimensionResults
-    const dimensionResults = result.dimensionResults;
-    if (!dimensionResults) return "-";
-
-    let parsed = dimensionResults;
-    if (typeof dimensionResults === "string") {
-      try {
-        parsed = JSON.parse(dimensionResults);
-      } catch {
-        return "-";
-      }
-    }
-
-    const price = parsed?.Preis || parsed?.Price;
-    const volume = parsed?.Volumen || parsed?.Volume;
-    if (price && volume) {
-      return `€${(parseFloat(price) * parseFloat(volume)).toLocaleString('de-DE', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-    }
-    return price ? `€${price}` : "-";
+    // If dealValue is not set, show "-"
+    return "-";
   };
 
   if (loading) {
@@ -512,6 +496,7 @@ export default function OptimizedSimulationMonitor() {
         tactics={tactics}
         onRestartSingle={handleRestartSingle}
         restarting={restartingSingle}
+        negotiationId={negotiationId}
       />
     </div>
   );

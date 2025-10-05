@@ -4,6 +4,8 @@ Negotiation Utility Functions
 
 This file contains helper functions for the negotiation service.
 Each function has a clear, single purpose and good documentation.
+
+Note: JSON parsing functions removed - we now use structured output with Pydantic models.
 """
 
 import json
@@ -15,95 +17,6 @@ try:
     from .negotiation_models import NegotiationConfig
 except ImportError:
     from negotiation_models import NegotiationConfig
-
-
-def safe_json_parse(raw_output: str) -> Dict[str, Any]:
-    """
-    Parse JSON response from OpenAI agent with comprehensive error handling.
-    
-    This is the most common failure point, so it has multiple fallback strategies:
-    1. Try parsing as direct JSON
-    2. Extract JSON from markdown code blocks (```json```)
-    3. Clean common JSON formatting issues
-    4. Return a safe fallback response if all else fails
-    
-    Args:
-        raw_output: Raw string response from the agent
-        
-    Returns:
-        Dict containing the parsed response or a safe fallback
-        
-    Example:
-        >>> response = safe_json_parse('{"message": "Hello",}')  # trailing comma
-        >>> print(response['message'])
-        Hello
-        
-        >>> response = safe_json_parse('```json\n{"action": "continue"}\n```')
-        >>> print(response['action'])
-        continue
-    """
-    try:
-        # Step 1: Try direct JSON parsing
-        if raw_output.strip().startswith('{'):
-            cleaned_json = _clean_json_string(raw_output.strip())
-            return json.loads(cleaned_json)
-        
-        # Step 2: Extract from markdown code blocks
-        json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', raw_output, re.DOTALL)
-        if json_match:
-            cleaned_json = _clean_json_string(json_match.group(1))
-            return json.loads(cleaned_json)
-        
-        # Step 3: Fallback - return a safe response structure
-        print(f"WARNING: Could not parse JSON from agent response: {raw_output[:200]}...", file=sys.stderr)
-        return _get_fallback_response(raw_output, "Failed to parse structured response")
-        
-    except json.JSONDecodeError as e:
-        print(f"WARNING: JSON parse error: {e}", file=sys.stderr)
-        return _get_fallback_response(raw_output, f"JSON parse error: {e}")
-
-
-def _clean_json_string(json_str: str) -> str:
-    """
-    Clean up common JSON formatting issues that break parsing.
-    
-    Fixes:
-    - Trailing commas before closing braces/brackets
-    - Trailing commas at end of lines
-    
-    Args:
-        json_str: JSON string that might have formatting issues
-        
-    Returns:
-        Cleaned JSON string
-    """
-    # Remove trailing commas before closing braces/brackets
-    json_str = re.sub(r',(\s*[}\]])', r'\1', json_str)
-    
-    # Remove trailing commas at end of lines
-    json_str = re.sub(r',(\s*\n\s*[}\]])', r'\1', json_str)
-    
-    return json_str
-
-
-def _get_fallback_response(raw_output: str, error_reason: str) -> Dict[str, Any]:
-    """
-    Create a safe fallback response when JSON parsing fails.
-    
-    This ensures the system never crashes due to parsing issues.
-    """
-    return {
-        "message": raw_output[:200] + "..." if len(raw_output) > 200 else raw_output,
-        "action": "continue",
-        "offer": {
-            "dimension_values": {}, 
-            "confidence": 0.5, 
-            "reasoning": "Parse failed"
-        },
-        "internal_analysis": error_reason,
-        "batna_assessment": 0.5,
-        "walk_away_threshold": 0.3
-    }
 
 
 def analyze_convergence(current_offer: Dict[str, Any], previous_offer: Dict[str, Any]) -> bool:

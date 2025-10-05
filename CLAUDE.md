@@ -89,23 +89,63 @@ Negotiation (master record)
 
 ## Critical Data Structures
 
-### Negotiation Creation Flow
-Form data binding fixed to match backend schema:
+### Simulation Results Schema (Updated October 2025)
 ```typescript
-// CORRECT field paths (client/src/components/CreateNegotiationForm.tsx)
-userZopa: {
-  volumen: { min: number, max: number, target: number },
-  preis: { min: number, max: number, target: number },
-  laufzeit: { min: number, max: number, target: number },
-  zahlungskonditionen: { min: number, max: number, target: number }
+// simulationRuns table stores high-level results
+{
+  dealValue: Decimal,              // SUM(price × volume) for all products
+  otherDimensions: JSONB,          // Non-price terms (payment, delivery, etc.)
+  conversationLog: JSONB,          // Full negotiation transcript
+  outcome: Text,                   // DEAL_ACCEPTED, WALK_AWAY, TERMINATED, etc.
+  actualCost: Decimal,             // API cost for this simulation
+  totalRounds: Integer             // Number of negotiation rounds
 }
-counterpartDistance: {
-  volumen: number, // -1 to 1 scale
-  preis: number,
-  laufzeit: number, 
-  zahlungskonditionen: number
+
+// productResults table stores individual product details
+{
+  productName: Text,
+  agreedPrice: Decimal,
+  estimatedVolume: Integer,
+  subtotal: Decimal,               // price × volume for THIS product
+  priceVsTarget: Text,             // Percentage vs target price
+  withinZopa: Boolean,             // Whether price is in ZOPA
+  performanceScore: Decimal        // 0-100 score
 }
 ```
+
+### AI Evaluation System (NEW - January 2025)
+Automatic post-simulation evaluation using Langfuse prompts and structured output:
+
+**Architecture:**
+- **Trigger**: Automatic hook after simulation completion (DEAL_ACCEPTED/WALK_AWAY)
+- **Implementation**: [server/services/simulation-queue.ts:885-891](server/services/simulation-queue.ts:885-891) (hook), [server/services/simulation-queue.ts:1460-1522](server/services/simulation-queue.ts:1460-1522) (evaluation logic)
+- **Python Service**: [scripts/evaluate_simulation.py](scripts/evaluate_simulation.py)
+- **Data Model**: [scripts/negotiation_models.py:SimulationEvaluation](scripts/negotiation_models.py)
+
+**Evaluation Fields (stored in simulationRuns table):**
+```typescript
+{
+  tacticalSummary: Text,                    // 2-3 sentence analysis in German
+  techniqueEffectivenessScore: Decimal,     // 1-10 score for influence technique
+  tacticEffectivenessScore: Decimal,        // 1-10 score for negotiation tactic
+}
+```
+
+**Langfuse Integration:**
+- **Prompt**: `simulation_eval` (version-controlled in Langfuse)
+- **Tracing**: Automatic via `langfuse.openai` wrapper
+- **Structured Output**: OpenAI `beta.chat.completions.parse()` with Pydantic model
+- **Model**: gpt-4o-mini (cost-effective for analysis)
+
+**Frontend Display:**
+- Matrix cells show scores: 📊 7/10 (technique) | 🎯 6/10 (tactic)
+- Info icon (ℹ️) indicates evaluation available
+- Click cell → Dialog shows tactical summary + full conversation log
+
+### Dimension Matching Logic
+Product prices are matched using **normalized comparison** (spaces and underscores removed):
+- Handles formats: `Oreo_100g_Price`, `Preis_Oreo_100g`, `Oreo Keks 100g_Price`
+- Implementation: [server/services/simulation-queue.ts:702-724](server/services/simulation-queue.ts:702-724)
 
 ### WebSocket Event System
 ```typescript

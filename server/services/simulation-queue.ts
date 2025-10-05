@@ -344,7 +344,7 @@ export class SimulationQueueService {
         status: 'pending',
         actualCost: '0',
         completedAt: null,
-        conversationLog: null,
+        conversationLog: [],
         otherDimensions: {},
         crashRecoveryData: null
       })
@@ -670,7 +670,7 @@ export class SimulationQueueService {
 
       // Calculate deal value: SUM of (agreed price × geschätztesVolumen) for ALL products
       // NOTE: Volume is NOT negotiated - only prices are negotiated
-      const calculateDealValue = async (dimensions: any, negotiationId: string): Promise<number | null> => {
+      const calculateDealValue = async (dimensions: any, negotiationId: string, simulationRunId: string): Promise<number | null> => {
         if (!dimensions || typeof dimensions !== 'object') return null;
 
         // Fetch product configuration to get geschätztesVolumen (fixed estimated volume)
@@ -684,9 +684,13 @@ export class SimulationQueueService {
         // Match each product with its price dimension and calculate total deal value
         let totalDealValue = 0;
         let productsMatched = 0;
+        const productResultsToSave = [];
 
         for (const product of products) {
+          const productId = product.id;
           const productName = product.produktName;
+          const targetPrice = product.zielPreis;
+          const minMaxPrice = product.minMaxPreis;
           const volume = product.geschätztesVolumen;
 
           if (!volume || volume === 0) {
@@ -695,20 +699,36 @@ export class SimulationQueueService {
           }
 
           // Find the price dimension for this product
-          // Dimension key format: "Preis Oreo", "Preis Milka", "Price ProductName", etc.
+          // Dimension key formats: "Preis_ProductName" (exact from schema), or legacy formats
           let productPrice: number | null = null;
 
-          for (const [key, value] of Object.entries(dimensions)) {
-            const keyLower = key.toLowerCase();
-            const productNameLower = productName.toLowerCase();
+          // First try exact match: "Preis_ProductName"
+          const exactKey = `Preis_${productName}`;
+          if (dimensions[exactKey] !== undefined) {
+            const numValue = typeof dimensions[exactKey] === 'number'
+              ? dimensions[exactKey]
+              : parseFloat(String(dimensions[exactKey]));
+            if (!isNaN(numValue)) {
+              productPrice = numValue;
+              this.log.info(`Exact match: dimension "${exactKey}" = €${numValue}`);
+            }
+          }
 
-            // Match if dimension key contains both "preis"/"price" AND the product name
-            if ((keyLower.includes('preis') || keyLower.includes('price')) &&
-                keyLower.includes(productNameLower)) {
-              const numValue = typeof value === 'number' ? value : parseFloat(String(value));
-              if (!isNaN(numValue)) {
-                productPrice = numValue;
-                break;
+          // Fallback: fuzzy matching for legacy formats
+          if (productPrice === null) {
+            for (const [key, value] of Object.entries(dimensions)) {
+              const keyLower = key.toLowerCase().replace(/[_\s]/g, '');
+              const productNameLower = productName.toLowerCase().replace(/[_\s]/g, '');
+
+              // Match if dimension key contains both "preis"/"price" AND the product name
+              if ((keyLower.includes('preis') || keyLower.includes('price')) &&
+                  keyLower.includes(productNameLower)) {
+                const numValue = typeof value === 'number' ? value : parseFloat(String(value));
+                if (!isNaN(numValue)) {
+                  productPrice = numValue;
+                  this.log.info(`Fuzzy match: dimension "${key}" to product "${productName}" = €${numValue}`);
+                  break;
+                }
               }
             }
           }
@@ -718,8 +738,55 @@ export class SimulationQueueService {
             totalDealValue += productDealValue;
             productsMatched++;
             this.log.info(`Product "${productName}": €${productPrice} × ${volume} units = €${productDealValue}`);
+
+            // Calculate performance metrics based on target and min/max prices
+            const targetPriceNum = parseFloat(targetPrice?.toString() || '0');
+            const minMaxPriceNum = parseFloat(minMaxPrice?.toString() || '0');
+
+            let priceVsTarget: string | null = null;
+            let withinZopa: boolean | null = null;
+            let performanceScore: number | null = null;
+
+            if (targetPriceNum > 0) {
+              const diff = ((productPrice - targetPriceNum) / targetPriceNum) * 100;
+              priceVsTarget = `${diff > 0 ? '+' : ''}${diff.toFixed(1)}%`;
+            }
+
+            if (minMaxPriceNum > 0) {
+              withinZopa = productPrice >= minMaxPriceNum;
+
+              // Performance score: 100 if at target, decreases as it moves toward min/max
+              if (targetPriceNum > 0) {
+                const range = Math.abs(targetPriceNum - minMaxPriceNum);
+                const distance = Math.abs(productPrice - targetPriceNum);
+                performanceScore = range > 0 ? Math.max(0, Math.min(100, 100 - (distance / range * 100))) : 100;
+              }
+            }
+
+            // Prepare product result for saving (linked to products table via productId)
+            productResultsToSave.push({
+              simulationRunId: simulationRunId,
+              productId: productId, // Foreign key to products table
+              productName: productName,
+              agreedPrice: productPrice.toString(),
+              estimatedVolume: volume,
+              subtotal: productDealValue.toString(),
+              priceVsTarget: priceVsTarget,
+              withinZopa: withinZopa,
+              performanceScore: performanceScore?.toString() || null
+            });
           } else {
-            this.log.warn(`No price found for product "${productName}" in dimensions`);
+            this.log.warn(`No price found for product "${productName}" in dimensions. Available dimensions: ${Object.keys(dimensions).join(', ')}`);
+          }
+        }
+
+        // Save product results to database
+        if (productResultsToSave.length > 0) {
+          try {
+            await db.insert(productResults).values(productResultsToSave);
+            this.log.info(`Saved ${productResultsToSave.length} product results to database`);
+          } catch (error) {
+            this.log.error(`Failed to save product results: ${error}`);
           }
         }
 
@@ -732,7 +799,37 @@ export class SimulationQueueService {
         return totalDealValue;
       };
 
-      const dealValue = await calculateDealValue(dimensionValues, nextSimulation.negotiationId || '');
+      const dealValue = await calculateDealValue(dimensionValues, nextSimulation.negotiationId || '', nextSimulation.id);
+
+      // Separate product-related dimensions from other dimensions
+      // otherDimensions should NOT include product prices/volumes (those are in productResults table)
+      const products = await storage.getProductsByNegotiation(nextSimulation.negotiationId || '');
+      const productNamesNormalized = new Set(
+        products.map(p => p.produktName.toLowerCase().replace(/[_\s]/g, ''))
+      );
+      const otherDimensions: Record<string, any> = {};
+
+      for (const [key, value] of Object.entries(dimensionValues)) {
+        const keyLower = key.toLowerCase();
+        const keyNormalized = keyLower.replace(/[_\s]/g, ''); // Remove spaces and underscores
+        let isProductDimension = false;
+
+        // Check if this dimension is product-related (price OR volume)
+        for (const productNameNormalized of productNamesNormalized) {
+          const isPrice = keyNormalized.includes('preis') || keyNormalized.includes('price');
+          const isVolume = keyNormalized.includes('volumen') || keyNormalized.includes('volume') || keyNormalized.includes('menge');
+
+          if ((isPrice || isVolume) && keyNormalized.includes(productNameNormalized)) {
+            isProductDimension = true;
+            break;
+          }
+        }
+
+        // Only include non-product dimensions (e.g., Lieferzeit, Zahlungsbedingungen)
+        if (!isProductDimension) {
+          otherDimensions[key] = value;
+        }
+      }
 
       await db.update(simulationRuns)
         .set({
@@ -740,7 +837,7 @@ export class SimulationQueueService {
           completedAt: new Date(),
           conversationLog: normalizedConversationLog,
           totalRounds: result.totalRounds,
-          otherDimensions: dimensionValues,
+          otherDimensions: otherDimensions, // Only non-product dimensions
           dealValue: dealValue?.toString() ?? null,
           actualCost: actualCost.toString(),
           outcome: result.outcome, // Store the detailed outcome
@@ -784,7 +881,15 @@ export class SimulationQueueService {
           total: (await this.getQueueStatus(queueId)).totalSimulations
         }
       });
-      
+
+      // Hook: Trigger AI evaluation after successful completion
+      if (result.outcome === 'DEAL_ACCEPTED' || result.outcome === 'WALK_AWAY') {
+        this.log.info(`[EVALUATION] Triggering AI evaluation for simulation ${nextSimulation.id.slice(0, 8)}`);
+        this.triggerEvaluation(nextSimulation.id, nextSimulation.negotiationId || '').catch(err => {
+          this.log.error(`[EVALUATION] Failed to evaluate simulation ${nextSimulation.id.slice(0, 8)}:`, err);
+        });
+      }
+
       // Check if queue is complete
       const queueStatus = await this.getQueueStatus(queueId);
       if (queueStatus.completedCount + queueStatus.failedCount >= queueStatus.totalSimulations) {
@@ -1076,6 +1181,7 @@ export class SimulationQueueService {
       totalRounds: simulationRuns.totalRounds,
       conversationLog: simulationRuns.conversationLog,
       otherDimensions: simulationRuns.otherDimensions,
+      dealValue: simulationRuns.dealValue,
       actualCost: simulationRuns.actualCost,
       startedAt: simulationRuns.startedAt,
       completedAt: simulationRuns.completedAt
@@ -1123,6 +1229,7 @@ export class SimulationQueueService {
         ...result,
         conversationLog: parsedConversationLog || [],
         otherDimensions: parsedOtherDimensions || {},
+        dealValue: result.dealValue ? parseFloat(result.dealValue) : null,
         actualCost: result.actualCost ? parseFloat(result.actualCost) : 0
       };
     });
@@ -1139,12 +1246,19 @@ export class SimulationQueueService {
         status: simulationRuns.status,
         techniqueId: simulationRuns.techniqueId,
         tacticId: simulationRuns.tacticId,
+        personalityId: simulationRuns.personalityId,
+        dealValue: simulationRuns.dealValue,
+        outcome: simulationRuns.outcome,
         totalRounds: simulationRuns.totalRounds,
         conversationLog: simulationRuns.conversationLog,
         otherDimensions: simulationRuns.otherDimensions,
         actualCost: simulationRuns.actualCost,
         startedAt: simulationRuns.startedAt,
-        completedAt: simulationRuns.completedAt
+        completedAt: simulationRuns.completedAt,
+        // AI Evaluation fields
+        tacticalSummary: simulationRuns.tacticalSummary,
+        techniqueEffectivenessScore: simulationRuns.techniqueEffectivenessScore,
+        tacticEffectivenessScore: simulationRuns.tacticEffectivenessScore,
       })
       .from(simulationRuns)
       .where(eq(simulationRuns.negotiationId, negotiationId))
@@ -1340,6 +1454,70 @@ export class SimulationQueueService {
       }
     } catch (err) {
       this.log.warn({ err }, 'Failed to timeout stale simulations');
+    }
+  }
+
+  /**
+   * Trigger AI evaluation for a completed simulation (post-processing hook)
+   */
+  private static async triggerEvaluation(simulationRunId: string, negotiationId: string): Promise<void> {
+    try {
+      const { SimulationEvaluationService } = await import('./simulation-evaluation');
+
+      // Get simulation run data
+      const run = await db.select()
+        .from(simulationRuns)
+        .where(eq(simulationRuns.id, simulationRunId))
+        .limit(1);
+
+      if (run.length === 0) {
+        this.log.warn(`[EVALUATION] Simulation run ${simulationRunId} not found`);
+        return;
+      }
+
+      const simulationRun = run[0];
+
+      // Get negotiation details
+      const storage = (await import('../storage')).default;
+      const [negotiation, techniques, tactics, personalities] = await Promise.all([
+        storage.getNegotiation(negotiationId),
+        storage.getAllInfluencingTechniques(),
+        storage.getAllNegotiationTactics(),
+        storage.getAllPersonalityTypes(),
+      ]);
+
+      if (!negotiation) {
+        this.log.warn(`[EVALUATION] Negotiation ${negotiationId} not found`);
+        return;
+      }
+
+      const technique = techniques.find(t => t.id === simulationRun.techniqueId);
+      const tactic = tactics.find(t => t.id === simulationRun.tacticId);
+      const personality = personalities.find(p => p.id === simulationRun.personalityId);
+
+      if (!technique || !tactic) {
+        this.log.warn(`[EVALUATION] Technique or tactic not found for simulation ${simulationRunId}`);
+        return;
+      }
+
+      // Determine counterpart attitude
+      const counterpartRole = negotiation.userRole === 'BUYER' ? 'SELLER' : 'BUYER';
+      const counterpartAttitude = personality?.name || 'Standard';
+
+      // Run evaluation asynchronously (don't block)
+      await SimulationEvaluationService.evaluateAndSave(
+        simulationRunId,
+        simulationRun.conversationLog as any[],
+        negotiation.userRole,
+        technique.name,
+        tactic.name,
+        counterpartAttitude,
+      );
+
+      this.log.info(`[EVALUATION] ✓ Evaluation completed for simulation ${simulationRunId.slice(0, 8)}`);
+    } catch (error) {
+      this.log.error(`[EVALUATION] Failed to trigger evaluation:`, error);
+      // Don't throw - evaluation failure shouldn't break the simulation flow
     }
   }
 }

@@ -26,7 +26,16 @@ from textwrap import dedent
 from typing import Dict, Any, List, Optional
 
 # Configure logging to stderr to avoid interfering with stdout JSON responses
-logging.basicConfig(stream=sys.stderr, level=logging.WARNING)
+# Production-ready logging with timestamps and levels
+logging.basicConfig(
+    stream=sys.stderr,
+    level=logging.INFO,  # Changed from WARNING to INFO for better visibility
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+
+# Create logger for this module
+logger = logging.getLogger(__name__)
 
 # Apply nest_asyncio for compatibility with existing event loops
 import nest_asyncio
@@ -34,10 +43,14 @@ nest_asyncio.apply()
 
 # Load environment variables from .env file
 from dotenv import load_dotenv
-load_dotenv('.env')
+import os
+
+# Try to load .env from multiple locations (current dir, parent dir, project root)
+load_dotenv('.env')  # Current directory
+load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))  # Parent directory
+load_dotenv()  # Search up directory tree (dotenv default behavior)
 
 # Disable OpenAI Agents debug output that interferes with JSON parsing
-import os
 os.environ["AGENTS_DEBUG"] = "false"
 os.environ["OPENAI_LOG_LEVEL"] = "error"
 
@@ -52,7 +65,7 @@ try:
         NegotiationResponse, NegotiationOffer
     )
     from negotiation_utils import (
-        safe_json_parse, analyze_convergence, format_dimensions_for_prompt,
+        analyze_convergence, format_dimensions_for_prompt,
         generate_dimension_examples, generate_dimension_schema, setup_langfuse_tracing,
         calculate_dynamic_max_rounds, emit_round_update, normalize_model_output
     )
@@ -66,7 +79,7 @@ except ImportError:
         NegotiationResponse, NegotiationOffer
     )
     from negotiation_utils import (
-        safe_json_parse, analyze_convergence, format_dimensions_for_prompt,
+        analyze_convergence, format_dimensions_for_prompt,
         generate_dimension_examples, generate_dimension_schema, setup_langfuse_tracing,
         calculate_dynamic_max_rounds, emit_round_update, normalize_model_output
     )
@@ -74,7 +87,18 @@ except ImportError:
 # Import external dependencies
 from agents import Agent, Runner, SQLiteSession, trace, AgentOutputSchema
 from agents.extensions.models.litellm_model import LitellmModel
-from langfuse import get_client, observe, Langfuse
+from langfuse import Langfuse
+
+# Try to import observe decorator, fallback if not available
+try:
+    from langfuse.decorators import observe
+except ImportError:
+    # Fallback for older Langfuse versions
+    def observe(*args, **kwargs):
+        """Fallback decorator when langfuse.decorators not available."""
+        def decorator(func):
+            return func
+        return decorator if args and callable(args[0]) else decorator
 
 
 class NegotiationService:
@@ -134,7 +158,7 @@ class NegotiationService:
             
         except Exception as e:
             error_msg = f"Negotiation failed: {str(e)}"
-            print(f"ERROR: {error_msg}", file=sys.stderr)
+            logger.error(f"{error_msg}")
             if self.trace:
                 self.trace.update(output={"error": error_msg}, level="ERROR")
             return {"error": error_msg}
@@ -143,22 +167,22 @@ class NegotiationService:
         """Check if all required environment variables are present."""
         is_valid, missing_vars = NegotiationConfig.validate_environment()
         if not is_valid:
-            print(f"ERROR: Missing environment variables: {', '.join(missing_vars)}", file=sys.stderr)
+            logger.error(f"Missing environment variables: {', '.join(missing_vars)}")
             return False
         return True
     
     def _parse_negotiation_data(self) -> bool:
         """Parse and validate the negotiation data JSON."""
         if not self.args.negotiation_data:
-            print("DEBUG: No negotiation data provided", file=sys.stderr)
+            logger.debug("No negotiation data provided")
             return True  # Optional data
-            
+
         try:
             self.negotiation_data = json.loads(self.args.negotiation_data)
-            print(f"DEBUG: Parsed negotiation data successfully", file=sys.stderr)
+            logger.debug("Parsed negotiation data successfully")
             return True
         except json.JSONDecodeError as e:
-            print(f"ERROR: Invalid negotiation data JSON: {e}", file=sys.stderr)
+            logger.error(f"Invalid negotiation data JSON: {e}")
             return False
     
     async def _initialize_services(self) -> bool:
@@ -166,25 +190,25 @@ class NegotiationService:
         try:
             # Setup tracing first
             tracing_enabled = setup_langfuse_tracing()
-            print(f"DEBUG: Tracing enabled: {tracing_enabled}", file=sys.stderr)
-            
+            logger.debug(f"Tracing enabled: {tracing_enabled}")
+
             # Initialize Langfuse client per integration docs
-            self.langfuse = get_client()
+            self.langfuse = Langfuse()
             try:
                 # Optional health check
                 if hasattr(self.langfuse, "auth_check") and not self.langfuse.auth_check():
-                    print("WARNING: Langfuse client authentication failed. Check keys/host.", file=sys.stderr)
+                    logger.warning("Langfuse client authentication failed. Check keys/host.")
             except Exception as e:
-                print(f"DEBUG: Langfuse auth_check error (continuing): {e}", file=sys.stderr)
+                logger.debug(f"Langfuse auth_check error (continuing): {e}")
 
             # Get prompt template
             self.langfuse_prompt = self.langfuse.get_prompt("negotiation")
-            print(f"DEBUG: Retrieved Langfuse prompt: {self.langfuse_prompt.name} v{self.langfuse_prompt.version}", file=sys.stderr)
-            
+            logger.info(f"Retrieved Langfuse prompt: {self.langfuse_prompt.name} v{self.langfuse_prompt.version}")
+
             return True
-            
+
         except Exception as e:
-            print(f"ERROR: Service initialization failed: {e}", file=sys.stderr)
+            logger.error(f"Service initialization failed: {e}")
             return False
     
     
@@ -195,24 +219,24 @@ class NegotiationService:
             model_config = getattr(self.langfuse_prompt, 'config', {})
             model_name = model_config.get('model', NegotiationConfig.DEFAULT_MODEL)
 
-            print(f"DEBUG: Creating agents with model from Langfuse: {model_name}", file=sys.stderr)
+            logger.debug(f"Creating agents with model from Langfuse: {model_name}")
 
-            # Determine if we should use LiteLLM (for non-OpenAI models)
-            model_obj = self._get_model_object(model_name)
+            # Use LiteLLM for all models (including OpenAI)
+            model_obj = LitellmModel(model=model_name)
 
-            # Check if model supports structured output
-            supports_structured = self._model_supports_structured_output(model_name)
+            # Gemini has strict schema validation - doesn't accept Dict[str, Any] (empty object)
+            # Our NegotiationOffer.dimension_values is Dict[str, Any] which causes Gemini errors
+            # Solution: Use JSON mode fallback for Gemini (still structured, just different validation)
+            if "gemini" in model_name.lower():
+                logger.info(f"Using JSON mode for Gemini (Dict[str, Any] not supported in strict schema)")
+                output_schema = None  # Will parse JSON response
+            else:
+                # Use strict structured output for other models
+                output_schema = AgentOutputSchema(NegotiationResponse, strict_json_schema=False)
 
             # Create instructions for both roles
             buyer_instructions = self._create_agent_instructions(AgentRole.BUYER)
             seller_instructions = self._create_agent_instructions(AgentRole.SELLER)
-
-            # Create the agents with structured output using Pydantic (if supported)
-            # Use AgentOutputSchema with strict_json_schema=False for flexibility
-            output_schema = AgentOutputSchema(NegotiationResponse, strict_json_schema=False) if supports_structured else None
-
-            if not supports_structured:
-                print(f"WARNING: Model {model_name} doesn't support structured output - will parse JSON manually", file=sys.stderr)
 
             buyer_agent = Agent(
                 name="Production Buyer Agent",
@@ -234,102 +258,8 @@ class NegotiationService:
             }
             
         except Exception as e:
-            print(f"ERROR: Agent creation failed: {e}", file=sys.stderr)
+            logger.error(f"Agent creation failed: {e}")
             return None
-
-    def _get_model_object(self, model_name: str):
-        """
-        Get the appropriate model object (string for OpenAI, LitellmModel for others).
-
-        Supports LiteLLM format: provider/model-name
-        Examples:
-        - "gpt-4o" or "openai/gpt-4o" -> OpenAI (string)
-        - "anthropic/claude-3-5-sonnet-20241022" -> LiteLLM
-        - "gemini/gemini-2.0-flash-exp" -> LiteLLM
-        - "groq/llama-3.3-70b-versatile" -> LiteLLM
-        """
-        import os
-
-        # If model contains "/" it's a LiteLLM provider/model format
-        if "/" in model_name:
-            provider, model = model_name.split("/", 1)
-
-            # OpenAI models can use native client (faster)
-            if provider.lower() == "openai":
-                print(f"DEBUG: Using native OpenAI client for {model}", file=sys.stderr)
-                return model
-
-            # Get API key for the provider
-            api_key = self._get_provider_api_key(provider)
-
-            if not api_key:
-                print(f"WARNING: No API key found for {provider}, will try without key", file=sys.stderr)
-
-            print(f"DEBUG: Using LiteLLM for {provider}/{model}", file=sys.stderr)
-            return LitellmModel(model=model_name, api_key=api_key)
-
-        # No "/" means it's likely an OpenAI model (backward compatibility)
-        print(f"DEBUG: Using native OpenAI client for {model_name}", file=sys.stderr)
-        return model_name
-
-    def _get_provider_api_key(self, provider: str) -> str:
-        """Get API key for a specific provider."""
-        import os
-
-        # Map provider names to environment variable names
-        provider_env_map = {
-            "anthropic": "ANTHROPIC_API_KEY",
-            "claude": "ANTHROPIC_API_KEY",
-            "gemini": "GEMINI_API_KEY",
-            "google": "GEMINI_API_KEY",
-            "groq": "GROQ_API_KEY",
-            "cohere": "COHERE_API_KEY",
-            "mistral": "MISTRAL_API_KEY",
-            "openrouter": "OPENROUTER_API_KEY",
-            "together": "TOGETHER_API_KEY",
-            "replicate": "REPLICATE_API_KEY",
-            "bedrock": "AWS_ACCESS_KEY_ID",
-            "vertex": "GOOGLE_APPLICATION_CREDENTIALS",
-        }
-
-        env_var = provider_env_map.get(provider.lower(), f"{provider.upper()}_API_KEY")
-        api_key = os.getenv(env_var)
-
-        if api_key:
-            print(f"DEBUG: Found API key for {provider} in {env_var}", file=sys.stderr)
-        else:
-            print(f"DEBUG: No API key found in {env_var} for {provider}", file=sys.stderr)
-
-        return api_key
-
-    def _model_supports_structured_output(self, model_name: str) -> bool:
-        """
-        Check if a model supports structured output with json_schema.
-
-        Models that DON'T support structured output:
-        - gemini-flash-lite-latest
-        - Some older Gemini models
-        - Some Groq models
-
-        Models that DO support it:
-        - OpenAI models (gpt-4o, gpt-4o-mini, etc.)
-        - Claude models
-        - Most Gemini Pro models
-        """
-        # Models known to NOT support structured output
-        unsupported_models = [
-            'gemini-flash-lite',
-            'gemini-1.5-flash-8b',  # Lite variant
-        ]
-
-        # Check if model name contains any unsupported pattern
-        model_lower = model_name.lower()
-        for unsupported in unsupported_models:
-            if unsupported in model_lower:
-                return False
-
-        # Default to True for OpenAI and most other models
-        return True
 
     def _create_agent_instructions(self, role: str) -> str:
         """
@@ -345,31 +275,26 @@ class NegotiationService:
         # Build static prompt variables (sections 1-6)
         variables = self._build_static_prompt_variables(role)
 
-        # Use Langfuse prompt if available, otherwise fallback to hardcoded template
-        if self.langfuse_prompt:
-            try:
-                # Compile Langfuse prompt with variables
-                compiled_prompt = self.langfuse_prompt.compile(**variables)
+        # Use Langfuse prompt (required - no fallback)
+        if not self.langfuse_prompt:
+            raise ValueError("Langfuse prompt is required but not loaded")
 
-                # Handle different return types from Langfuse
-                if isinstance(compiled_prompt, list):
-                    # If it's a list of messages, extract the text content
-                    compiled_text = ""
-                    for msg in compiled_prompt:
-                        if isinstance(msg, dict) and 'content' in msg:
-                            compiled_text += msg['content'] + "\n"
-                        elif isinstance(msg, str):
-                            compiled_text += msg + "\n"
-                    compiled_prompt = compiled_text.strip()
+        # Compile Langfuse prompt with variables
+        compiled_prompt = self.langfuse_prompt.compile(**variables)
 
-                print(f"DEBUG: Using Langfuse prompt '{self.langfuse_prompt.name}' v{self.langfuse_prompt.version}", file=sys.stderr)
-                return compiled_prompt
-            except Exception as e:
-                print(f"WARNING: Failed to compile Langfuse prompt, using fallback: {e}", file=sys.stderr)
+        # Handle different return types from Langfuse
+        if isinstance(compiled_prompt, list):
+            # If it's a list of messages, extract the text content
+            compiled_text = ""
+            for msg in compiled_prompt:
+                if isinstance(msg, dict) and 'content' in msg:
+                    compiled_text += msg['content'] + "\n"
+                elif isinstance(msg, str):
+                    compiled_text += msg + "\n"
+            compiled_prompt = compiled_text.strip()
 
-        # Fallback: Build static template (sections 1-6 and 8)
-        static_template = self._get_static_prompt_template(variables)
-        return static_template
+        logger.debug(f"Using Langfuse prompt '{self.langfuse_prompt.name}' v{self.langfuse_prompt.version}")
+        return compiled_prompt
     
     def _build_static_prompt_variables(self, role: str) -> Dict[str, str]:
         """Build STATIC variable substitutions for the agent instructions."""
@@ -390,9 +315,45 @@ class NegotiationService:
         products = products if isinstance(products, list) else []
 
         # Generate dimension information
-        dimension_examples = generate_dimension_examples(dimensions)
+        dimension_examples_base = generate_dimension_examples(dimensions)
         dimension_details = format_dimensions_for_prompt(dimensions)
-        dimension_schema = generate_dimension_schema(dimensions)
+        dimension_schema_base = generate_dimension_schema(dimensions)
+
+        # Add product price dimensions to schema and examples
+        product_price_keys = []
+        product_price_examples = []
+        for product in products:
+            product_name = product.get('produktName', '')
+            if product_name:
+                # Generate key in format: Preis_ProductName
+                price_key = f'"Preis_{product_name}": 0'
+                product_price_keys.append(price_key)
+
+                # Generate example with target/min-max prices
+                ziel_preis = product.get('zielPreis', 0)
+                min_max_preis = product.get('minMaxPreis', 0)
+                example_val = f'"Preis_{product_name}": {ziel_preis}'
+                product_price_examples.append(example_val)
+
+        # Combine dimension schema with product price keys
+        if product_price_keys:
+            if dimension_schema_base and dimension_schema_base != '"Wert": 0':
+                dimension_schema = dimension_schema_base + ', ' + ', '.join(product_price_keys)
+            else:
+                dimension_schema = ', '.join(product_price_keys)
+        else:
+            dimension_schema = dimension_schema_base
+
+        # Combine dimension examples with product price examples
+        if product_price_examples:
+            if dimension_examples_base and dimension_examples_base != '{"Wert": 0}':
+                # Remove closing } from base, add products, then close
+                base_without_closing = dimension_examples_base.rstrip('}').rstrip()
+                dimension_examples = base_without_closing + ', ' + ', '.join(product_price_examples) + '}'
+            else:
+                dimension_examples = '{' + ', '.join(product_price_examples) + '}'
+        else:
+            dimension_examples = dimension_examples_base
 
         # Format products information for the prompt
         products_info = self._format_products_for_prompt(products, role)
@@ -578,102 +539,6 @@ Ihre Antwort wird automatisch strukturiert. Dimension-Schema für offer.dimensio
 
         return message
     
-    def _get_static_prompt_template(self, variables: Dict[str, str]) -> str:
-        """Build the complete static prompt template with variables replaced."""
-        # Generate dimension schema for the template
-        dims = self.negotiation_data.get('dimensions', []) if self.negotiation_data else []
-        dimension_schema = generate_dimension_schema(dims)
-
-        template = (
-            f"# Rolle: EXPERT-VERHANDLUNGSAGENT\n"
-            f"Sie vertreten die Perspektive {variables['role_perspective']} in dieser Verhandlung. "
-            f"Bleiben Sie professionell, strategisch und denken Sie mehrdimensional. "
-            f"Alle Antworten müssen auf Deutsch erfolgen.\n\n"
-
-            f"## 1. VERHANDLUNGSKONTEXT\n"
-            f"Ihre Rolle: {variables['agent_role']}\n"
-            f"Titel: \"{variables['negotiation_title']}\"\n"
-            f"Verhandlungstyp: {variables['negotiation_type']}\n"
-            f"Beziehungsstatus: {variables['relationship_type']}\n"
-            f"Produkt- / Leistungsbeschreibung: {variables['product_description']}\n"
-            f"Zusätzliche Hinweise: {variables['additional_comments']}\n\n"
-            f"WICHTIG - Zu verhandelnde Produkte:\n"
-            f"{variables['products_info']}\n\n"
-
-            f"## 2. MARKT- & SITUATIONSEINORDNUNG\n"
-            f"Kontextbeschreibung: {variables['context_description']}\n"
-            f"Marktbedingungen: {variables.get('context_market_conditions', 'Nicht verfügbar')}\n"
-            f"Baseline-Werte / Benchmarks: {variables.get('context_baseline_values', 'Nicht verfügbar')}\n"
-            f"Weitere Metadaten: {variables.get('negotiation_metadata', 'Nicht verfügbar')}\n\n"
-
-            f"## 3. PSYCHOLOGISCHES PROFIL\n"
-            f"Persönlichkeitstyp: {variables.get('personality_type_name', 'Standard')}\n"
-            f"Beschreibung: {variables.get('personality_type_description', 'Professioneller Verhandler')}\n"
-            f"Verhaltensschwerpunkte: {variables.get('personality_behavior', 'Strategisch und zielorientiert')}\n"
-            f"Stärken: {variables.get('personality_advantages', 'Analytisch, geduldig')}\n"
-            f"Risiken: {variables.get('personality_risks', 'Keine besonderen')}\n\n"
-
-            f"## 4. PSYCHOLOGISCHE TECHNIK\n"
-            f"Name: {variables['technique_name']}\n"
-            f"Kernaussage: {variables['technique_description']}\n"
-            f"Praktische Anwendung: {variables['technique_application']}\n"
-            f"Wichtige Aspekte: {variables['technique_key_aspects']}\n"
-            f"Typische Formulierungen: {variables['technique_key_phrases']}\n\n"
-
-            f"## 5. STRATEGISCHE TAKTIK\n"
-            f"Name: {variables['tactic_name']}\n"
-            f"Beschreibung: {variables['tactic_description']}\n"
-            f"Empfohlene Anwendung: {variables['tactic_application']}\n"
-            f"Wichtige Aspekte: {variables['tactic_key_aspects']}\n"
-            f"Schlüsselphrasen: {variables['tactic_key_phrases']}\n\n"
-
-            f"## 6. VERHANDLUNGSDIMENSIONEN & ZIELE\n"
-            f"Dimensionen und Grenzen:\n"
-            f"{variables['dimension_details']}\n\n"
-            f"Hinweise:\n"
-            f"- Halten Sie sich strikt an die Min/Max-Grenzen je Dimension.\n"
-            f"- Priorität 1 = kritische Dimension, Priorität 3 = flexibel.\n"
-            f"- Beispiele für Angebotswerte: {variables['dimension_examples']}\n\n"
-
-            f"## 8. ANTWORTFORMAT (Strukturierte JSON-Ausgabe):\n"
-            f"WICHTIG: Antworten Sie NUR mit gültigem JSON, keine zusätzlichen Text oder Markdown-Codeblöcke.\n"
-            f"Ihre Antwort muss EXAKT folgende Struktur haben:\n\n"
-            f"{{\n"
-            f"  \"message\": \"Ihre professionelle Nachricht an die Gegenseite (auf Deutsch). Gehen Sie explizit auf das letzte Gegenangebot ein.\",\n"
-            f"  \"action\": \"continue|accept|terminate|walk_away|pause\",\n"
-            f"  \"offer\": {{\n"
-            f"    \"dimension_values\": {{ {dimension_schema} }},\n"
-            f"    \"confidence\": 0.85,\n"
-            f"    \"reasoning\": \"Kurze Begründung Ihrer Angebotslogik\"\n"
-            f"  }},\n"
-            f"  \"internal_analysis\": \"Ihre private strategische Einschätzung - wird in der nächsten Runde an Sie zurückgegeben zur Kontinuität\",\n"
-            f"  \"batna_assessment\": 0.7,\n"
-            f"  \"walk_away_threshold\": 0.3\n"
-            f"}}\n\n"
-
-            f"### Wichtige Hinweise:\n"
-            f"- **message**: Öffentliche Nachricht, sichtbar für die Gegenseite\n"
-            f"- **action**: Ihre strategische Entscheidung für diese Runde\n"
-            f"- **offer.dimension_values**: Numerische Werte für alle Dimensionen (innerhalb Min/Max)\n"
-            f"- **offer.confidence**: Wie sicher sind Sie bei diesem Angebot?\n"
-            f"- **offer.reasoning**: Private Begründung für Ihr Angebot\n"
-            f"- **internal_analysis**: KRITISCH - Ihre strategischen Gedanken, die Sie in der nächsten Runde wieder sehen werden\n"
-            f"- **batna_assessment**: Wie gut sind Ihre Alternativen außerhalb dieser Verhandlung?\n"
-            f"- **walk_away_threshold**: Unter welchem BATNA-Level würden Sie abbrechen?\n\n"
-
-            f"### Anforderungen:\n"
-            f"- Beziehen Sie sich explizit auf das letzte Angebot der Gegenseite\n"
-            f"- Begründen Sie jede Veränderung an den Dimensionen\n"
-            f"- Verwenden Sie Technik und Taktik subtil, ohne sie zu benennen\n"
-            f"- Vermeiden Sie Werte außerhalb der zulässigen Grenzen\n"
-            f"- Bleiben Sie konsistent mit Ihrer Rolle und Persönlichkeit\n"
-            f"- Nutzen Sie internal_analysis als Ihr strategisches Gedächtnis"
-        )
-        return template
-
-    def _get_structured_output_instructions(self) -> str:
-        """DEPRECATED - now integrated into _get_static_prompt_template."""
-        return ""  # Empty since we moved this into the static template
     
     @observe()
     async def _execute_negotiation_rounds(self, agents: Dict[str, Agent]) -> List[Dict[str, Any]]:
@@ -713,18 +578,21 @@ Ihre Antwort wird automatisch strukturiert. Dimension-Schema für offer.dimensio
 
             # Initialize persistent session for the entire negotiation
             # Session automatically tracks conversation history across rounds
-            session = SQLiteSession(f"production_{self.args.simulation_run_id}")
+            session_id = f"production_{self.args.simulation_run_id}"
+            session = None
             results = self._load_existing_conversation()
 
             # Use configured max rounds directly (no dynamic calculation)
             max_rounds = self.args.max_rounds
-            print(f"DEBUG: Starting negotiation with configured max {max_rounds} rounds", file=sys.stderr)
-            print(f"DEBUG: Using persistent session: production_{self.args.simulation_run_id}", file=sys.stderr)
+            logger.debug(f"Starting negotiation with configured max {max_rounds} rounds")
+            logger.debug(f"Using persistent session: {session_id}")
 
             # Build per-round messages dynamically based on latest state
             final_outcome = NegotiationOutcome.ERROR  # Default
 
             try:
+                # Create session with proper resource management
+                session = SQLiteSession(session_id)
                 round_num = len(results)
                 while round_num < max_rounds:
                     round_num += 1
@@ -733,7 +601,7 @@ Ihre Antwort wird automatisch strukturiert. Dimension-Schema für offer.dimensio
                     role = AgentRole.BUYER if round_num % 2 == 1 else AgentRole.SELLER
                     agent = agents[role]
 
-                    print(f"DEBUG: Round {round_num} - {role} turn", file=sys.stderr)
+                    logger.debug(f"Round {round_num} - {role} turn")
 
                     # Build dynamic per-round message (Section 7)
                     round_message = self._build_round_message(role, results, round_num)
@@ -765,17 +633,28 @@ Ihre Antwort wird automatisch strukturiert. Dimension-Schema für offer.dimensio
                     # Check for convergence and possible extension
                     if self._should_extend_negotiation(round_num, max_rounds, results):
                         max_rounds = min(round_num + 3, NegotiationConfig.ABSOLUTE_MAX_ROUNDS)
-                        print(f"DEBUG: Extending negotiation to {max_rounds} rounds due to convergence", file=sys.stderr)
+                        logger.debug(f"Extending negotiation to {max_rounds} rounds due to convergence")
 
                 # Set final outcome if still running
                 if final_outcome == NegotiationOutcome.ERROR:
                     final_outcome = NegotiationOutcome.MAX_ROUNDS_REACHED
 
-                print(f"DEBUG: Negotiation completed with outcome: {final_outcome}", file=sys.stderr)
+                logger.debug(f"Negotiation completed with outcome: {final_outcome}")
 
             except Exception as e:
-                print(f"ERROR: Negotiation execution failed: {e}", file=sys.stderr)
+                logger.error(f"Negotiation execution failed: {e}")
                 final_outcome = NegotiationOutcome.ERROR
+
+            finally:
+                # Clean up session resources
+                if session:
+                    try:
+                        # Close session if it has a close method
+                        if hasattr(session, 'close'):
+                            session.close()
+                            logger.debug(f"Closed session: {session_id}")
+                    except Exception as e:
+                        logger.warning(f"Failed to close session: {e}")
 
             # Store final outcome for result processing
             self._final_outcome = final_outcome
@@ -803,14 +682,11 @@ Ihre Antwort wird automatisch strukturiert. Dimension-Schema für offer.dimensio
                     "conversation_summary": f"{len(results)} rounds completed"
                 }
 
-                langfuse_client = get_client()
-                langfuse_client.update_current_trace(
-                    input=trace_input,
-                    output=trace_output
-                )
-                print(f"DEBUG: Updated Langfuse trace with input/output data (in context)", file=sys.stderr)
+                # Note: Langfuse tracing is handled by @observe decorator
+                # No need to manually update trace here
+                logger.debug(f"Langfuse trace data collected (handled by @observe decorator)")
             except Exception as e:
-                print(f"WARNING: Failed to update Langfuse trace in context: {e}", file=sys.stderr)
+                logger.debug(f"Note: {e}")
 
             return results
     
@@ -821,10 +697,10 @@ Ihre Antwort wird automatisch strukturiert. Dimension-Schema für offer.dimensio
             
         try:
             existing = json.loads(self.args.existing_conversation)
-            print(f"DEBUG: Resuming with {len(existing)} existing rounds", file=sys.stderr)
+            logger.debug(f"Resuming with {len(existing)} existing rounds")
             return existing
         except json.JSONDecodeError as e:
-            print(f"WARNING: Failed to parse existing conversation: {e}", file=sys.stderr)
+            logger.warning(f"Failed to parse existing conversation: {e}")
             return []
     
     def _get_starting_message(self, existing_results: List[Dict[str, Any]]) -> str:
@@ -848,25 +724,34 @@ Ihre Antwort wird automatisch strukturiert. Dimension-Schema für offer.dimensio
 
             # With output_type=NegotiationResponse, final_output is already a Pydantic model
             # Convert to dict for compatibility with existing code
+            # Handle both structured and unstructured responses
             if isinstance(result.final_output, NegotiationResponse):
                 response_data = result.final_output.model_dump()
-                print(f"DEBUG: Received structured response from {role}", file=sys.stderr)
+                logger.debug(f"Received structured response from {role}")
+            elif isinstance(result.final_output, dict):
+                response_data = result.final_output
+                logger.debug(f"Received dict response from {role}")
             else:
-                # Fallback: parse as JSON if not structured (shouldn't happen with output_type set)
-                response_data = safe_json_parse(str(result.final_output))
-                print(f"WARNING: Received unstructured response from {role}, parsed as JSON", file=sys.stderr)
+                # Fallback: try to parse as string (common for models without structured output)
+                logger.debug(f"Parsing string response from {role} (type: {type(result.final_output).__name__})")
+                response_str = str(result.final_output)
+                try:
+                    import json
+                    response_data = json.loads(response_str)
+                except Exception as e:
+                    raise ValueError(f"Could not parse response: {response_str[:200]} - Error: {e}")
 
             # Normalize dimension values to ensure they're numeric
             try:
                 dims = self.negotiation_data.get('dimensions', []) if self.negotiation_data else []
                 response_data = normalize_model_output(response_data, dims)
             except Exception as e:
-                print(f"WARNING: Normalization failed: {e}", file=sys.stderr)
+                logger.warning(f"Normalization failed: {e}")
 
             return response_data
 
         except Exception as e:
-            print(f"ERROR: Round {round_num} failed: {e}", file=sys.stderr)
+            logger.error(f"Round {round_num} failed: {e}")
             import traceback
             traceback.print_exc(file=sys.stderr)
             return None
@@ -943,9 +828,9 @@ Make your negotiation response using your complete strategy."""
                 "walk_away_threshold": response_data.get("walk_away_threshold", 0.3)
             })
 
-        print(f"DEBUG: Flattened conversation log with {len(conversation_log)} rounds", file=sys.stderr)
+        logger.debug(f"Flattened conversation log with {len(conversation_log)} rounds")
         if conversation_log:
-            print(f"DEBUG: Sample conversation entry: {json.dumps(conversation_log[0], indent=2)[:200]}...", file=sys.stderr)
+            logger.debug(f"Sample conversation entry: {json.dumps(conversation_log[0], indent=2)[:200]}...")
 
         # Create the final result
         final_result = {
@@ -958,7 +843,7 @@ Make your negotiation response using your complete strategy."""
 
         # Update Langfuse trace with complete input/output data
         try:
-            langfuse_client = get_client()
+            langfuse_client = Langfuse()
             
             # Prepare input data for tracing
             trace_input = {
@@ -991,17 +876,11 @@ Make your negotiation response using your complete strategy."""
                 "langfuse_prompt_version": str(self.langfuse_prompt.version) if self.langfuse_prompt else None,
             }
             
-            langfuse_client.update_current_trace(
-                input=trace_input,
-                output=trace_output,
-                metadata=trace_metadata,
-                tags=["negotiation", "openai-agents", "production"],
-                session_id=self.args.simulation_run_id,
-                user_id=self.args.negotiation_id
-            )
-            print(f"DEBUG: Updated Langfuse trace with complete input/output data", file=sys.stderr)
+            # Note: Langfuse tracing is handled by @observe decorator
+            # The trace will be automatically recorded with session and user context
+            logger.debug(f"Langfuse trace completed (session={self.args.simulation_run_id})")
         except Exception as e:
-            print(f"WARNING: Failed to update Langfuse trace with input/output: {e}", file=sys.stderr)
+            logger.debug(f"Note: {e}")
 
         return final_result
 
@@ -1019,14 +898,22 @@ async def main():
     parser.add_argument('--existing-conversation', help='JSON string with existing conversation')
     
     args = parser.parse_args()
-    
+
     # Create and run negotiation service
     service = NegotiationService(args)
     result = await service.run_negotiation()
-    
-    # Output result as JSON
+
+    # Ensure all Langfuse traces are flushed before exiting
+    try:
+        langfuse_client = Langfuse()
+        langfuse_client.flush()
+        logger.debug("Flushed Langfuse traces")
+    except Exception as e:
+        logger.warning(f"Failed to flush Langfuse: {e}")
+
+    # Output result as JSON (must be last line for stdout parsing)
     print(json.dumps(result))
-    
+
     # Exit with error code if negotiation failed
     if "error" in result:
         sys.exit(1)
