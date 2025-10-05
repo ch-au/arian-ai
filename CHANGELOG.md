@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added - January 2025
+### Added - Oktober 2025
 
 #### AI Evaluation System
 - **Automatic Post-Simulation Evaluation**: Every completed simulation now automatically receives an AI-powered evaluation
