@@ -2,16 +2,18 @@ import { Router } from "express";
 import { z } from "zod";
 import { storage } from "../storage";
 import { insertNegotiationContextSchema } from "@shared/schema";
+import { createRequestLogger } from "../services/logger";
 
 export function createContextRouter(): Router {
   const router = Router();
+  const log = createRequestLogger("routes:contexts");
 
   router.get("/", async (_req, res) => {
     try {
       const contexts = await storage.getAllNegotiationContexts();
       res.json(contexts);
     } catch (error) {
-      console.error("Failed to get contexts:", error);
+      log.error({ err: error }, "Failed to get contexts");
       res.status(500).json({ error: "Failed to get contexts" });
     }
   });
@@ -24,7 +26,7 @@ export function createContextRouter(): Router {
       }
       res.json(context);
     } catch (error) {
-      console.error("Failed to get context:", error);
+      log.error({ err: error, contextId: req.params.id }, "Failed to get context");
       res.status(500).json({ error: "Failed to get context" });
     }
   });
@@ -35,7 +37,7 @@ export function createContextRouter(): Router {
       const context = await storage.createNegotiationContext(contextData);
       res.status(201).json(context);
     } catch (error) {
-      console.error("Failed to create context:", error);
+      log.error({ err: error }, "Failed to create context");
       if (error instanceof z.ZodError) {
         return res
           .status(400)

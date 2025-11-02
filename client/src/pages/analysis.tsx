@@ -1,18 +1,25 @@
+import { useEffect } from "react";
+import { useLocation } from "wouter";
+
+/**
+ * Analysis Page - Redirects to Negotiations List
+ * 
+ * This page was a placeholder. Users should navigate to:
+ * - `/analysis/:negotiationId` for specific negotiation analysis
+ * - `/negotiations/:id/analysis` for detailed negotiation analysis
+ */
 export default function Analysis() {
+  const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    // Redirect to negotiations list where users can select an analysis
+    setLocation("/negotiations");
+  }, [setLocation]);
+
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight text-gray-900">Cross-Negotiation Analysis</h1>
-        <p className="text-gray-600 mt-2">Analyze performance trends and identify winning strategies across all negotiations</p>
-      </div>
-      <div className="p-12 border-2 border-dashed border-gray-200 rounded-lg text-center bg-gray-50/50">
-        <div className="max-w-md mx-auto">
-          <div className="w-16 h-16 mx-auto mb-4 bg-primary/10 rounded-full flex items-center justify-center">
-            <span className="text-2xl">📈</span>
-          </div>
-          <h3 className="text-xl font-semibold mb-2 text-gray-900">Analytics Dashboard</h3>
-          <p className="text-gray-600">Performance rankings, technique effectiveness analysis, dimension distributions, and exportable reports will be implemented here.</p>
-        </div>
+    <div className="flex items-center justify-center h-64">
+      <div className="text-center">
+        <p className="text-gray-600">Redirecting to negotiations...</p>
       </div>
     </div>
   );

@@ -2,6 +2,9 @@ import OpenAI from "openai";
 import { PersonalityProfile, Agent, NegotiationContext, ZopaBoundaries } from "@shared/schema";
 import { langfuseService } from "./langfuse";
 import { storage } from "../storage";
+import { createRequestLogger } from "./logger";
+
+const log = createRequestLogger("service:openai");
 
 // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
 const openai = new OpenAI({ 
@@ -285,7 +288,7 @@ Respond with JSON in this exact format:
         responseTime,
       };
     } catch (error) {
-      console.error("OpenAI API error:", error);
+      log.error({ err: error }, "OpenAI API error");
       throw new Error(`Failed to generate negotiation response: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -333,7 +336,7 @@ Provide analysis in JSON format:
         recommendations: result.recommendations || [],
       };
     } catch (error) {
-      console.error("OpenAI analysis error:", error);
+      log.error({ err: error }, "OpenAI analysis error");
       return {
         successScore: 50,
         analysis: "Analysis unavailable due to API error.",

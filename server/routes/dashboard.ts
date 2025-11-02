@@ -1,15 +1,17 @@
 import { Router } from "express";
 import { analyticsService } from "../services/analytics";
+import { createRequestLogger } from "../services/logger";
 
 export function createDashboardRouter(): Router {
   const router = Router();
+  const log = createRequestLogger("routes:dashboard");
 
   router.get("/metrics", async (_req, res) => {
     try {
       const metrics = await analyticsService.getDashboardMetrics();
       res.json(metrics);
     } catch (error) {
-      console.error("Failed to get dashboard metrics:", error);
+      log.error({ err: error }, "Failed to get dashboard metrics");
       res.status(500).json({ error: "Failed to get dashboard metrics" });
     }
   });
@@ -20,7 +22,7 @@ export function createDashboardRouter(): Router {
       const trends = await analyticsService.getSuccessRateTrends(days);
       res.json(trends);
     } catch (error) {
-      console.error("Failed to get success trends:", error);
+      log.error({ err: error, days }, "Failed to get success trends");
       res.status(500).json({ error: "Failed to get success trends" });
     }
   });
@@ -31,7 +33,7 @@ export function createDashboardRouter(): Router {
       const agents = await analyticsService.getTopPerformingAgents(limit);
       res.json(agents);
     } catch (error) {
-      console.error("Failed to get top agents:", error);
+      log.error({ err: error, limit }, "Failed to get top agents");
       res.status(500).json({ error: "Failed to get top agents" });
     }
   });

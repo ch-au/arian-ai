@@ -2,16 +2,18 @@ import { Router } from "express";
 import { z } from "zod";
 import { storage } from "../storage";
 import { insertAgentSchema, personalityProfileSchema } from "@shared/schema";
+import { createRequestLogger } from "../services/logger";
 
 export function createAgentRouter(): Router {
   const router = Router();
+  const log = createRequestLogger("routes:agents");
 
   router.get("/", async (_req, res) => {
     try {
       const agents = await storage.getAllAgents();
       res.json(agents);
     } catch (error) {
-      console.error("Failed to get agents:", error);
+      log.error({ err: error }, "Failed to get agents");
       res.status(500).json({ error: "Failed to get agents" });
     }
   });
@@ -24,7 +26,7 @@ export function createAgentRouter(): Router {
       }
       res.json(agent);
     } catch (error) {
-      console.error("Failed to get agent:", error);
+      log.error({ err: error, agentId: req.params.id }, "Failed to get agent");
       res.status(500).json({ error: "Failed to get agent" });
     }
   });
@@ -36,7 +38,7 @@ export function createAgentRouter(): Router {
       const agent = await storage.createAgent(agentData);
       res.status(201).json(agent);
     } catch (error) {
-      console.error("Failed to create agent:", error);
+      log.error({ err: error }, "Failed to create agent");
       if (error instanceof z.ZodError) {
         return res
           .status(400)
@@ -55,7 +57,7 @@ export function createAgentRouter(): Router {
       const agent = await storage.updateAgent(req.params.id, agentData);
       res.json(agent);
     } catch (error) {
-      console.error("Failed to update agent:", error);
+      log.error({ err: error, agentId: req.params.id }, "Failed to update agent");
       if (error instanceof z.ZodError) {
         return res
           .status(400)
@@ -70,7 +72,7 @@ export function createAgentRouter(): Router {
       await storage.deleteAgent(req.params.id);
       res.status(204).send();
     } catch (error) {
-      console.error("Failed to delete agent:", error);
+      log.error({ err: error, agentId: req.params.id }, "Failed to delete agent");
       res.status(500).json({ error: "Failed to delete agent" });
     }
   });

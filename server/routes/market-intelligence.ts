@@ -5,8 +5,10 @@
 
 import { Router } from 'express';
 import { generateMarketIntelligence, isGeminiConfigured } from '../services/gemini-market-intelligence';
+import { createRequestLogger } from '../services/logger';
 
 const router = Router();
+const log = createRequestLogger('routes:market-intelligence');
 
 /**
  * POST /api/market-intelligence
@@ -45,7 +47,7 @@ router.post('/', async (req, res) => {
       intelligence,
     });
   } catch (error: any) {
-    console.error('[market-intelligence-route] Error:', error);
+    log.error({ err: error }, '[market-intelligence-route] Error occurred');
 
     res.status(500).json({
       error: 'Market Intelligence Fehler',

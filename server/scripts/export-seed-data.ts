@@ -3,33 +3,36 @@ import { influencingTechniques, negotiationTactics } from '@shared/schema';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { createRequestLogger } from '../services/logger';
+
+const log = createRequestLogger('script:export-seed-data');
 
 // ESM-compatible __dirname
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 async function exportSeedData() {
-  console.log('📦 Exporting seed data...');
+  log.info('📦 Exporting seed data...');
 
   try {
     // Export influencing techniques
     const techniques = await db.select().from(influencingTechniques);
     const techniquesPath = path.join(__dirname, '../seed-data/influencing-techniques.json');
     fs.writeFileSync(techniquesPath, JSON.stringify(techniques, null, 2));
-    console.log(`✅ Exported ${techniques.length} influencing techniques to ${techniquesPath}`);
+    log.info({ count: techniques.length, path: techniquesPath }, `✅ Exported ${techniques.length} influencing techniques`);
 
     // Export negotiation tactics
     const tactics = await db.select().from(negotiationTactics);
     const tacticsPath = path.join(__dirname, '../seed-data/negotiation-tactics.json');
     fs.writeFileSync(tacticsPath, JSON.stringify(tactics, null, 2));
-    console.log(`✅ Exported ${tactics.length} negotiation tactics to ${tacticsPath}`);
+    log.info({ count: tactics.length, path: tacticsPath }, `✅ Exported ${tactics.length} negotiation tactics`);
 
-    console.log('\n✅ Seed data export complete!');
-    console.log('Files created:');
-    console.log(`  - ${techniquesPath}`);
-    console.log(`  - ${tacticsPath}`);
+    log.info('\n✅ Seed data export complete!');
+    log.info('Files created:');
+    log.info(`  - ${techniquesPath}`);
+    log.info(`  - ${tacticsPath}`);
   } catch (error) {
-    console.error('❌ Error exporting seed data:', error);
+    log.error({ err: error }, '❌ Error exporting seed data');
     process.exit(1);
   }
 }
@@ -37,6 +40,6 @@ async function exportSeedData() {
 exportSeedData()
   .then(() => process.exit(0))
   .catch((error) => {
-    console.error('Fatal error:', error);
+    log.error({ err: error }, 'Fatal error');
     process.exit(1);
   });

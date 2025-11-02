@@ -1,32 +1,30 @@
 # Python AI Microservices
 
-> AI negotiation engine and evaluation services using OpenAI Agents SDK
+> AI negotiation engine and evaluation services using OpenAI Agents SDK with LiteLLM multi-provider support
 
-## 📁 Directory Structure
+## Overview
 
-```
-scripts/
-├── README.md                          # This file - start here!
-├── README_NEGOTIATION.md              # Detailed negotiation engine docs
-├── DEVELOPER_HANDOVER.md              # Architecture deep-dive
-│
-├── run_production_negotiation.py      # Main negotiation engine (1,000+ lines)
-├── evaluate_simulation.py             # AI evaluation service (NEW)
-├── negotiation_models.py              # Pydantic data models
-├── negotiation_utils.py               # Helper functions
-├── gemini_market_intelligence.py      # Market data fetcher
-│
-├── requirements.txt                   # Python dependencies
-├── pytest.ini                         # Test configuration
-└── tests/                             # Unit tests
-    ├── test_negotiation_models.py
-    ├── test_negotiation_utils.py
-    └── README.md
-```
+This directory contains Python microservices for AI-powered negotiations:
 
-## 🚀 Quick Start
+- **Multi-provider AI support** via LiteLLM (OpenAI, Anthropic, Google Gemini)
+- **Autonomous negotiations** using OpenAI Agents SDK
+- **AI evaluation** with structured output
+- **Market intelligence** with Gemini Flash
+
+## Scripts
+
+| File | Purpose | Called By |
+|------|---------|-----------|
+| `run_production_negotiation.py` | Main negotiation engine | TypeScript backend |
+| `evaluate_simulation.py` | Post-negotiation analysis | TypeScript backend |
+| `gemini_market_intelligence.py` | Market data fetcher | Negotiation engine |
+| `negotiation_models.py` | Pydantic data models | All services |
+| `negotiation_utils.py` | Helper functions | Negotiation engine |
+
+## Quick Start
 
 ### 1. Setup Virtual Environment
+
 ```bash
 # From repository root
 python3 -m venv .venv
@@ -37,15 +35,23 @@ pip install -r scripts/requirements.txt
 ```
 
 ### 2. Configure Environment
+
 Create `.env` file in repository root:
+
 ```env
-OPENAI_API_KEY="sk-..."
+# AI Providers (at least one required)
+OPENAI_API_KEY="sk-..."          # For OpenAI models
+ANTHROPIC_API_KEY="sk-ant-..."   # For Claude models (optional)
+GEMINI_API_KEY="..."             # For Google Gemini (optional)
+
+# Langfuse (Required for prompt management)
 LANGFUSE_PUBLIC_KEY="pk-lf-..."
 LANGFUSE_SECRET_KEY="sk-lf-..."
 LANGFUSE_HOST="https://cloud.langfuse.com"
 ```
 
-### 3. Test Python Service
+### 3. Test Installation
+
 ```bash
 # Activate virtual environment
 source .venv/bin/activate
@@ -53,13 +59,14 @@ source .venv/bin/activate
 # Run tests
 pytest scripts/tests/
 
-# Test negotiation engine (dry run)
+# Test negotiation engine
 python scripts/run_production_negotiation.py --help
 ```
 
-## 📚 Core Services
+## Core Services
 
 ### 1. Negotiation Engine (`run_production_negotiation.py`)
+
 **Purpose**: Autonomous AI-to-AI negotiations using OpenAI Agents SDK
 
 **Key Features:**
@@ -69,14 +76,20 @@ python scripts/run_production_negotiation.py --help
 - ZOPA-based constraints
 - Real-time WebSocket updates
 - Full Langfuse tracing
+- Multi-provider support via LiteLLM
 
-**Called by**: TypeScript backend via subprocess
-**Input**: JSON negotiation parameters
-**Output**: JSON results with conversation log
+**Usage:**
+```bash
+python scripts/run_production_negotiation.py \
+  --negotiation-id=123 \
+  --simulation-run-id=456 \
+  --max-rounds=6
+```
 
-**Documentation**: See [README_NEGOTIATION.md](README_NEGOTIATION.md)
+**Output**: JSON with conversation log, outcome, and final offer
 
-### 2. Evaluation Service (`evaluate_simulation.py`) 🆕
+### 2. Evaluation Service (`evaluate_simulation.py`)
+
 **Purpose**: Post-simulation AI evaluation with structured output
 
 **Key Features:**
@@ -85,11 +98,7 @@ python scripts/run_production_negotiation.py --help
 - Automatic Langfuse tracing
 - GPT-4o-mini for cost efficiency
 
-**Called by**: TypeScript backend after simulation completion
-**Input**: Conversation log + negotiation metadata
-**Output**: JSON evaluation with effectiveness scores
-
-**Model**: `SimulationEvaluation` (see negotiation_models.py)
+**Data Model:**
 ```python
 class SimulationEvaluation(BaseModel):
     tactical_summary: str                    # 2-3 sentences in German
@@ -97,38 +106,107 @@ class SimulationEvaluation(BaseModel):
     tactic_effectiveness_score: int          # 1-10
 ```
 
-### 3. Data Models (`negotiation_models.py`)
+### 3. Market Intelligence (`gemini_market_intelligence.py`)
+
+**Purpose**: Fetch market data using Gemini Flash with Google Search
+
+**Usage**: Called by negotiation engine for market context (optional)
+
+### 4. Data Models (`negotiation_models.py`)
+
 **Purpose**: Pydantic models for type-safe data exchange
 
 **Key Models:**
 - `NegotiationConfig` - Configuration and environment validation
 - `NegotiationResponse` - Structured AI output (buyer/seller offers)
 - `NegotiationOffer` - Product offers with dimensions
-- `SimulationEvaluation` - Evaluation results 🆕
+- `SimulationEvaluation` - Evaluation results
 
-**Usage**: Imported by both negotiation and evaluation services
+### 5. Utilities (`negotiation_utils.py`)
 
-### 4. Utilities (`negotiation_utils.py`)
 **Purpose**: Helper functions for negotiation logic
 
 **Key Functions:**
 - `setup_langfuse_tracing()` - Configure OpenAI Agents instrumentation
 - `analyze_convergence()` - Check if negotiation is converging
 - `format_dimensions_for_prompt()` - Convert dimensions to AI-readable format
-- `calculate_dynamic_max_rounds()` - Determine optimal round count
+- `normalize_model_output()` - Validate and normalize structured output
 - `emit_round_update()` - Send WebSocket updates to frontend
 
-### 5. Market Intelligence (`gemini_market_intelligence.py`)
-**Purpose**: Fetch market data using Gemini Flash (cost-effective)
+## Architecture
 
-**Usage**: Called by negotiation engine for market context
-**Note**: Optional service for enhanced realism
+### TypeScript ↔ Python Integration
 
-## 🔧 Development Workflow
+```
+┌─────────────────────────────────────────┐
+│ TypeScript Backend                       │
+│ (server/services/)                       │
+└─────────────────┬───────────────────────┘
+                  │
+                  │ Subprocess spawn
+                  │ JSON via stdin/stdout
+                  ↓
+┌─────────────────────────────────────────┐
+│ Python Microservices                     │
+│                                          │
+│  run_production_negotiation.py          │
+│    ├→ Negotiation orchestration         │
+│    ├→ Multi-round AI conversations      │
+│    └→ Langfuse tracing                  │
+│                                          │
+│  evaluate_simulation.py                 │
+│    ├→ Post-simulation analysis          │
+│    ├→ Structured output evaluation      │
+│    └→ Langfuse tracing                  │
+└─────────────────┬───────────────────────┘
+                  │
+                  │ API Calls via LiteLLM
+                  ↓
+┌─────────────────────────────────────────┐
+│ External Services                        │
+│  ├→ OpenAI (GPT-4o, GPT-4o-mini)        │
+│  ├→ Anthropic (Claude)                  │
+│  ├→ Google (Gemini)                     │
+│  └→ Langfuse (Observability)            │
+└─────────────────────────────────────────┘
+```
+
+### Multi-Provider Support via LiteLLM
+
+All AI models use LiteLLM for unified interface:
+
+```python
+from agents.extensions.models.litellm_model import LitellmModel
+
+# OpenAI
+model = LitellmModel(model="gpt-4o")
+
+# Anthropic
+model = LitellmModel(model="claude-3-5-sonnet-20241022")
+
+# Google Gemini
+model = LitellmModel(model="gemini/gemini-2.0-flash-exp")
+```
+
+**Model Selection:**
+- Configure in Langfuse prompt (no code changes needed)
+- Set `model` in prompt config section
+- Service automatically uses specified model
+
+**Environment Variables:**
+- `OPENAI_API_KEY` for OpenAI models
+- `ANTHROPIC_API_KEY` for Claude models
+- `GEMINI_API_KEY` for Google Gemini
+
+**Structured Output:**
+- ✅ OpenAI, Anthropic: Native structured output
+- ⚠️ Gemini: JSON parsing fallback (stricter schema validation)
+
+## Development
 
 ### Adding New Features
 
-#### 1. New Negotiation Strategy
+#### New Negotiation Strategy
 ```python
 # 1. Add to negotiation_models.py if needed
 # 2. Update negotiation_utils.py with helper functions
@@ -137,7 +215,7 @@ class SimulationEvaluation(BaseModel):
 # 5. Update Langfuse prompt if needed
 ```
 
-#### 2. New Evaluation Criteria
+#### New Evaluation Criteria
 ```python
 # 1. Extend SimulationEvaluation in negotiation_models.py
 # 2. Update evaluate_simulation.py to handle new fields
@@ -178,9 +256,11 @@ logging.basicConfig(level=logging.DEBUG)
 # Activate virtual environment
 source .venv/bin/activate
 
-# Run with sample data (check TypeScript backend for JSON structure)
+# Run with sample data
 python scripts/run_production_negotiation.py \
-  --negotiation-data '{"negotiation": {...}, "context": {...}}'
+  --negotiation-id=test-123 \
+  --simulation-run-id=sim-456 \
+  --max-rounds=3
 ```
 
 #### Check Langfuse Traces
@@ -189,7 +269,7 @@ python scripts/run_production_negotiation.py \
 3. Filter by tag: "negotiation" or "evaluation"
 4. Inspect input/output/tokens/cost
 
-## 📦 Dependencies Explained
+## Dependencies
 
 From `requirements.txt`:
 
@@ -215,109 +295,7 @@ nest_asyncio>=1.6.0       # Async event loop support
 python-dotenv>=1.0.1      # Environment variable loading
 ```
 
-### Installing Additional Packages
-```bash
-# Add to requirements.txt
-echo "new-package>=1.0.0" >> scripts/requirements.txt
-
-# Install
-pip install -r scripts/requirements.txt
-
-# Freeze exact versions (optional)
-pip freeze > scripts/requirements-lock.txt
-```
-
-## 🏗️ Architecture
-
-### TypeScript ↔ Python Integration
-
-```
-┌─────────────────────────────────────────┐
-│ TypeScript Backend                       │
-│ (server/services/)                       │
-└─────────────────┬───────────────────────┘
-                  │
-                  │ Subprocess spawn
-                  │ JSON via stdin/stdout
-                  ↓
-┌─────────────────────────────────────────┐
-│ Python Microservices                     │
-│                                          │
-│  run_production_negotiation.py          │
-│    ├→ Negotiation orchestration         │
-│    ├→ Multi-round AI conversations      │
-│    └→ Langfuse tracing                  │
-│                                          │
-│  evaluate_simulation.py                 │
-│    ├→ Post-simulation analysis          │
-│    ├→ Structured output evaluation      │
-│    └→ Langfuse tracing                  │
-└─────────────────┬───────────────────────┘
-                  │
-                  │ API Calls
-                  ↓
-┌─────────────────────────────────────────┐
-│ External Services                        │
-│  ├→ OpenAI (GPT-4o, GPT-4o-mini)        │
-│  ├→ Anthropic (Claude)                  │
-│  ├→ Google (Gemini)                     │
-│  └→ Langfuse (Observability)            │
-└─────────────────────────────────────────┘
-```
-
-### Data Flow
-
-1. **Negotiation Request**:
-   ```
-   TypeScript → spawn Python → run_production_negotiation.py
-   → OpenAI Agents SDK → GPT-4o (multiple rounds)
-   → Returns JSON with conversation log
-   → TypeScript stores in database
-   ```
-
-2. **Evaluation Request**:
-   ```
-   TypeScript → spawn Python → evaluate_simulation.py
-   → Langfuse prompt "simulation_eval"
-   → GPT-4o-mini with structured output
-   → Returns SimulationEvaluation JSON
-   → TypeScript stores in database
-   ```
-
-## 🧪 Testing Strategy
-
-### Unit Tests (`scripts/tests/`)
-
-**test_negotiation_models.py**:
-- Pydantic model validation
-- Configuration validation
-- Data serialization/deserialization
-
-**test_negotiation_utils.py**:
-- Convergence detection
-- Dimension formatting
-- Prompt compilation
-- WebSocket event emission
-
-### Integration Testing
-Run from TypeScript:
-```bash
-npm run test  # Includes Python subprocess tests
-```
-
-### Manual Testing
-```bash
-# Test evaluation service
-python scripts/evaluate_simulation.py \
-  --simulation-run-id "test-123" \
-  --conversation-log '[...]' \
-  --role "BUYER" \
-  --influence-technique "Reziprozität" \
-  --negotiation-tactic "Anchoring" \
-  --counterpart-attitude "Kooperativ"
-```
-
-## 🐛 Common Issues & Solutions
+## Common Issues & Solutions
 
 ### Issue: `ModuleNotFoundError`
 ```bash
@@ -355,7 +333,7 @@ import logging
 logging.basicConfig(level=logging.DEBUG)
 ```
 
-## 📊 Performance Optimization
+## Performance Optimization
 
 ### Cost Optimization
 - **Negotiation**: Use GPT-4o (balanced cost/quality)
@@ -372,7 +350,7 @@ logging.basicConfig(level=logging.DEBUG)
 - Langfuse prompts enable version testing without code changes
 - Conversation history pruned after max rounds
 
-## 🔐 Security Best Practices
+## Security Best Practices
 
 ### API Keys
 - Never commit API keys to git
@@ -389,12 +367,39 @@ logging.basicConfig(level=logging.DEBUG)
 - Errors returned as JSON (not printed to stdout)
 - TypeScript monitors stderr for issues
 
-## 📚 Further Reading
+## Important Notes
+
+1. **stdout vs stderr**
+   - JSON results → stdout (for Node.js consumption)
+   - Structured logs → stderr (for debugging)
+   - Never mix them!
+
+2. **Environment variables**
+   - `.env` file loaded from project root
+   - Service validates all required vars on startup
+   - Fails fast with clear error messages
+
+3. **Prompt management**
+   - **ALL prompts managed in Langfuse Dashboard**
+   - No static prompts in code
+   - Service requires Langfuse connection (no fallback)
+
+4. **Structured output**
+   - Pydantic models enforced via `output_type`
+   - Gemini models use JSON parsing (stricter schema validation)
+   - OpenAI/Anthropic support native structured output
+
+5. **Multi-provider support via LiteLLM**
+   - All models use `LitellmModel(model=name)`
+   - Set model in Langfuse prompt config
+   - Environment variables auto-detected per provider
+
+## Further Reading
 
 ### Essential Documentation
-1. **[README_NEGOTIATION.md](README_NEGOTIATION.md)** - Complete negotiation engine guide
-2. **[DEVELOPER_HANDOVER.md](DEVELOPER_HANDOVER.md)** - Architecture deep-dive
-3. **[tests/README.md](tests/README.md)** - Testing guide
+1. **[DEVELOPER_HANDOVER.md](DEVELOPER_HANDOVER.md)** - Architecture deep-dive
+2. **[tests/README.md](tests/README.md)** - Testing guide
+3. **[Root README.md](../README.md)** - Project overview
 
 ### External Documentation
 - [OpenAI Agents SDK](https://github.com/openai/openai-agents-python)
@@ -405,46 +410,11 @@ logging.basicConfig(level=logging.DEBUG)
 ### Langfuse Prompts
 Login to Langfuse to view/edit prompts:
 - `negotiation` - Main negotiation prompt (buyer/seller)
-- `simulation_eval` - Evaluation prompt 🆕
+- `simulation_eval` - Evaluation prompt
 
 ---
 
-## 🎯 Quick Reference
-
-### File Purposes
-| File | Purpose | Called By | Output |
-|------|---------|-----------|--------|
-| `run_production_negotiation.py` | Main negotiation engine | TypeScript | Conversation log |
-| `evaluate_simulation.py` | AI evaluation | TypeScript | Effectiveness scores |
-| `negotiation_models.py` | Data models | All services | - |
-| `negotiation_utils.py` | Helper functions | Negotiation engine | - |
-| `gemini_market_intelligence.py` | Market data | Negotiation engine | Market context |
-
-### Command Cheat Sheet
-```bash
-# Setup
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r scripts/requirements.txt
-
-# Testing
-pytest scripts/tests/
-pytest -v scripts/tests/
-pytest --cov=scripts scripts/tests/
-
-# Debugging
-python scripts/run_production_negotiation.py --help
-python scripts/evaluate_simulation.py --help
-
-# Linting (optional)
-pip install ruff black
-ruff check scripts/
-black scripts/
-```
-
----
-
-## ✅ Developer Checklist
+## Developer Checklist
 
 Before modifying Python services:
 - [ ] Virtual environment activated (`source .venv/bin/activate`)
@@ -458,7 +428,6 @@ After changes:
 - [ ] New tests added for new features
 - [ ] Type hints added to new functions
 - [ ] Docstrings updated
-- [ ] README_NEGOTIATION.md updated if architecture changed
 - [ ] CHANGELOG.md updated with changes
 
 ---

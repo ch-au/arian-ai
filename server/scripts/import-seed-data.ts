@@ -9,20 +9,23 @@ import { influencingTechniques, negotiationTactics } from '@shared/schema';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { createRequestLogger } from '../services/logger';
+
+const log = createRequestLogger('script:import-seed-data');
 
 // ESM-compatible __dirname
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 async function importSeedData() {
-  console.log('📥 Importing seed data...\n');
+  log.info('📥 Importing seed data...\n');
 
   try {
     // Import influencing techniques
     const techniquesPath = path.join(__dirname, '../seed-data/influencing-techniques.json');
     const techniquesData = JSON.parse(fs.readFileSync(techniquesPath, 'utf-8'));
 
-    console.log(`Importing ${techniquesData.length} influencing techniques...`);
+    log.info(`Importing ${techniquesData.length} influencing techniques...`);
     for (const technique of techniquesData) {
       // Convert timestamp strings to Date objects
       const values = {
@@ -32,13 +35,13 @@ async function importSeedData() {
       };
       await db.insert(influencingTechniques).values(values);
     }
-    console.log(`✅ Imported ${techniquesData.length} influencing techniques\n`);
+    log.info(`✅ Imported ${techniquesData.length} influencing techniques\n`);
 
     // Import negotiation tactics
     const tacticsPath = path.join(__dirname, '../seed-data/negotiation-tactics.json');
     const tacticsData = JSON.parse(fs.readFileSync(tacticsPath, 'utf-8'));
 
-    console.log(`Importing ${tacticsData.length} negotiation tactics...`);
+    log.info(`Importing ${tacticsData.length} negotiation tactics...`);
     for (const tactic of tacticsData) {
       // Convert timestamp strings to Date objects
       const values = {
@@ -48,12 +51,12 @@ async function importSeedData() {
       };
       await db.insert(negotiationTactics).values(values);
     }
-    console.log(`✅ Imported ${tacticsData.length} negotiation tactics\n`);
+    log.info(`✅ Imported ${tacticsData.length} negotiation tactics\n`);
 
-    console.log('✅ Seed data import complete!\n');
+    log.info('✅ Seed data import complete!\n');
     process.exit(0);
   } catch (error) {
-    console.error('❌ Error importing seed data:', error);
+    log.error({ err: error }, '❌ Error importing seed data');
     process.exit(1);
   }
 }

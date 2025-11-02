@@ -7,8 +7,10 @@ import { Router } from 'express';
 import multer from 'multer';
 import { OpenAI } from 'openai';
 import fs from 'fs';
+import { createRequestLogger } from '../services/logger';
 
 const router = Router();
+const log = createRequestLogger('routes:transcribe');
 
 // Multer für File Upload (in-memory storage)
 const upload = multer({
@@ -42,12 +44,12 @@ router.post('/', upload.single('file'), async (req, res) => {
 
     const language = req.body.language || 'de'; // Default: Deutsch
 
-    console.log('[transcribe] Received file:', {
-      filename: req.file.originalname,
-      size: req.file.size,
-      mimetype: req.file.mimetype,
-      language,
-    });
+    log.info({ 
+      filename: req.file.originalname, 
+      size: req.file.size, 
+      mimetype: req.file.mimetype, 
+      language 
+    }, '[transcribe] Received file');
 
     // OpenAI Client
     const openai = new OpenAI({
@@ -68,7 +70,7 @@ router.post('/', upload.single('file'), async (req, res) => {
         response_format: 'json',
       });
 
-      console.log('[transcribe] Transcription successful:', transcription.text);
+      log.info({ text: transcription.text }, '[transcribe] Transcription successful');
 
       // Temporäre Datei löschen
       fs.unlinkSync(tempFilePath);
@@ -85,7 +87,7 @@ router.post('/', upload.single('file'), async (req, res) => {
       throw whisperError;
     }
   } catch (error: any) {
-    console.error('[transcribe] Error:', error);
+    log.error({ err: error }, '[transcribe] Error occurred');
 
     res.status(500).json({
       error: 'Transkription fehlgeschlagen',

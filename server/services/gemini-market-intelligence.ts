@@ -7,8 +7,10 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { createRequestLogger } from './logger';
 
 const execAsync = promisify(exec);
+const log = createRequestLogger('service:gemini-market-intelligence');
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -49,8 +51,7 @@ export async function generateMarketIntelligence(
   // Python Command
   const pythonCmd = `python3 "${scriptPath}" '${contextJson.replace(/'/g, "'\\''")}'`;
 
-  console.log('[gemini-intelligence] Calling Python script:', scriptPath);
-  console.log('[gemini-intelligence] Context:', context);
+  log.info({ scriptPath, context }, '[gemini-intelligence] Calling Python script');
 
   try {
     const { stdout, stderr } = await execAsync(pythonCmd, {
@@ -62,17 +63,17 @@ export async function generateMarketIntelligence(
     });
 
     if (stderr) {
-      console.error('[gemini-intelligence] Python stderr:', stderr);
+      log.warn({ stderr }, '[gemini-intelligence] Python stderr');
     }
 
-    console.log('[gemini-intelligence] Python stdout:', stdout);
+    log.debug({ stdout }, '[gemini-intelligence] Python stdout');
 
     // Parse JSON Response
     const result: MarketIntelligenceResult = JSON.parse(stdout);
 
     return result.intelligence || [];
   } catch (error: any) {
-    console.error('[gemini-intelligence] Error:', error);
+    log.error({ err: error }, '[gemini-intelligence] Error occurred');
 
     // Fallback bei Fehler
     if (error.code === 'ETIMEDOUT') {
@@ -80,7 +81,7 @@ export async function generateMarketIntelligence(
     }
 
     if (error.stderr) {
-      console.error('[gemini-intelligence] Python error output:', error.stderr);
+      log.error({ stderr: error.stderr }, '[gemini-intelligence] Python error output');
     }
 
     // Generischer Fehler

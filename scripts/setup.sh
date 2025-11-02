@@ -23,10 +23,12 @@ if [ ! -f ".env" ]; then
 # Database Configuration (Required)
 DATABASE_URL="postgresql://username:password@ep-example.neon.tech/database?sslmode=require"
 
-# OpenAI Configuration (Optional for testing)
+# AI Providers (at least one required)
 OPENAI_API_KEY="sk-your-openai-api-key-here"
+ANTHROPIC_API_KEY="sk-ant-your-anthropic-api-key-here"  # Optional
+GEMINI_API_KEY="your-gemini-api-key-here"               # Optional
 
-# Langfuse Configuration (Optional for testing)
+# Langfuse Configuration (Optional but recommended)
 LANGFUSE_SECRET_KEY="sk-lf-your-secret-key"
 LANGFUSE_PUBLIC_KEY="pk-lf-your-public-key"
 LANGFUSE_HOST="https://cloud.langfuse.com"

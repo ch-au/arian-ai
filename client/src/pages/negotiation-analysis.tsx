@@ -188,7 +188,7 @@ export default function NegotiationAnalysisPage() {
             {analysis.negotiation.title} · {analysis.negotiation.userRole === "buyer" ? "Käufer" : "Verkäufer"} · {analysis.negotiation.productCount} Produkte · {analysis.summary.completedRuns} von {analysis.summary.totalRuns} Runs abgeschlossen
           </p>
         </div>
-        {hasDeals && analysis.summary.bestDealValue && !analysis.runs.find(r => r.id === analysis.summary.bestDealValue?.runId)?.tacticalSummary && (
+        {hasDeals && completedRuns.some(r => !r.tacticalSummary) && (
           <Button
             onClick={handleGenerateEvaluation}
             disabled={isEvaluating}

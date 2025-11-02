@@ -20,44 +20,9 @@ sys.path.append(os.path.dirname(__file__))
 
 from negotiation_models import NegotiationConfig, NegotiationOutcome, AgentRole
 from negotiation_utils import (
-    safe_json_parse, analyze_convergence, format_dimensions_for_prompt,
+    analyze_convergence, format_dimensions_for_prompt,
     generate_dimension_examples
 )
-
-
-def test_json_parsing():
-    """Test the JSON parsing with common edge cases."""
-    print("Testing JSON parsing...")
-    
-    # Test 1: Normal JSON
-    normal_json = '{"message": "Hello", "action": "continue"}'
-    result = safe_json_parse(normal_json)
-    assert result['message'] == "Hello"
-    assert result['action'] == "continue"
-    print("✓ Normal JSON parsing works")
-    
-    # Test 2: JSON with trailing comma
-    trailing_comma = '{"message": "Hello", "action": "continue",}'
-    result = safe_json_parse(trailing_comma)
-    assert result['message'] == "Hello"
-    print("✓ Trailing comma handling works")
-    
-    # Test 3: Markdown code block
-    markdown_json = '''```json
-    {"message": "Hello", "action": "continue"}
-    ```'''
-    result = safe_json_parse(markdown_json)
-    assert result['message'] == "Hello"
-    print("✓ Markdown code block parsing works")
-    
-    # Test 4: Completely invalid JSON
-    invalid_json = "This is not JSON at all!"
-    result = safe_json_parse(invalid_json)
-    assert 'message' in result  # Should have fallback structure
-    assert result['action'] == 'continue'
-    print("✓ Invalid JSON fallback works")
-    
-    print("✅ All JSON parsing tests passed!\n")
 
 
 def test_convergence_analysis():
@@ -172,7 +137,6 @@ def run_all_tests():
     print("=" * 50)
     
     try:
-        test_json_parsing()
         test_convergence_analysis()
         test_dimension_formatting()
         test_configuration()

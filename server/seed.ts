@@ -2,28 +2,31 @@ import "dotenv/config";
 import { db } from "./db";
 import { agents, negotiationContexts, negotiationDimensions, negotiations, influencingTechniques } from "@shared/schema";
 import { importAllCSVData } from "./csv-import";
+import { createRequestLogger } from "./services/logger";
+
+const log = createRequestLogger("script:seed");
 
 async function main() {
-  console.log("🌱 Seeding database with enhanced schema...");
+  log.info("🌱 Seeding database with enhanced schema...");
 
   try {
     // Step 1: Import CSV data (techniques, tactics, personality types) - only if not already imported
     const techniquesCount = await db.$count(influencingTechniques);
     if (techniquesCount === 0) {
-      console.log("📊 Importing CSV data...");
+      log.info("📊 Importing CSV data...");
       await importAllCSVData();
     } else {
-      console.log("📊 CSV data already imported, skipping...");
+      log.info("📊 CSV data already imported, skipping...");
     }
 
     // Step 2: Clear existing test data (preserve CSV imports)
-    console.log("🧹 Clearing existing test data...");
+    log.info("🧹 Clearing existing test data...");
     await db.delete(negotiationDimensions);
     await db.delete(agents);
     await db.delete(negotiationContexts);
 
     // Step 3: Seed test agents with enhanced data
-    console.log("👥 Creating test agents...");
+    log.info("👥 Creating test agents...");
     const createdAgents = await db.insert(agents).values([
       {
         name: "Analytical Alex",
@@ -80,7 +83,7 @@ async function main() {
     ]).returning();
 
     // Step 4: Seed negotiation contexts with realistic scenarios
-    console.log("🏢 Creating negotiation contexts...");
+    log.info("🏢 Creating negotiation contexts...");
     const createdContexts = await db.insert(negotiationContexts).values([
       {
         name: "Enterprise Software License",
@@ -151,7 +154,7 @@ async function main() {
     ]).returning();
 
     // Step 5: Create sample negotiation with dimensions (demo purposes)
-    console.log("📐 Creating sample negotiation with dimensions...");
+    log.info("📐 Creating sample negotiation with dimensions...");
     const [sampleNegotiation] = await db.insert(negotiations).values({
       title: "Sample Enterprise Software License",
       negotiationType: "multi-year",
@@ -203,28 +206,28 @@ async function main() {
       }
     ]);
 
-    console.log("✅ Database seeded successfully with enhanced schema!");
-    console.log("🔑 Created test data:");
-    console.log("   📊 CSV Data: 11 techniques, 45 tactics, 5 personality types");
-    console.log("   👥 Agents:", createdAgents.length);
-    console.log("   🏢 Contexts:", createdContexts.length);
-    console.log("   📐 Sample dimensions: 4 for Enterprise Software License");
-    console.log("");
-    console.log("🔗 Key IDs for testing:");
-    createdAgents.forEach((agent, i) => {
-      console.log(`   ${agent.name}: ${agent.id}`);
+    log.info("✅ Database seeded successfully with enhanced schema!");
+    log.info("🔑 Created test data:");
+    log.info("   📊 CSV Data: 11 techniques, 45 tactics, 5 personality types");
+    log.info(`   👥 Agents: ${createdAgents.length}`);
+    log.info(`   🏢 Contexts: ${createdContexts.length}`);
+    log.info("   📐 Sample dimensions: 4 for Enterprise Software License");
+    log.info("");
+    log.info("🔗 Key IDs for testing:");
+    createdAgents.forEach((agent) => {
+      log.info(`   ${agent.name}: ${agent.id}`);
     });
-    createdContexts.forEach((context, i) => {
-      console.log(`   ${context.name}: ${context.id}`);
+    createdContexts.forEach((context) => {
+      log.info(`   ${context.name}: ${context.id}`);
     });
 
   } catch (error) {
-    console.error("❌ Error during database seeding:", error);
+    log.error({ err: error }, "❌ Error during database seeding");
     throw error;
   }
 }
 
 main().catch((error) => {
-  console.error("❌ Error seeding database:", error);
+  log.error({ err: error }, "❌ Error seeding database");
   process.exit(1);
 });

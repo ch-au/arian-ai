@@ -1,9 +1,11 @@
 import { Router } from "express";
 import { analyticsService } from "../services/analytics.js";
 import { createAnalyticsExportRouter } from "./analytics-export.js";
+import { createRequestLogger } from "../services/logger";
 
 export function createAnalyticsRouter(): Router {
   const router = Router();
+  const log = createRequestLogger("routes:analytics");
 
   router.get("/performance", async (req, res) => {
     try {
@@ -15,7 +17,7 @@ export function createAnalyticsRouter(): Router {
       );
       res.json(report);
     } catch (error) {
-      console.error("Failed to generate performance report:", error);
+      log.error({ err: error, agentId, startDate, endDate }, "Failed to generate performance report");
       res.status(500).json({ error: "Failed to generate performance report" });
     }
   });

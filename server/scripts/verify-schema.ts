@@ -6,9 +6,12 @@
 import 'dotenv/config';
 import { sql } from 'drizzle-orm';
 import { db } from '../db';
+import { createRequestLogger } from '../services/logger';
+
+const log = createRequestLogger('script:verify-schema');
 
 async function verifySchema() {
-  console.log('🔍 Verifying schema deployment...\n');
+  log.info('🔍 Verifying schema deployment...\n');
 
   try {
     // Check that all expected tables exist
@@ -21,8 +24,8 @@ async function verifySchema() {
 
     const tables = tablesQuery.rows.map((row: any) => row.table_name);
 
-    console.log(`Found ${tables.length} tables:\n`);
-    tables.forEach((table: string) => console.log(`  ✓ ${table}`));
+    log.info(`Found ${tables.length} tables:\n`);
+    tables.forEach((table: string) => log.info(`  ✓ ${table}`));
 
     const expectedTables = [
       'agents',
@@ -37,25 +40,25 @@ async function verifySchema() {
       'simulation_runs'
     ];
 
-    console.log('\n📊 Verification:\n');
+    log.info('\n📊 Verification:\n');
 
     const missingTables = expectedTables.filter(t => !tables.includes(t));
     const extraTables = tables.filter((t: string) => !expectedTables.includes(t));
 
     if (missingTables.length === 0 && extraTables.length === 0) {
-      console.log('✅ All expected tables present');
-      console.log('✅ No unexpected tables found');
+      log.info('✅ All expected tables present');
+      log.info('✅ No unexpected tables found');
     } else {
       if (missingTables.length > 0) {
-        console.log(`❌ Missing tables: ${missingTables.join(', ')}`);
+        log.warn({ missingTables }, `❌ Missing tables: ${missingTables.join(', ')}`);
       }
       if (extraTables.length > 0) {
-        console.log(`⚠️  Extra tables: ${extraTables.join(', ')}`);
+        log.warn({ extraTables }, `⚠️  Extra tables: ${extraTables.join(', ')}`);
       }
     }
 
     // Check productResults table structure
-    console.log('\n🔍 Checking productResults table structure...');
+    log.info('\n🔍 Checking productResults table structure...');
     const columnsQuery = await db.execute(sql`
       SELECT column_name, data_type
       FROM information_schema.columns
@@ -64,7 +67,7 @@ async function verifySchema() {
     `);
 
     const columns = columnsQuery.rows;
-    console.log(`\n  Found ${columns.length} columns in product_results table`);
+    log.info(`\n  Found ${columns.length} columns in product_results table`);
 
     const keyColumns = [
       'simulation_run_id',
@@ -78,20 +81,20 @@ async function verifySchema() {
       'performance_score'
     ];
 
-    console.log('\n  Key columns:');
+    log.info('\n  Key columns:');
     keyColumns.forEach(col => {
       const found = columns.find((c: any) => c.column_name === col);
       if (found) {
-        console.log(`    ✓ ${col} (${found.data_type})`);
+        log.info(`    ✓ ${col} (${found.data_type})`);
       } else {
-        console.log(`    ❌ ${col} NOT FOUND`);
+        log.error({ column: col }, `    ❌ ${col} NOT FOUND`);
       }
     });
 
-    console.log('\n✅ Schema verification complete!\n');
+    log.info('\n✅ Schema verification complete!\n');
     process.exit(0);
   } catch (error) {
-    console.error('❌ Error verifying schema:', error);
+    log.error({ err: error }, '❌ Error verifying schema');
     process.exit(1);
   }
 }

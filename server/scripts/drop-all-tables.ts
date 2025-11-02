@@ -7,20 +7,23 @@
 import 'dotenv/config';
 import { sql } from 'drizzle-orm';
 import { db } from '../db';
+import { createRequestLogger } from '../services/logger';
+
+const log = createRequestLogger('script:drop-all-tables');
 
 async function dropAllTables() {
-  console.log('⚠️  WARNING: Dropping all tables...\n');
+  log.warn('⚠️  WARNING: Dropping all tables...\n');
 
   try {
     // Drop all tables - use DROP SCHEMA for complete clean
-    console.log('Dropping public schema and recreating...');
+    log.info('Dropping public schema and recreating...');
     await db.execute(sql`DROP SCHEMA public CASCADE`);
     await db.execute(sql`CREATE SCHEMA public`);
 
-    console.log('✅ All tables dropped successfully\n');
+    log.info('✅ All tables dropped successfully\n');
     process.exit(0);
   } catch (error) {
-    console.error('❌ Error dropping tables:', error);
+    log.error({ err: error }, '❌ Error dropping tables');
     process.exit(1);
   }
 }

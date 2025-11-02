@@ -5,7 +5,7 @@
 
 import { db, storage } from '../storage';
 import { simulationQueue, simulationRuns, negotiations, influencingTechniques, negotiationTactics, personalityTypes } from '../../shared/schema';
-import { eq, and, or, lt, count, sum, desc } from 'drizzle-orm';
+import { eq, and, or, lt, count, sum, desc, isNull } from 'drizzle-orm';
 import { PythonNegotiationService } from './python-negotiation-service';
 import { createRequestLogger } from './logger';
 
@@ -74,11 +74,7 @@ export class SimulationQueueService {
    * Broadcast simulation event via WebSocket
    */
   private static broadcastEvent(event: SimulationEvent) {
-    console.log(`[SIMULATION-QUEUE] Broadcasting event: ${event.type}`, {
-      queueId: event.queueId,
-      negotiationId: event.negotiationId,
-      data: event.data
-    });
+    this.log.debug({ event }, `[SIMULATION-QUEUE] Broadcasting event: ${event.type}`);
     
     if (negotiationEngine && negotiationEngine.broadcast) {
       negotiationEngine.broadcast({
@@ -89,9 +85,9 @@ export class SimulationQueueService {
           ...event.data
         }
       });
-      console.log(`[SIMULATION-QUEUE] Event broadcasted successfully`);
+      this.log.debug({ event }, `[SIMULATION-QUEUE] Event broadcasted successfully`);
     } else {
-      console.warn(`[SIMULATION-QUEUE] No negotiation engine available for broadcasting`);
+      this.log.warn(`[SIMULATION-QUEUE] No negotiation engine available for broadcasting`);
     }
   }
   
@@ -101,14 +97,13 @@ export class SimulationQueueService {
   static async createQueue(request: CreateQueueRequest): Promise<string> {
     const { negotiationId, techniques, tactics, personalities, zopaDistances } = request;
     
-    console.log(`[SIMULATION-QUEUE] Creating queue for negotiation ${negotiationId}:`, {
-      techniques: techniques.length,
-      tactics: tactics.length,
-      personalities: personalities.length,
-      zopaDistances: zopaDistances.length,
-      techniqueIds: techniques,
-      tacticIds: tactics
-    });
+    this.log.info({ 
+      negotiationId, 
+      techniques: techniques.length, 
+      tactics: tactics.length, 
+      personalities: personalities.length, 
+      zopaDistances: zopaDistances.length 
+    }, `[SIMULATION-QUEUE] Creating queue for negotiation`);
     
     // Resolve personality types
     let actualPersonalities = personalities;
@@ -175,14 +170,7 @@ export class SimulationQueueService {
     
     await db.insert(simulationRuns).values(simulationRunData);
     
-    console.log(`[SIMULATION-QUEUE] Created ${simulationRunData.length} simulation runs for queue ${queue.id}`);
-    console.log(`[SIMULATION-QUEUE] Combinations:`, simulationRunData.map(r => ({
-      runNumber: r.runNumber,
-      technique: r.techniqueId,
-      tactic: r.tacticId,
-      personality: r.personalityId,
-      distance: r.zopaDistance
-    })));
+    this.log.info({ queueId: queue.id, simulationRunCount: simulationRunData.length }, `[SIMULATION-QUEUE] Created simulation runs for queue`);
     
     return queue.id;
   }
@@ -279,7 +267,7 @@ export class SimulationQueueService {
    * Reset some failed simulations back to pending for testing
    */
   static async resetFailedSimulationsToPending(queueId: string, count: number = 1) {
-    console.log(`[SIMULATION-QUEUE] Resetting ${count} failed simulations to pending for testing`);
+    this.log.info({ queueId, count }, `[SIMULATION-QUEUE] Resetting failed simulations to pending for testing`);
     
     const updatedRows = await db.update(simulationRuns)
       .set({ status: 'pending' })
@@ -289,7 +277,7 @@ export class SimulationQueueService {
       ))
       .returning({ id: simulationRuns.id });
     
-    console.log(`[SIMULATION-QUEUE] Reset ${updatedRows.length} simulations to pending`);
+    this.log.info({ queueId, resetCount: updatedRows.length }, `[SIMULATION-QUEUE] Reset simulations to pending`);
     return updatedRows.length > 0;
   }
 
@@ -491,7 +479,6 @@ export class SimulationQueueService {
       }
     } catch (error) {
       this.log.error({ err: error, queueId }, `[QUEUE ${shortId}] ❌ Queue processing failed`);
-      console.error(`[QUEUE ${shortId}] ERROR DETAILS:`, error);
       await this.updateQueueStatus(queueId, 'failed');
     } finally {
       this.processingQueues.delete(queueId);
@@ -593,7 +580,7 @@ export class SimulationQueueService {
     try {
       // Create round update callback for real-time WebSocket broadcasting
       const onRoundUpdate = (roundData: any) => {
-        console.log(`[SIMULATION-QUEUE] Received round update for round ${roundData.round}:`, roundData.agent);
+        this.log.debug({ round: roundData.round, agent: roundData.agent }, `[SIMULATION-QUEUE] Received round update`);
         this.broadcastEvent({
           type: 'negotiation_round',
           queueId,
@@ -1190,20 +1177,10 @@ export class SimulationQueueService {
     .where(eq(simulationRuns.queueId, queueId))
     .orderBy(simulationRuns.executionOrder);
     
-    console.log(`[SIMULATION-QUEUE] getSimulationResults for queue ${queueId}:`, {
-      count: results.length,
-      statuses: results.reduce((acc, r) => {
-        acc[r.status] = (acc[r.status] || 0) + 1;
-        return acc;
-      }, {} as Record<string, number>),
-      sampleResult: results[0] ? {
-        id: results[0].id,
-        status: results[0].status,
-        actualCost: results[0].actualCost,
-        totalRounds: results[0].totalRounds,
-        otherDimensions: results[0].otherDimensions
-      } : null
-    });
+    this.log.debug({ queueId, count: results.length, statuses: results.reduce((acc, r) => {
+      acc[r.status] = (acc[r.status] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>) }, `[SIMULATION-QUEUE] getSimulationResults for queue`);
     
     // Convert string costs to numbers for frontend compatibility
     return results.map(result => {
@@ -1290,7 +1267,7 @@ export class SimulationQueueService {
         };
       });
     } catch (error) {
-      console.log(`No simulation results found for negotiation ${negotiationId}`);
+      this.log.warn({ negotiationId }, `No simulation results found for negotiation`);
       return [];
     }
   }
@@ -1308,7 +1285,7 @@ export class SimulationQueueService {
 
       return queue?.id || null;
     } catch (error) {
-      console.error(`Failed to find queue for negotiation ${negotiationId}:`, error);
+      this.log.error({ err: error, negotiationId }, `Failed to find queue for negotiation`);
       return null;
     }
   }
@@ -1325,7 +1302,7 @@ export class SimulationQueueService {
 
       return runs;
     } catch (error) {
-      console.error(`Failed to get runs for queue ${queueId}:`, error);
+      this.log.error({ err: error, queueId }, `Failed to get runs for queue`);
       throw error;
     }
   }
@@ -1478,12 +1455,12 @@ export class SimulationQueueService {
       const simulationRun = run[0];
 
       // Get negotiation details
-      const storage = (await import('../storage')).default;
+      const { storage: storageModule } = await import('../storage');
       const [negotiation, techniques, tactics, personalities] = await Promise.all([
-        storage.getNegotiation(negotiationId),
-        storage.getAllInfluencingTechniques(),
-        storage.getAllNegotiationTactics(),
-        storage.getAllPersonalityTypes(),
+        storageModule.getNegotiation(negotiationId),
+        storageModule.getAllInfluencingTechniques(),
+        storageModule.getAllNegotiationTactics(),
+        storageModule.getAllPersonalityTypes(),
       ]);
 
       if (!negotiation) {
@@ -1491,9 +1468,9 @@ export class SimulationQueueService {
         return;
       }
 
-      const technique = techniques.find(t => t.id === simulationRun.techniqueId);
-      const tactic = tactics.find(t => t.id === simulationRun.tacticId);
-      const personality = personalities.find(p => p.id === simulationRun.personalityId);
+      const technique = techniques.find((t: any) => t.id === simulationRun.techniqueId);
+      const tactic = tactics.find((t: any) => t.id === simulationRun.tacticId);
+      const personality = personalities.find((p: any) => p.id === simulationRun.personalityId);
 
       if (!technique || !tactic) {
         this.log.warn(`[EVALUATION] Technique or tactic not found for simulation ${simulationRunId}`);
@@ -1502,7 +1479,7 @@ export class SimulationQueueService {
 
       // Determine counterpart attitude
       const counterpartRole = negotiation.userRole === 'BUYER' ? 'SELLER' : 'BUYER';
-      const counterpartAttitude = personality?.name || 'Standard';
+      const counterpartAttitude = personality?.archetype || 'Standard';
 
       // Run evaluation asynchronously (don't block)
       await SimulationEvaluationService.evaluateAndSave(
@@ -1516,8 +1493,176 @@ export class SimulationQueueService {
 
       this.log.info(`[EVALUATION] ✓ Evaluation completed for simulation ${simulationRunId.slice(0, 8)}`);
     } catch (error) {
-      this.log.error(`[EVALUATION] Failed to trigger evaluation:`, error);
+      this.log.error({ error }, `[EVALUATION] Failed to trigger evaluation`);
       // Don't throw - evaluation failure shouldn't break the simulation flow
     }
+  }
+
+  /**
+   * Get all simulation runs that need AI evaluation
+   * (completed or walk_away without tacticalSummary)
+   */
+  static async getSimulationRunsNeedingEvaluation(): Promise<any[]> {
+    const runs = await db.select()
+      .from(simulationRuns)
+      .where(
+        and(
+          or(
+            eq(simulationRuns.outcome, 'DEAL_ACCEPTED'),
+            eq(simulationRuns.outcome, 'WALK_AWAY')
+          ),
+          isNull(simulationRuns.tacticalSummary)
+        )
+      );
+
+    return runs;
+  }
+
+  /**
+   * Backfill evaluations for simulation runs
+   */
+  static async backfillEvaluations(runs: any[]): Promise<void> {
+    this.log.info(`[EVALUATION_BACKFILL] Starting backfill for ${runs.length} simulation runs`);
+    
+    const { storage: storageModule } = await import('../storage');
+    const techniques = await storageModule.getAllInfluencingTechniques();
+    const tactics = await storageModule.getAllNegotiationTactics();
+    const personalities = await storageModule.getAllPersonalityTypes();
+    
+    let successCount = 0;
+    let failedCount = 0;
+
+    for (const run of runs) {
+      try {
+        // Get negotiation details
+        const negotiation = run.negotiationId ? await storageModule.getNegotiation(run.negotiationId) : null;
+        
+        if (!negotiation) {
+          this.log.warn(`[EVALUATION_BACKFILL] Negotiation not found for run ${run.id.slice(0, 8)}, skipping`);
+          failedCount++;
+          continue;
+        }
+
+        const technique = techniques.find((t: any) => t.id === run.techniqueId);
+        const tactic = tactics.find((t: any) => t.id === run.tacticId);
+        const personality = personalities.find((p: any) => p.id === run.personalityId);
+
+        if (!technique || !tactic) {
+          this.log.warn(`[EVALUATION_BACKFILL] Technique or tactic not found for run ${run.id.slice(0, 8)}, skipping`);
+          failedCount++;
+          continue;
+        }
+
+        // Determine counterpart attitude
+        const counterpartAttitude = personality?.archetype || 'Standard';
+
+        // Run evaluation
+        await this.triggerEvaluation(run.id, negotiation.id);
+        
+        successCount++;
+        this.log.info(`[EVALUATION_BACKFILL] ✓ Evaluated ${run.id.slice(0, 8)} (${successCount}/${runs.length})`);
+        
+        // Add small delay to avoid overwhelming the API
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      } catch (error) {
+        this.log.error({ error }, `[EVALUATION_BACKFILL] Failed to evaluate run ${run.id.slice(0, 8)}`);
+        failedCount++;
+      }
+    }
+
+    this.log.info(`[EVALUATION_BACKFILL] ✓ Backfill complete: ${successCount} succeeded, ${failedCount} failed`);
+  }
+
+  /**
+   * Backfill evaluations for a specific negotiation
+   */
+  static async backfillEvaluationsForNegotiation(negotiationId: string): Promise<{
+    successCount: number;
+    failedCount: number;
+    totalRuns: number;
+  }> {
+    // Get all simulation runs for this negotiation
+    const allRuns = await db.select()
+      .from(simulationRuns)
+      .where(
+        and(
+          eq(simulationRuns.negotiationId, negotiationId),
+          or(
+            eq(simulationRuns.outcome, 'DEAL_ACCEPTED'),
+            eq(simulationRuns.outcome, 'WALK_AWAY')
+          )
+        )
+      );
+
+    // Filter runs that need evaluation (NULL or empty string)
+    const runs = allRuns.filter(r => !r.tacticalSummary || r.tacticalSummary.trim() === '');
+
+    this.log.info({ 
+      negotiationId: negotiationId.slice(0, 8), 
+      totalRuns: allRuns.length, 
+      runsNeedingEvaluation: runs.length,
+      runIds: runs.map(r => `${r.id.slice(0, 8)} (outcome: ${r.outcome}, hasSummary: ${!!r.tacticalSummary})`)
+    }, `[EVALUATION_BACKFILL] Negotiation summary`);
+    
+    this.log.info(`[EVALUATION_BACKFILL] Starting backfill for negotiation ${negotiationId.slice(0, 8)}: ${runs.length} runs`);
+    
+    let successCount = 0;
+    let failedCount = 0;
+
+    for (const run of runs) {
+      try {
+        // Run evaluation
+        await this.triggerEvaluation(run.id, negotiationId);
+        
+        successCount++;
+        this.log.info(`[EVALUATION_BACKFILL] ✓ Evaluated ${run.id.slice(0, 8)} (${successCount}/${runs.length})`);
+        
+        // Add small delay to avoid overwhelming the API
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      } catch (error) {
+        this.log.error({ error }, `[EVALUATION_BACKFILL] Failed to evaluate run ${run.id.slice(0, 8)}`);
+        failedCount++;
+      }
+    }
+
+    this.log.info(`[EVALUATION_BACKFILL] ✓ Backfill complete for negotiation ${negotiationId.slice(0, 8)}: ${successCount} succeeded, ${failedCount} failed`);
+    
+    return {
+      successCount,
+      failedCount,
+      totalRuns: runs.length,
+    };
+  }
+
+  /**
+   * Get evaluation statistics
+   */
+  static async getEvaluationStats(): Promise<{
+    total: number;
+    evaluated: number;
+    needingEvaluation: number;
+    evaluationRate: number;
+  }> {
+    // Get all completed/walk_away simulation runs
+    const allEligibleRuns = await db.select()
+      .from(simulationRuns)
+      .where(
+        or(
+          eq(simulationRuns.outcome, 'DEAL_ACCEPTED'),
+          eq(simulationRuns.outcome, 'WALK_AWAY')
+        )
+      );
+
+    const total = allEligibleRuns.length;
+    const evaluated = allEligibleRuns.filter(r => r.tacticalSummary !== null).length;
+    const needingEvaluation = total - evaluated;
+    const evaluationRate = total > 0 ? (evaluated / total) * 100 : 0;
+
+    return {
+      total,
+      evaluated,
+      needingEvaluation,
+      evaluationRate,
+    };
   }
 }

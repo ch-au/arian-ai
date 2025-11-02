@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Loader, Sparkles, ExternalLink, AlertCircle } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 interface ReviewStepProps {
   negotiationTitle: string;
@@ -45,11 +46,22 @@ export function ReviewStep({
   isLoadingIntelligence = false,
 }: ReviewStepProps) {
   const { t } = useTranslation('configure');
+  const { toast } = useToast();
   const [showIntelligence, setShowIntelligence] = useState(false);
 
   const totalCombinations = tacticCount * techniqueCount;
 
   const handleGenerateIntelligence = async () => {
+    // Validate required fields before generating
+    if (!negotiationTitle || !negotiationTitle.trim()) {
+      toast({
+        title: "Fehler",
+        description: "Bitte geben Sie einen Verhandlungstitel ein",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     setShowIntelligence(true);
     await onGenerateIntelligence();
   };

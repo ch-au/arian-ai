@@ -97,6 +97,25 @@ export default function Configure() {
   };
 
   const handleGenerateIntelligence = async () => {
+    // Validate required fields
+    if (!config.grundeinstellungen.title || !config.grundeinstellungen.title.trim()) {
+      toast({
+        title: "Fehler",
+        description: "Bitte geben Sie einen Verhandlungstitel ein",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    if (!config.grundeinstellungen.marktProduktKontext || !config.grundeinstellungen.marktProduktKontext.trim()) {
+      toast({
+        title: "Fehler",
+        description: "Bitte geben Sie einen Markt- und Produktkontext ein",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     setIsLoadingIntelligence(true);
     try {
       const response = await fetch('/api/market-intelligence', {
@@ -112,9 +131,17 @@ export default function Configure() {
         }),
       });
 
+      // Check if response is JSON
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text();
+        console.error('Non-JSON response:', text.substring(0, 200));
+        throw new Error(`Server returned HTML instead of JSON. Status: ${response.status}`);
+      }
+
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.message || 'API Fehler');
+        throw new Error(error.message || error.error || `API Fehler: ${response.status}`);
       }
 
       const data = await response.json();

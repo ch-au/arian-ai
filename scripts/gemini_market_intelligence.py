@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Gemini Flash Market Intelligence
-Verwendet Google Gemini 2.0 Flash mit Grounded Search (Google Search Tool)
+Verwendet Google Gemini 2.5 Flash mit Grounded Search (Google Search Tool)
 """
 
 import os

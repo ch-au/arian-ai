@@ -2,9 +2,11 @@ import { Router } from "express";
 import { z } from "zod";
 import { storage } from "../storage";
 import type { NegotiationEngine } from "../services/negotiation-engine";
+import { createRequestLogger } from "../services/logger";
 
 export function createNegotiationRouter(negotiationEngine: NegotiationEngine): Router {
   const router = Router();
+  const log = createRequestLogger("routes:negotiations");
 
   router.get("/", async (_req, res) => {
     try {
@@ -50,7 +52,7 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
               },
             };
           } catch (error) {
-            console.error("Failed to load simulation stats:", error);
+            log.warn({ err: error, negotiationId: negotiation.id }, "Failed to load simulation stats");
             return {
               ...negotiation,
               simulationStats: {
@@ -68,7 +70,7 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
 
       res.json(negotiationsWithStats);
     } catch (error) {
-      console.error("Failed to get negotiations:", error);
+      log.error({ err: error }, "Failed to get negotiations");
       res.status(500).json({ error: "Failed to get negotiations" });
     }
   });
@@ -78,7 +80,7 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
       const negotiations = await storage.getActiveNegotiations();
       res.json(negotiations);
     } catch (error) {
-      console.error("Failed to get active negotiations:", error);
+      log.error({ err: error }, "Failed to get active negotiations");
       res.status(500).json({ error: "Failed to get active negotiations" });
     }
   });
@@ -89,7 +91,7 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
       const negotiations = await storage.getRecentNegotiations(limit);
       res.json(negotiations);
     } catch (error) {
-      console.error("Failed to get recent negotiations:", error);
+      log.error({ err: error }, "Failed to get recent negotiations");
       res.status(500).json({ error: "Failed to get recent negotiations" });
     }
   });
@@ -134,7 +136,7 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
 
       res.json(response);
     } catch (error) {
-      console.error("Failed to get negotiation:", error);
+      log.error({ err: error, negotiationId: req.params.id }, "Failed to get negotiation");
       res.status(500).json({ error: "Failed to get negotiation" });
     }
   });
@@ -158,7 +160,7 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
       const rounds = await storage.getNegotiationRounds(req.params.id);
       res.json(rounds);
     } catch (error) {
-      console.error("Failed to get negotiation rounds:", error);
+      log.error({ err: error, negotiationId: req.params.id }, "Failed to get negotiation rounds");
       res.status(500).json({ error: "Failed to get negotiation rounds" });
     }
   });
@@ -176,6 +178,9 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
         selectedTactics: z.array(z.string()),
         counterpartPersonality: z.string().optional(),
         zopaDistance: z.string().optional(),
+        maxRounds: z.number().int().min(1).max(100).optional().default(10),
+        buyerAgentId: z.string().uuid().optional(),
+        sellerAgentId: z.string().uuid().optional(),
         dimensions: z.array(
           z.object({
             id: z.string(),
@@ -223,8 +228,8 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
         negotiationType: validatedData.negotiationType,
         relationshipType: validatedData.relationshipType,
         contextId: contexts[0].id,
-        buyerAgentId: validatedData.userRole === "buyer" ? agents[0].id : agents[1].id,
-        sellerAgentId: validatedData.userRole === "buyer" ? agents[1].id : agents[0].id,
+        buyerAgentId: validatedData.buyerAgentId || (validatedData.userRole === "buyer" ? agents[0].id : agents[1].id),
+        sellerAgentId: validatedData.sellerAgentId || (validatedData.userRole === "buyer" ? agents[1].id : agents[0].id),
         userRole: validatedData.userRole,
         productMarketDescription: validatedData.productMarketDescription || null,
         additionalComments: validatedData.additionalComments || null,
@@ -232,6 +237,7 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
         selectedTactics: selectedTacticUUIDs,
         counterpartPersonality: validatedData.counterpartPersonality || null,
         zopaDistance: validatedData.zopaDistance || null,
+        maxRounds: validatedData.maxRounds || 10,
         status: "configured" as const,
       };
 
@@ -253,7 +259,7 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
         message: "Negotiation created successfully",
       });
     } catch (error) {
-      console.error("Failed to create enhanced negotiation:", error);
+      log.error({ err: error }, "Failed to create enhanced negotiation");
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: "Invalid negotiation data", details: error.errors });
       }
@@ -309,7 +315,7 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
 
       res.json({ negotiation: updatedNegotiation, message: "Negotiation updated successfully" });
     } catch (error) {
-      console.error("Failed to update negotiation:", error);
+      log.error({ err: error, negotiationId: req.params.id }, "Failed to update negotiation");
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: "Invalid negotiation data", details: error.errors });
       }
@@ -328,6 +334,13 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
         maxRounds: z.number().int().min(1).max(100),
         selectedTechniques: z.array(z.string()),
         selectedTactics: z.array(z.string()),
+        title: z.string().min(1).default("Untitled Negotiation"),
+        negotiationType: z.enum(["one-shot", "multi-year"]).default("one-shot"),
+        relationshipType: z.enum(["first", "long-standing"]).default("first"),
+        productMarketDescription: z.string().optional(),
+        additionalComments: z.string().optional(),
+        counterpartPersonality: z.string().optional(),
+        zopaDistance: z.enum(["close", "medium", "far"]).optional(),
         userZopa: z.object({
           volumen: z.object({ min: z.number(), max: z.number(), target: z.number() }),
           preis: z.object({ min: z.number(), max: z.number(), target: z.number() }),
@@ -353,21 +366,28 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
         maxRounds: validatedData.maxRounds,
         selectedTechniques: validatedData.selectedTechniques,
         selectedTactics: validatedData.selectedTactics,
+        title: validatedData.title,
+        negotiationType: validatedData.negotiationType,
+        relationshipType: validatedData.relationshipType,
+        productMarketDescription: validatedData.productMarketDescription || null,
+        additionalComments: validatedData.additionalComments || null,
+        counterpartPersonality: validatedData.counterpartPersonality || null,
+        zopaDistance: validatedData.zopaDistance || null,
         userZopa: validatedData.userZopa,
         counterpartDistance: validatedData.counterpartDistance,
         sonderinteressen: validatedData.sonderinteressen || null,
         status: "pending" as const,
       };
 
-      const result = await storage.createNegotiationWithSimulationRuns(negotiationData);
+      // Create negotiation WITHOUT simulation runs (runs will be created by /start route via queue)
+      const negotiation = await storage.createNegotiation(negotiationData);
 
       res.status(201).json({
-        negotiation: result.negotiation,
-        simulationRuns: result.simulationRuns,
-        totalCombinations: result.simulationRuns.length,
+        negotiation,
+        message: "Negotiation created successfully. Use POST /api/negotiations/:id/start to begin simulations.",
       });
     } catch (error) {
-      console.error("Failed to create negotiation:", error);
+      log.error({ err: error }, "Failed to create negotiation");
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: "Invalid negotiation data", details: error.errors });
       }
@@ -447,8 +467,23 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
         },
       });
     } catch (error) {
-      console.error("Failed to start negotiation:", error);
-      res.status(500).json({ error: "Failed to start negotiation" });
+      log.error({ err: error, negotiationId: req.params.id }, "Failed to start negotiation");
+      
+      // Provide more detailed error information
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorDetails = error instanceof Error ? error.stack : undefined;
+      
+      log.error({ 
+        error: errorMessage, 
+        stack: errorDetails,
+        negotiationId: req.params.id 
+      }, "Detailed error information");
+      
+      res.status(500).json({ 
+        error: "Failed to start negotiation",
+        details: errorMessage,
+        negotiationId: req.params.id
+      });
     }
   });
 
@@ -457,7 +492,7 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
       await negotiationEngine.stopNegotiation(req.params.id);
       res.json({ message: "Negotiation stopped successfully" });
     } catch (error) {
-      console.error("Failed to stop negotiation:", error);
+      log.error({ err: error, negotiationId: req.params.id }, "Failed to stop negotiation");
       res.status(500).json({ error: "Failed to stop negotiation" });
     }
   });
@@ -467,7 +502,7 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
       await storage.deleteNegotiation(req.params.id);
       res.json({ message: "Negotiation deleted successfully" });
     } catch (error) {
-      console.error("Failed to delete negotiation:", error);
+      log.error({ err: error, negotiationId: req.params.id }, "Failed to delete negotiation");
       res.status(500).json({ error: "Failed to delete negotiation" });
     }
   });
@@ -477,73 +512,63 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
       const runs = await storage.getSimulationRuns(req.params.id);
       res.json(runs);
     } catch (error) {
-      console.error("Failed to get simulation runs:", error);
+      log.error({ err: error, negotiationId: req.params.id }, "Failed to get simulation runs");
       res.status(500).json({ error: "Failed to get simulation runs" });
     }
   });
 
-  // Generate AI evaluation for best simulation run
+  /**
+   * POST /api/negotiations/:id/analysis/evaluate
+   * Backfill AI evaluations for simulation runs that are missing them
+   */
   router.post("/:id/analysis/evaluate", async (req, res) => {
     try {
-      const negotiationId = req.params.id;
-
-      const negotiation = await storage.getNegotiation(negotiationId);
-      if (!negotiation) {
-        return res.status(404).json({ error: "Negotiation not found" });
+      const { id: negotiationId } = req.params;
+      
+      if (!negotiationId) {
+        return res.status(400).json({ error: 'Negotiation ID is required' });
       }
 
-      // Get all simulation runs
       const { SimulationQueueService } = await import("../services/simulation-queue");
-      const runs = await SimulationQueueService.getSimulationResultsByNegotiation(negotiationId);
-
-      // Find best run by deal value
-      const completedRuns = runs.filter(r => r.status === "completed" && r.dealValue);
-      if (completedRuns.length === 0) {
-        return res.status(400).json({ error: "No completed runs found" });
-      }
-
-      const bestRun = completedRuns.reduce((best, current) =>
-        parseFloat(current.dealValue || "0") > parseFloat(best.dealValue || "0") ? current : best
-      );
-
-      // Get technique and tactic names
-      const [allTechniques, allTactics, personalities] = await Promise.all([
-        storage.getAllInfluencingTechniques(),
-        storage.getAllNegotiationTactics(),
-        storage.getAllPersonalityTypes(),
-      ]);
-
-      const technique = allTechniques.find(t => t.id === bestRun.techniqueId);
-      const tactic = allTactics.find(t => t.id === bestRun.tacticId);
-      const personality = personalities.find(p => p.id === bestRun.personalityId);
-
-      if (!technique || !tactic) {
-        return res.status(500).json({ error: "Technique or tactic not found" });
-      }
-
-      // Determine counterpart role and attitude
-      const counterpartRole = negotiation.userRole === "BUYER" ? "SELLER" : "BUYER";
-      const counterpartAttitude = personality?.name || "Standard";
-
-      // Run evaluation
-      const { SimulationEvaluationService } = await import("../services/simulation-evaluation");
-      const evaluation = await SimulationEvaluationService.evaluateAndSave(
-        bestRun.id,
-        bestRun.conversationLog,
-        negotiation.userRole,
-        technique.name,
-        tactic.name,
-        counterpartAttitude,
-      );
-
+      
+      log.info({ negotiationId }, "[EVALUATION_BACKFILL] Starting evaluation");
+      
+      // Get count of runs that will be evaluated (same logic as service)
+      const { simulationRuns } = await import("@shared/schema");
+      const { db } = await import("../db");
+      const { and, or, eq } = await import("drizzle-orm");
+      
+      const allRuns = await db.select()
+        .from(simulationRuns)
+        .where(
+          and(
+            eq(simulationRuns.negotiationId, negotiationId),
+            or(
+              eq(simulationRuns.outcome, 'DEAL_ACCEPTED'),
+              eq(simulationRuns.outcome, 'WALK_AWAY')
+            )
+          )
+        );
+      
+      // Filter runs that need evaluation (NULL or empty string)
+      const runsToEvaluate = allRuns.filter(r => !r.tacticalSummary || r.tacticalSummary.trim() === '');
+      
+      log.info({ negotiationId, runsToEvaluate: runsToEvaluate.length, totalRuns: allRuns.length }, "[EVALUATION_BACKFILL] Found runs needing evaluation");
+      
+      // Start backfill process asynchronously
+      SimulationQueueService.backfillEvaluationsForNegotiation(negotiationId).catch(error => {
+        log.error({ err: error, negotiationId }, "[EVALUATION_BACKFILL] Backfill failed");
+      });
+      
       res.json({
-        simulationRunId: bestRun.id,
-        runNumber: bestRun.runNumber,
-        evaluation,
+        success: true,
+        message: `Started evaluation for ${runsToEvaluate.length} simulation runs`,
+        totalRuns: runsToEvaluate.length,
       });
     } catch (error) {
-      console.error("Failed to evaluate simulation:", error);
-      res.status(500).json({ error: "Failed to evaluate simulation" });
+      log.error({ err: error }, "[EVALUATION_BACKFILL] Failed to start evaluation");
+      const message = error instanceof Error ? error.message : 'Failed to start evaluation';
+      res.status(500).json({ error: message });
     }
   });
 
@@ -573,7 +598,8 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
         const technique = allTechniques.find(t => t.id === run.techniqueId);
         const tactic = allTactics.find(t => t.id === run.tacticId);
         const dealValue = run.dealValue ? parseFloat(run.dealValue) : 0;
-        const efficiency = run.totalRounds > 0 ? dealValue / run.totalRounds : 0;
+        const totalRounds = run.totalRounds || 0;
+        const efficiency = totalRounds > 0 ? dealValue / totalRounds : 0;
 
         return {
           id: run.id,
@@ -583,7 +609,7 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
           techniqueName: technique?.name || "Unknown",
           tacticName: tactic?.name || "Unknown",
           dealValue,
-          totalRounds: run.totalRounds || 0,
+          totalRounds,
           actualCost: parseFloat(run.actualCost || "0"),
           outcome: run.outcome,
           status: run.status,
@@ -673,7 +699,7 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
         matrix: Object.values(matrix),
       });
     } catch (error) {
-      console.error("Failed to get negotiation analysis:", error);
+      log.error({ err: error, negotiationId: req.params.id }, "Failed to get negotiation analysis");
       res.status(500).json({ error: "Failed to get negotiation analysis" });
     }
   });
@@ -686,7 +712,7 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
       }
       res.json(run);
     } catch (error) {
-      console.error("Failed to get simulation run status:", error);
+      log.error({ err: error, simulationRunId: req.params.runId }, "Failed to get simulation run status");
       res.status(500).json({ error: "Failed to get simulation run status" });
     }
   });
@@ -696,7 +722,7 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
       await negotiationEngine.stopNegotiation(req.params.runId);
       res.json({ message: "Simulation run stopped successfully" });
     } catch (error) {
-      console.error("Failed to stop simulation run:", error);
+      log.error({ err: error, simulationRunId: req.params.runId }, "Failed to stop simulation run");
       res.status(500).json({ error: "Failed to stop simulation run" });
     }
   });
@@ -763,13 +789,13 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
 
       const validatedData = phase2Schema.parse(req.body);
 
-      console.log("[phase2] Creating negotiation with:", {
+      log.debug({ 
         title: validatedData.title,
         produkte: validatedData.produkte?.length || 0,
         konditionen: validatedData.konditionen?.length || 0,
         tactics: validatedData.selectedTacticIds.length,
         techniques: validatedData.selectedTechniqueIds.length,
-      });
+      }, "[phase2] Creating negotiation");
 
       // Get agents
       const agents = await storage.getAllAgents();
@@ -807,8 +833,14 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
         maxRounds: validatedData.maxRounds,
         status: "configured" as const, // Set status to configured so it can be started
 
-        // Store Phase 2 data as JSON in relationshipType/productMarketDescription fields temporarily
-        // TODO: Update schema to include Phase 2 fields properly
+        // Phase2 specific fields
+        companyKnown: validatedData.companyKnown || false,
+        counterpartKnown: validatedData.counterpartKnown || false,
+        negotiationFrequency: validatedData.negotiationFrequency || null,
+        powerBalance: validatedData.powerBalance || 50,
+        verhandlungsModus: validatedData.verhandlungsModus || null,
+
+        // Store Phase 2 data in appropriate fields
         relationshipType: validatedData.counterpartKnown ? "long-standing" : "first",
         productMarketDescription: validatedData.marktProduktKontext || "",
         additionalComments: validatedData.wichtigerKontext || "",
@@ -817,7 +849,12 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
         selectedTactics: validatedData.selectedTacticIds,
 
         counterpartPersonality: validatedData.beschreibungGegenseite || "",
-        zopaDistance: validatedData.verhandlungsModus || "moderat",
+        zopaDistance: validatedData.verhandlungsModus || "moderat", // Keep for compatibility, but verhandlungsModus is preferred
+
+        // Store geschätzteDistanz in metadata
+        metadata: {
+          geschätzteDistanz: validatedData.geschätzteDistanz || {},
+        },
 
         // Default ZOPA for now - will be replaced with products/conditions
         userZopa: {
@@ -846,7 +883,7 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
           geschätztesVolumen: p.geschätztesVolumen,
         }));
         await storage.createProducts(productsData);
-        console.log(`[phase2] Saved ${productsData.length} products for negotiation ${negotiation.id}`);
+      log.debug({ negotiationId: negotiation.id, productsCount: productsData.length }, "[phase2] Saved products");
       }
 
       // Store conditions (other dimensions) in negotiation_dimensions table
@@ -861,15 +898,16 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
           unit: k.einheit || null,
         }));
         await storage.createNegotiationDimensions(negotiation.id, dimensionsData);
-        console.log(`[phase2] Saved ${dimensionsData.length} conditions (dimensions) for negotiation ${negotiation.id}`);
+        log.debug({ negotiationId: negotiation.id, dimensionsCount: dimensionsData.length }, "[phase2] Saved dimensions");
       }
 
       // TODO: Store market intelligence
-      console.log("[phase2] Phase 2 data received:", {
+      log.debug({ 
+        negotiationId: negotiation.id,
         produkte: validatedData.produkte?.length || 0,
         konditionen: validatedData.konditionen?.length || 0,
         marketIntelligence: validatedData.marketIntelligence?.length || 0,
-      });
+      }, "[phase2] Phase 2 data received");
 
       res.json({
         success: true,
@@ -878,7 +916,7 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
         productsCount: validatedData.produkte?.length || 0,
       });
     } catch (error) {
-      console.error("[phase2] Failed to create negotiation:", error);
+      log.error({ err: error }, "[phase2] Failed to create negotiation");
       if (error instanceof z.ZodError) {
         return res.status(400).json({
           error: "Invalid negotiation data",
@@ -886,6 +924,54 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
         });
       }
       const message = error instanceof Error ? error.message : "Failed to create Phase 2 negotiation";
+      res.status(500).json({ error: message });
+    }
+  });
+
+  /**
+   * POST /api/negotiations/backfill-evaluations
+   * Backfill AI evaluations for simulation runs that don't have them yet
+   */
+  router.post("/backfill-evaluations", async (req, res) => {
+    try {
+      const { SimulationQueueService } = await import("../services/simulation-queue");
+      
+      // Get all simulation runs that need evaluation
+      const runsNeedingEvaluation = await SimulationQueueService.getSimulationRunsNeedingEvaluation();
+      
+      log.info({ runsNeedingEvaluation: runsNeedingEvaluation.length }, "[EVALUATION_BACKFILL] Found runs needing evaluation");
+      
+      // Start backfill process asynchronously
+      SimulationQueueService.backfillEvaluations(runsNeedingEvaluation).catch(error => {
+        log.error({ err: error }, "[EVALUATION_BACKFILL] Backfill process failed");
+      });
+      
+      res.json({
+        success: true,
+        message: `Started backfill process for ${runsNeedingEvaluation.length} simulation runs`,
+        totalRuns: runsNeedingEvaluation.length,
+      });
+    } catch (error) {
+      log.error({ err: error }, "[EVALUATION_BACKFILL] Failed to start backfill");
+      const message = error instanceof Error ? error.message : 'Failed to start evaluation backfill';
+      res.status(500).json({ error: message });
+    }
+  });
+
+  /**
+   * GET /api/negotiations/evaluation-status
+   * Get evaluation status statistics
+   */
+  router.get("/evaluation-status", async (_req, res) => {
+    try {
+      const { SimulationQueueService } = await import("../services/simulation-queue");
+      
+      const stats = await SimulationQueueService.getEvaluationStats();
+      
+      res.json(stats);
+    } catch (error) {
+      log.error({ err: error }, "[EVALUATION_STATUS] Failed to get evaluation status");
+      const message = error instanceof Error ? error.message : 'Failed to get evaluation status';
       res.status(500).json({ error: message });
     }
   });

@@ -10,6 +10,9 @@ import path from "path";
 import { db } from "../db";
 import { simulationRuns } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { createRequestLogger } from "./logger";
+
+const log = createRequestLogger("service:simulation-evaluation");
 
 interface EvaluationResult {
   tactical_summary: string;
@@ -34,7 +37,7 @@ export class SimulationEvaluationService {
     negotiationTacticName: string,
     counterpartAttitude: string,
   ): Promise<EvaluationResult> {
-    console.log(`[EVALUATION] Starting AI evaluation for simulation ${simulationRunId}`);
+    log.info({ simulationRunId }, "[EVALUATION] Starting AI evaluation");
 
     const scriptPath = path.join(process.cwd(), "scripts", "evaluate_simulation.py");
     const pythonPath = path.join(process.cwd(), ".venv", "bin", "python3");
@@ -61,30 +64,28 @@ export class SimulationEvaluationService {
 
       pythonProcess.stderr.on("data", (data) => {
         stderr += data.toString();
-        console.log(`[EVALUATION] stderr: ${data.toString().trim()}`);
+        log.warn({ simulationRunId, stderr: data.toString().trim() }, "[EVALUATION] Python stderr");
       });
 
       pythonProcess.on("close", (code) => {
         if (code !== 0) {
-          console.error(`[EVALUATION] Python process exited with code ${code}`);
-          console.error(`[EVALUATION] stderr: ${stderr}`);
+          log.error({ simulationRunId, code, stderr }, "[EVALUATION] Python process exited with non-zero code");
           reject(new Error(`Evaluation failed with code ${code}`));
           return;
         }
 
         try {
           const response: EvaluationResponse = JSON.parse(stdout);
-          console.log(`[EVALUATION] Generated evaluation:`, response.evaluation);
+          log.info({ simulationRunId, evaluation: response.evaluation }, "[EVALUATION] Generated evaluation");
           resolve(response.evaluation);
         } catch (error) {
-          console.error(`[EVALUATION] Failed to parse Python output:`, error);
-          console.error(`[EVALUATION] stdout:`, stdout);
+          log.error({ err: error, simulationRunId, stdout }, "[EVALUATION] Failed to parse Python output");
           reject(error);
         }
       });
 
       pythonProcess.on("error", (error) => {
-        console.error(`[EVALUATION] Failed to spawn Python process:`, error);
+        log.error({ err: error, simulationRunId }, "[EVALUATION] Failed to spawn Python process");
         reject(error);
       });
     });
@@ -97,7 +98,7 @@ export class SimulationEvaluationService {
     simulationRunId: string,
     evaluation: EvaluationResult,
   ): Promise<void> {
-    console.log(`[EVALUATION] Saving evaluation for simulation ${simulationRunId}`);
+    log.info({ simulationRunId }, "[EVALUATION] Saving evaluation");
 
     await db.update(simulationRuns)
       .set({
@@ -107,7 +108,7 @@ export class SimulationEvaluationService {
       })
       .where(eq(simulationRuns.id, simulationRunId));
 
-    console.log(`[EVALUATION] Evaluation saved successfully`);
+    log.info({ simulationRunId }, "[EVALUATION] Evaluation saved successfully");
   }
 
   /**

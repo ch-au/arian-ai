@@ -27,11 +27,19 @@ const createNegotiationSchema = z.object({
   contextId: z.string().min(1, "Please select a negotiation context"),
   buyerAgentId: z.string().min(1, "Please select a buyer agent"),
   sellerAgentId: z.string().min(1, "Please select a seller agent"),
-  maxRounds: z.number().min(1).max(50),
+  maxRounds: z.number().min(1).max(100),
   selectedTechniques: z.array(z.string()).min(1, "Select at least one influencing technique"),
   selectedTactics: z.array(z.string()).min(1, "Select at least one negotiation tactic"),
   // Role and ZOPA configuration (consolidated)
   userRole: z.enum(["buyer", "seller"]),
+  // Business context fields
+  title: z.string().min(1, "Title is required").default("Untitled Negotiation"),
+  negotiationType: z.enum(["one-shot", "multi-year"]).default("one-shot"),
+  relationshipType: z.enum(["first", "long-standing"]).default("first"),
+  productMarketDescription: z.string().optional(),
+  additionalComments: z.string().optional(),
+  counterpartPersonality: z.string().optional(),
+  zopaDistance: z.enum(["close", "medium", "far"]).optional(),
   userZopa: z.object({
     volumen: zopaDimensionSchema,
     preis: zopaDimensionSchema,
@@ -78,6 +86,13 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
       selectedTechniques: [],
       selectedTactics: [],
       userRole: "buyer",
+      title: "Untitled Negotiation",
+      negotiationType: "one-shot",
+      relationshipType: "first",
+      productMarketDescription: "",
+      additionalComments: "",
+      counterpartPersonality: "",
+      zopaDistance: undefined,
       userZopa: {
         volumen: { min: 100, max: 1000, target: 500 },
         preis: { min: 10, max: 100, target: 50 },
@@ -107,6 +122,13 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
         selectedTechniques: data.selectedTechniques,
         selectedTactics: data.selectedTactics,
         userRole: data.userRole,
+        title: data.title,
+        negotiationType: data.negotiationType,
+        relationshipType: data.relationshipType,
+        productMarketDescription: data.productMarketDescription || "",
+        additionalComments: data.additionalComments || "",
+        counterpartPersonality: data.counterpartPersonality || "",
+        zopaDistance: data.zopaDistance || undefined,
         userZopa: data.userZopa,
         counterpartDistance: data.counterpartDistance,
         sonderinteressen: data.sonderinteressen || "",
@@ -228,6 +250,23 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
               <CardContent className="space-y-4">
                 <FormField
                   control={form.control}
+                  name="title"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Negotiation Title</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="Enter a title for this negotiation"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
                   name="contextId"
                   render={({ field }) => (
                     <FormItem>
@@ -251,6 +290,52 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
                   )}
                 />
 
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="negotiationType"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Negotiation Type</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="one-shot">One-Shot</SelectItem>
+                            <SelectItem value="multi-year">Multi-Year</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="relationshipType"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Relationship Type</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="first">First Time</SelectItem>
+                            <SelectItem value="long-standing">Long-Standing</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
                 <FormField
                   control={form.control}
                   name="maxRounds"
@@ -261,7 +346,7 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
                         <Input
                           type="number"
                           min={1}
-                          max={50}
+                          max={100}
                           {...field}
                           onChange={(e) => field.onChange(parseInt(e.target.value))}
                         />
@@ -1106,26 +1191,104 @@ export default function CreateNegotiationForm({ agents, contexts, onSuccess }: P
 
                 <Separator />
 
-                {/* Sonderinteressen */}
-                <FormField
-                  control={form.control}
-                  name="sonderinteressen"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Sonderinteressen (Special Interests)</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="e.g., Sustainability requirements, exclusive partnership terms..."
-                          {...field}
-                        />
-                      </FormControl>
-                      <p className="text-xs text-gray-600">
-                        Additional requirements or special interests that should be considered during negotiation
-                      </p>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                {/* Additional Context Fields */}
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold">Additional Context</h3>
+                  
+                  <FormField
+                    control={form.control}
+                    name="productMarketDescription"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Product/Market Description</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="Describe the product or market context"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="additionalComments"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Additional Comments</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="Any additional context or requirements"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="counterpartPersonality"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Counterpart Personality</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="Describe the counterpart's personality or behavior"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="zopaDistance"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>ZOPA Distance</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value || ""}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select ZOPA distance" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="close">Close</SelectItem>
+                            <SelectItem value="medium">Medium</SelectItem>
+                            <SelectItem value="far">Far</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="sonderinteressen"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Special Interests (Sonderinteressen)</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="e.g., Sustainability requirements, exclusive partnership terms..."
+                            {...field}
+                          />
+                        </FormControl>
+                        <p className="text-xs text-gray-600">
+                          Additional requirements or special interests that should be considered during negotiation
+                        </p>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
               </CardContent>
             </Card>
           )}

@@ -1,8 +1,10 @@
 import { Router } from "express";
 import type { NegotiationEngine } from "../services/negotiation-engine";
+import { createRequestLogger } from "../services/logger";
 
 export function createSystemRouter(negotiationEngine: NegotiationEngine): Router {
   const router = Router();
+  const log = createRequestLogger("routes:system");
 
   router.get("/prompts/reload", async (_req, res) => {
     try {
@@ -10,7 +12,7 @@ export function createSystemRouter(negotiationEngine: NegotiationEngine): Router
       langfuseService.reloadPrompts();
       res.json({ message: "Prompts reloaded successfully" });
     } catch (error) {
-      console.error("Failed to reload prompts:", error);
+      log.error({ err: error }, "Failed to reload prompts");
       res.status(500).json({ error: "Failed to reload prompts" });
     }
   });
@@ -25,7 +27,7 @@ export function createSystemRouter(negotiationEngine: NegotiationEngine): Router
       };
       res.json(status);
     } catch (error) {
-      console.error("Failed to get system status:", error);
+      log.error({ err: error }, "Failed to get system status");
       res.status(500).json({ error: "Failed to get system status" });
     }
   });

@@ -119,7 +119,7 @@ export function DimensionenStep({ data, onChange, userRole }: DimensionenStepPro
           <CardDescription>{t('dimensionen.produkte.description')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Table Header */}
+          {/* Table Header - Always visible */}
           <div className="grid grid-cols-[2fr_1fr_1fr_1fr_auto] gap-4 pb-2 border-b font-semibold text-sm">
             <div>{t('dimensionen.produkte.produktName')}</div>
             <div>{t('dimensionen.produkte.zielPreis')}</div>
@@ -129,48 +129,55 @@ export function DimensionenStep({ data, onChange, userRole }: DimensionenStepPro
           </div>
 
           {/* Product Rows */}
-          {data.produkte.map((produkt) => (
-            <div key={produkt.id} className="grid grid-cols-[2fr_1fr_1fr_1fr_auto] gap-4 items-start">
-              <Input
-                value={produkt.produktName}
-                onChange={(e) => updateProdukt(produkt.id, { produktName: e.target.value })}
-                placeholder={t('dimensionen.produkte.produktNamePlaceholder')}
-              />
-              <Input
-                type="number"
-                value={produkt.zielPreis || ''}
-                onChange={(e) =>
-                  updateProdukt(produkt.id, { zielPreis: parseFloat(e.target.value) || 0 })
-                }
-                placeholder="0.00"
-              />
-              <Input
-                type="number"
-                value={produkt.minMaxPreis || ''}
-                onChange={(e) =>
-                  updateProdukt(produkt.id, { minMaxPreis: parseFloat(e.target.value) || 0 })
-                }
-                placeholder="0.00"
-              />
-              <Input
-                type="number"
-                value={produkt.geschätztesVolumen || ''}
-                onChange={(e) =>
-                  updateProdukt(produkt.id, { geschätztesVolumen: parseInt(e.target.value) || 0 })
-                }
-                placeholder="0"
-              />
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                onClick={() => removeProdukt(produkt.id)}
-                title={t('dimensionen.produkte.remove')}
-              >
-                <Trash2 className="h-4 w-4 text-muted-foreground" />
-              </Button>
+          {data.produkte.length > 0 ? (
+            data.produkte.map((produkt) => (
+              <div key={produkt.id} className="grid grid-cols-[2fr_1fr_1fr_1fr_auto] gap-4 items-start">
+                <Input
+                  value={produkt.produktName}
+                  onChange={(e) => updateProdukt(produkt.id, { produktName: e.target.value })}
+                  placeholder={t('dimensionen.produkte.produktNamePlaceholder')}
+                />
+                <Input
+                  type="number"
+                  value={produkt.zielPreis || ''}
+                  onChange={(e) =>
+                    updateProdukt(produkt.id, { zielPreis: parseFloat(e.target.value) || 0 })
+                  }
+                  placeholder="0.00"
+                />
+                <Input
+                  type="number"
+                  value={produkt.minMaxPreis || ''}
+                  onChange={(e) =>
+                    updateProdukt(produkt.id, { minMaxPreis: parseFloat(e.target.value) || 0 })
+                  }
+                  placeholder="0.00"
+                />
+                <Input
+                  type="number"
+                  value={produkt.geschätztesVolumen || ''}
+                  onChange={(e) =>
+                    updateProdukt(produkt.id, { geschätztesVolumen: parseInt(e.target.value) || 0 })
+                  }
+                  placeholder="0"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => removeProdukt(produkt.id)}
+                  title={t('dimensionen.produkte.remove')}
+                >
+                  <Trash2 className="h-4 w-4 text-muted-foreground" />
+                </Button>
+              </div>
+            ))
+          ) : (
+            <div className="text-center py-8 text-muted-foreground border-2 border-dashed rounded-lg">
+              <p className="text-sm mb-4">Keine Produkte hinzugefügt</p>
+              <p className="text-xs">Klicken Sie auf "Produkt hinzufügen" um zu beginnen</p>
             </div>
-          ))}
+          )}
 
           {/* Add Product Button */}
           {data.produkte.length < 10 ? (

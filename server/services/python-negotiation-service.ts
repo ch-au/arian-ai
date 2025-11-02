@@ -530,7 +530,7 @@ export class PythonNegotiationService {
             keyNormalized.includes(productNormalized)) {
           productPrices[productName] = Number(value);
           isProductPrice = true;
-          console.log(`[python-negotiation] Matched dimension "${key}" to product "${productName}" with price ${value}`);
+          this.log.debug({ key, productName, value }, `[python-negotiation] Matched dimension to product`);
           break;
         }
       }

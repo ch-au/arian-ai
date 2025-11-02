@@ -3,9 +3,11 @@ import { z } from "zod";
 import { storage } from "../storage";
 import { insertZopaConfigurationSchema, zopaBoundariesSchema } from "@shared/schema";
 import { analyticsService } from "../services/analytics";
+import { createRequestLogger } from "../services/logger";
 
 export function createZopaRouter(): Router {
   const router = Router();
+  const log = createRequestLogger("routes:zopa");
 
   router.get("/context/:contextId", async (req, res) => {
     try {
@@ -14,7 +16,7 @@ export function createZopaRouter(): Router {
       );
       res.json(configurations);
     } catch (error) {
-      console.error("Failed to get ZOPA configurations:", error);
+      log.error({ err: error, contextId: req.params.contextId }, "Failed to get ZOPA configurations");
       res.status(500).json({ error: "Failed to get ZOPA configurations" });
     }
   });
@@ -26,7 +28,7 @@ export function createZopaRouter(): Router {
       );
       res.json(configurations);
     } catch (error) {
-      console.error("Failed to get ZOPA configurations:", error);
+      log.error({ err: error, contextId: req.params.contextId }, "Failed to get ZOPA configurations");
       res.status(500).json({ error: "Failed to get ZOPA configurations" });
     }
   });
@@ -42,7 +44,7 @@ export function createZopaRouter(): Router {
       const configuration = await storage.createZopaConfiguration(zopaData);
       res.status(201).json(configuration);
     } catch (error) {
-      console.error("Failed to create ZOPA configuration:", error);
+      log.error({ err: error }, "Failed to create ZOPA configuration");
       if (error instanceof z.ZodError) {
         return res
           .status(400)
@@ -65,7 +67,7 @@ export function createZopaRouter(): Router {
       );
       res.json(analysis);
     } catch (error) {
-      console.error("Failed to analyze ZOPA:", error);
+      log.error({ err: error }, "Failed to analyze ZOPA");
       if (error instanceof z.ZodError) {
         return res
           .status(400)

@@ -2,6 +2,9 @@ import { Langfuse } from "langfuse";
 import yaml from "js-yaml";
 import fs from "fs";
 import path from "path";
+import { createRequestLogger } from "./logger";
+
+const log = createRequestLogger("service:langfuse");
 
 interface PromptConfig {
   negotiation_prompts: {
@@ -49,7 +52,7 @@ class LangfuseService {
       const fileContents = fs.readFileSync(promptsPath, 'utf8');
       this.prompts = yaml.load(fileContents) as PromptConfig;
     } catch (error) {
-      console.error('Failed to load prompts.yaml:', error);
+      log.error({ err: error }, 'Failed to load prompts.yaml');
       this.prompts = null;
     }
   }

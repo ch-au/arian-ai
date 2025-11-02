@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to AI agents (like Claude Code) when working with code in this repository.
 
 ## Development Commands
 
@@ -40,7 +40,7 @@ npm run start            # Start production server
 - **Frontend**: React + Vite + TypeScript with Wouter routing
 - **Backend**: Express + TypeScript with WebSocket support  
 - **Database**: PostgreSQL with Drizzle ORM and Neon serverless
-- **AI Integration**: OpenAI GPT-4o with Langfuse observability
+- **AI Integration**: LiteLLM with multi-provider support (OpenAI, Anthropic, Google Gemini) + Langfuse observability
 - **UI**: Shadcn/ui + Radix components with Tailwind CSS
 
 ### Core Domain: AI Negotiation Simulation Platform
@@ -160,10 +160,14 @@ Required environment variables:
 # Database (Required)
 DATABASE_URL="postgresql://user:pass@host.neon.tech/db?sslmode=require"
 
-# AI Services (Optional for development)
-OPENAI_API_KEY="sk-..."
-LANGFUSE_SECRET_KEY="sk-lf-..."
+# AI Providers (at least one required)
+OPENAI_API_KEY="sk-..."          # For OpenAI models
+ANTHROPIC_API_KEY="sk-ant-..."   # For Claude models (optional)
+GEMINI_API_KEY="..."             # For Google Gemini (optional)
+
+# Langfuse (Optional but recommended)
 LANGFUSE_PUBLIC_KEY="pk-lf-..."
+LANGFUSE_SECRET_KEY="sk-lf-..."
 LANGFUSE_HOST="https://cloud.langfuse.com"
 
 # Development
@@ -232,3 +236,16 @@ PORT=3000
 1. Modify `shared/schema.ts`
 2. Run `npm run db:push` to deploy changes
 3. Update TypeScript types automatically generated
+
+## Azure App Service Deployment
+
+For complete Azure deployment guide, see **[AZURE_DEPLOYMENT.md](../AZURE_DEPLOYMENT.md)**.
+
+**Quick Reference:**
+- Automatic CI/CD via GitHub Actions (`.github/workflows/azure-deploy.yml`)
+- Startup script: `startup.sh` (Python venv + Node.js)
+- Health endpoint: `GET /health`
+- Configuration: `.deployment` file for Azure Oryx
+- Python build: `scripts/copy-python.js` copies scripts to `dist/`
+
+**Local development is unchanged** - all Azure changes are additive.

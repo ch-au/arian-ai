@@ -81,6 +81,9 @@ export interface IStorage {
   getActiveNegotiations(): Promise<Negotiation[]>;
   getRecentNegotiations(limit?: number): Promise<Negotiation[]>;
   createNegotiation(negotiation: InsertNegotiation): Promise<Negotiation>;
+  // DEPRECATED: This method creates simulation runs directly, which causes duplicates.
+  // Use createNegotiation() instead, then create runs via SimulationQueueService.createQueue()
+  // Will be removed in a future version
   createNegotiationWithSimulationRuns(negotiation: InsertNegotiation): Promise<{ negotiation: Negotiation; simulationRuns: any[] }>;
   updateNegotiation(id: string, negotiation: Partial<InsertNegotiation>): Promise<Negotiation>;
   startNegotiation(id: string): Promise<Negotiation>;
@@ -302,6 +305,9 @@ export class DatabaseStorage implements IStorage {
     return newNegotiation;
   }
 
+  // DEPRECATED: This method creates simulation runs directly, which causes duplicates.
+  // Use createNegotiation() instead, then create runs via SimulationQueueService.createQueue()
+  // Will be removed in a future version
   async createNegotiationWithSimulationRuns(negotiation: InsertNegotiation): Promise<{ negotiation: Negotiation; simulationRuns: any[] }> {
     // Create negotiation first
     const [newNegotiation] = await db.insert(negotiations).values(negotiation).returning();

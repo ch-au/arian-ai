@@ -3,7 +3,7 @@
 AI Evaluation Service for Negotiation Simulations
 
 This service analyzes completed negotiation simulations and generates
-effectiveness scores using OpenAI's structured output with Langfuse tracing.
+effectiveness scores using AI-generated analysis (OpenAI/Anthropic/Gemini via LiteLLM) with Langfuse tracing.
 
 Features:
 - Automatic evaluation triggered after successful simulations (DEAL_ACCEPTED/WALK_AWAY)
@@ -16,7 +16,7 @@ Architecture:
         ↓ subprocess spawn
     evaluate_simulation.py (this file)
         ↓ Langfuse prompt compilation
-    OpenAI GPT-4o-mini (structured output)
+    AI Model via LiteLLM (OpenAI GPT-4o-mini, Anthropic Claude, or Gemini) with structured output
         ↓ SimulationEvaluation model
     JSON output to stdout
 

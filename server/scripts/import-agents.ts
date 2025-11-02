@@ -9,19 +9,22 @@ import { agents } from '@shared/schema';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { createRequestLogger } from '../services/logger';
+
+const log = createRequestLogger('script:import-agents');
 
 // ESM-compatible __dirname
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 async function importAgents() {
-  console.log('📥 Importing agents...\n');
+  log.info('📥 Importing agents...\n');
 
   try {
     const agentsPath = path.join(__dirname, '../seed-data/agents.json');
     const agentsData = JSON.parse(fs.readFileSync(agentsPath, 'utf-8'));
 
-    console.log(`Importing ${agentsData.length} agents...`);
+    log.info(`Importing ${agentsData.length} agents...`);
     for (const agent of agentsData) {
       // Convert timestamp strings to Date objects and remove updatedAt (not in schema)
       const { updatedAt, ...agentData } = agent;
@@ -31,12 +34,12 @@ async function importAgents() {
       };
       await db.insert(agents).values(values);
     }
-    console.log(`✅ Imported ${agentsData.length} agents\n`);
+    log.info(`✅ Imported ${agentsData.length} agents\n`);
 
-    console.log('✅ Agents import complete!\n');
+    log.info('✅ Agents import complete!\n');
     process.exit(0);
   } catch (error) {
-    console.error('❌ Error importing agents:', error);
+    log.error({ err: error }, '❌ Error importing agents');
     process.exit(1);
   }
 }

@@ -28,8 +28,7 @@ interface Negotiation {
   completedAt?: string;
   totalRounds?: number;
   maxRounds?: number;
-  finalAgreement?: any;
-  successScore?: number;
+  // Removed: finalAgreement and successScore (fields don't exist in schema)
   simulationRunsCount?: number;
   completedRunsCount?: number;
 }

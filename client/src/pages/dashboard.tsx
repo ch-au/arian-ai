@@ -5,6 +5,7 @@ import SimulationRunHistory from "@/components/dashboard/simulation-run-history"
 import SuccessChart from "@/components/dashboard/success-chart";
 import AgentPerformance from "@/components/dashboard/agent-performance";
 import QuickActions from "@/components/dashboard/quick-actions";
+import EvaluationBackfillCard from "@/components/dashboard/evaluation-backfill-card";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 
@@ -37,12 +38,15 @@ export default function Dashboard() {
       {metrics && <MetricsCards metrics={metrics} />}
 
       {/* Real-time Monitoring Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Live Negotiations */}
         <LiveNegotiations negotiations={negotiations.filter(n => n.status === 'running' || n.status === 'active')} />
 
         {/* Simulation Run History */}
         <SimulationRunHistory negotiations={negotiations} isLoading={isLoadingNegotiations} />
+
+        {/* AI Evaluation Status */}
+        <EvaluationBackfillCard />
       </div>
 
       {/* Performance Analytics */}

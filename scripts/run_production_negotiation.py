@@ -2,8 +2,8 @@
 """
 Production Negotiation Service - Main Entry Point
 
-This is the main script called by Node.js to run OpenAI Agent negotiations.
-Now much cleaner and easier to understand thanks to the modular structure.
+This is the main script called by Node.js to run AI Agent negotiations.
+Uses OpenAI Agents SDK with LiteLLM for multi-provider support (OpenAI, Anthropic, Gemini).
 
 Usage:
     python run_production_negotiation.py --negotiation-id=123 --simulation-run-id=456
@@ -12,7 +12,7 @@ For junior developers:
     1. This file orchestrates the negotiation
     2. Data models are in negotiation_models.py
     3. Helper functions are in negotiation_utils.py
-    4. Check README_NEGOTIATION.md for setup instructions
+    4. Check README.md for setup instructions
 """
 
 import asyncio
@@ -226,12 +226,12 @@ class NegotiationService:
 
             # Gemini has strict schema validation - doesn't accept Dict[str, Any] (empty object)
             # Our NegotiationOffer.dimension_values is Dict[str, Any] which causes Gemini errors
-            # Solution: Use JSON mode fallback for Gemini (still structured, just different validation)
+            # Solution: Use JSON mode fallback for Gemini models (still structured, just different validation)
             if "gemini" in model_name.lower():
                 logger.info(f"Using JSON mode for Gemini (Dict[str, Any] not supported in strict schema)")
                 output_schema = None  # Will parse JSON response
             else:
-                # Use strict structured output for other models
+                # Use strict structured output for other models (OpenAI, Anthropic, etc.)
                 output_schema = AgentOutputSchema(NegotiationResponse, strict_json_schema=False)
 
             # Create instructions for both roles

@@ -3,12 +3,15 @@ import * as schema from '@shared/schema';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { createRequestLogger } from '../services/logger';
+
+const log = createRequestLogger('script:backup-full-database');
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 async function backupFullDatabase() {
-  console.log('💾 Creating full database backup...\n');
+  log.info('💾 Creating full database backup...\n');
 
   const backupDir = path.join(__dirname, '../seed-data');
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -36,15 +39,15 @@ async function backupFullDatabase() {
       try {
         const table = (schema as any)[tableName];
         if (!table) {
-          console.log(`⚠️  Table ${tableName} not found in schema, skipping`);
+          log.warn({ tableName }, `⚠️  Table ${tableName} not found in schema, skipping`);
           continue;
         }
 
         const data = await db.select().from(table);
         backup.tables[tableName] = data;
-        console.log(`✅ Backed up ${tableName}: ${data.length} rows`);
+        log.info({ tableName, rowCount: data.length }, `✅ Backed up ${tableName}: ${data.length} rows`);
       } catch (error) {
-        console.log(`⚠️  Could not backup ${tableName}:`, (error as Error).message);
+        log.warn({ err: error, tableName }, `⚠️  Could not backup ${tableName}: ${(error as Error).message}`);
       }
     }
 
@@ -54,15 +57,15 @@ async function backupFullDatabase() {
     const stats = fs.statSync(backupFile);
     const fileSizeMB = (stats.size / 1024 / 1024).toFixed(2);
 
-    console.log(`\n✅ Full database backup complete!`);
-    console.log(`📁 File: ${backupFile}`);
-    console.log(`📊 Size: ${fileSizeMB} MB`);
-    console.log(`\n🔒 Rollback instructions:`);
-    console.log(`   git checkout 3f8da63`);
-    console.log(`   npm run db:push`);
+    log.info(`\n✅ Full database backup complete!`);
+    log.info(`📁 File: ${backupFile}`);
+    log.info(`📊 Size: ${fileSizeMB} MB`);
+    log.info(`\n🔒 Rollback instructions:`);
+    log.info(`   git checkout 3f8da63`);
+    log.info(`   npm run db:push`);
 
   } catch (error) {
-    console.error('❌ Error creating backup:', error);
+    log.error({ err: error }, '❌ Error creating backup');
     process.exit(1);
   }
 }
@@ -70,6 +73,6 @@ async function backupFullDatabase() {
 backupFullDatabase()
   .then(() => process.exit(0))
   .catch((error) => {
-    console.error('Fatal error:', error);
+    log.error({ err: error }, 'Fatal error');
     process.exit(1);
   });

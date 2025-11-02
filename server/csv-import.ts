@@ -15,6 +15,9 @@ import {
   type InsertNegotiationTactic,
   type InsertPersonalityType
 } from '@shared/schema';
+import { createRequestLogger } from './services/logger';
+
+const log = createRequestLogger('script:csv-import');
 
 const DATA_DIR = path.join(process.cwd(), 'data');
 
@@ -23,7 +26,7 @@ const DATA_DIR = path.join(process.cwd(), 'data');
  * CSV format: name;beschreibung;anwendung;wichtige_aspekte;key_phrases
  */
 export async function importInfluencingTechniques(): Promise<void> {
-  console.log('🔄 Importing influencing techniques...');
+  log.info('🔄 Importing influencing techniques...');
   
   try {
     const csvPath = path.join(DATA_DIR, 'influencing_techniques.csv');
@@ -37,7 +40,7 @@ export async function importInfluencingTechniques(): Promise<void> {
       trim: true
     });
 
-    console.log(`📊 Found ${records.length} techniques to import`);
+    log.info(`📊 Found ${records.length} techniques to import`);
 
     const techniques: InsertInfluencingTechnique[] = records.map((record: any) => ({
       name: record.name,
@@ -48,30 +51,30 @@ export async function importInfluencingTechniques(): Promise<void> {
     }));
 
     // Clear existing data in dependency order (cascade deletes)
-    console.log('🧹 Clearing dependent data...');
+    log.info('🧹 Clearing dependent data...');
     await db.delete(dimensionResults);
     await db.delete(negotiationRounds); 
     await db.delete(simulationRuns);
     
-    console.log('🧹 Clearing techniques...');
+    log.info('🧹 Clearing techniques...');
     await db.delete(influencingTechniques);
     
     // Insert new data
     const inserted = await db.insert(influencingTechniques).values(techniques).returning();
     
-    console.log(`✅ Successfully imported ${inserted.length} influencing techniques`);
+    log.info(`✅ Successfully imported ${inserted.length} influencing techniques`);
     
     // Log sample for verification
     if (inserted.length > 0) {
-      console.log('📝 Sample technique:', {
+      log.info({ 
         name: inserted[0].name,
         aspectsCount: Array.isArray(inserted[0].wichtigeAspekte) ? inserted[0].wichtigeAspekte.length : 0,
         phrasesCount: Array.isArray(inserted[0].keyPhrases) ? inserted[0].keyPhrases.length : 0
-      });
+      }, '📝 Sample technique');
     }
     
   } catch (error) {
-    console.error('❌ Error importing influencing techniques:', error);
+    log.error({ err: error }, '❌ Error importing influencing techniques');
     throw error;
   }
 }
@@ -81,7 +84,7 @@ export async function importInfluencingTechniques(): Promise<void> {
  * CSV format: name;beschreibung;anwendung;wichtige_aspekte;key_phrases
  */
 export async function importNegotiationTactics(): Promise<void> {
-  console.log('🔄 Importing negotiation tactics...');
+  log.info('🔄 Importing negotiation tactics...');
   
   try {
     const csvPath = path.join(DATA_DIR, 'negotiation_tactics.csv');
@@ -95,7 +98,7 @@ export async function importNegotiationTactics(): Promise<void> {
       trim: true
     });
 
-    console.log(`📊 Found ${records.length} tactics to import`);
+    log.info(`📊 Found ${records.length} tactics to import`);
 
     const tactics: InsertNegotiationTactic[] = records.map((record: any) => ({
       name: record.name,
@@ -106,17 +109,17 @@ export async function importNegotiationTactics(): Promise<void> {
     }));
 
     // Clear existing data (simulation runs already cleared in techniques import)
-    console.log('🧹 Clearing tactics...');
+    log.info('🧹 Clearing tactics...');
     await db.delete(negotiationTactics);
     
     // Insert new data
     const inserted = await db.insert(negotiationTactics).values(tactics).returning();
     
-    console.log(`✅ Successfully imported ${inserted.length} negotiation tactics`);
+    log.info(`✅ Successfully imported ${inserted.length} negotiation tactics`);
     
     // Log sample for verification
     if (inserted.length > 0) {
-      console.log('📝 Sample tactic:', {
+      log.info('📝 Sample tactic:', {
         name: inserted[0].name,
         aspectsCount: Array.isArray(inserted[0].wichtigeAspekte) ? inserted[0].wichtigeAspekte.length : 0,
         phrasesCount: Array.isArray(inserted[0].keyPhrases) ? inserted[0].keyPhrases.length : 0
@@ -124,7 +127,7 @@ export async function importNegotiationTactics(): Promise<void> {
     }
     
   } catch (error) {
-    console.error('❌ Error importing negotiation tactics:', error);
+    log.error('❌ Error importing negotiation tactics:', error);
     throw error;
   }
 }
@@ -134,7 +137,7 @@ export async function importNegotiationTactics(): Promise<void> {
  * CSV format: personality_archetype,verhalten_in_verhandlungen,vorteile,risiken
  */
 export async function importPersonalityTypes(): Promise<void> {
-  console.log('🔄 Importing personality types...');
+  log.info('🔄 Importing personality types...');
   
   try {
     const csvPath = path.join(DATA_DIR, 'personality_types_simple.csv');
@@ -149,7 +152,7 @@ export async function importPersonalityTypes(): Promise<void> {
       quote: '"'
     });
 
-    console.log(`📊 Found ${records.length} personality types to import`);
+    log.info(`📊 Found ${records.length} personality types to import`);
 
     const personalityTypesData: InsertPersonalityType[] = records.map((record: any) => ({
       archetype: record.personality_archetype,
@@ -159,24 +162,24 @@ export async function importPersonalityTypes(): Promise<void> {
     }));
 
     // Clear existing data
-    console.log('🧹 Clearing personality types...');
+    log.info('🧹 Clearing personality types...');
     await db.delete(personalityTypes);
     
     // Insert new data
     const inserted = await db.insert(personalityTypes).values(personalityTypesData).returning();
     
-    console.log(`✅ Successfully imported ${inserted.length} personality types`);
+    log.info(`✅ Successfully imported ${inserted.length} personality types`);
     
     // Log sample for verification
     if (inserted.length > 0) {
-      console.log('📝 Sample personality type:', {
+      log.info('📝 Sample personality type:', {
         archetype: inserted[0].archetype,
         behaviorDescription: inserted[0].behaviorDescription.substring(0, 100) + '...'
       });
     }
     
   } catch (error) {
-    console.error('❌ Error importing personality types:', error);
+    log.error('❌ Error importing personality types:', error);
     throw error;
   }
 }
@@ -209,7 +212,7 @@ function parseKeyPhrases(phrasesString: string): string[] {
  * Imports all CSV data in correct dependency order
  */
 export async function importAllCSVData(): Promise<void> {
-  console.log('🚀 Starting CSV data import...');
+  log.info('🚀 Starting CSV data import...');
   
   try {
     // Import in dependency order (no foreign key dependencies between these tables)
@@ -217,10 +220,10 @@ export async function importAllCSVData(): Promise<void> {
     await importNegotiationTactics(); 
     await importPersonalityTypes();
     
-    console.log('🎉 All CSV data imported successfully!');
+    log.info('🎉 All CSV data imported successfully!');
     
   } catch (error) {
-    console.error('💥 CSV import failed:', error);
+    log.error('💥 CSV import failed:', error);
     throw error;
   }
 }
@@ -229,20 +232,20 @@ export async function importAllCSVData(): Promise<void> {
  * Validates CSV data integrity after import
  */
 export async function validateImportedData(): Promise<boolean> {
-  console.log('🔍 Validating imported data...');
+  log.info('🔍 Validating imported data...');
   
   try {
     // Check techniques
     const techniquesCount = await db.$count(influencingTechniques);
-    console.log(`📊 Techniques in DB: ${techniquesCount}`);
+    log.info(`📊 Techniques in DB: ${techniquesCount}`);
     
     // Check tactics  
     const tacticsCount = await db.$count(negotiationTactics);
-    console.log(`📊 Tactics in DB: ${tacticsCount}`);
+    log.info(`📊 Tactics in DB: ${tacticsCount}`);
     
     // Check personality types
     const personalityCount = await db.$count(personalityTypes);
-    console.log(`📊 Personality types in DB: ${personalityCount}`);
+    log.info(`📊 Personality types in DB: ${personalityCount}`);
     
     // Validate expected counts (based on CSV files)
     const expectedTechniques = 11;
@@ -255,18 +258,18 @@ export async function validateImportedData(): Promise<boolean> {
       personalityCount === expectedPersonalities;
     
     if (isValid) {
-      console.log('✅ Data validation successful - all expected records imported');
+      log.info('✅ Data validation successful - all expected records imported');
     } else {
-      console.warn('⚠️  Data validation warning:');
-      console.warn(`  Expected ${expectedTechniques} techniques, got ${techniquesCount}`);
-      console.warn(`  Expected ${expectedTactics} tactics, got ${tacticsCount}`);
-      console.warn(`  Expected ${expectedPersonalities} personalities, got ${personalityCount}`);
+      log.warn('⚠️  Data validation warning:');
+      log.warn(`  Expected ${expectedTechniques} techniques, got ${techniquesCount}`);
+      log.warn(`  Expected ${expectedTactics} tactics, got ${tacticsCount}`);
+      log.warn(`  Expected ${expectedPersonalities} personalities, got ${personalityCount}`);
     }
     
     return isValid;
     
   } catch (error) {
-    console.error('❌ Data validation failed:', error);
+    log.error('❌ Data validation failed:', error);
     return false;
   }
 }
@@ -277,27 +280,27 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   
   switch (command) {
     case 'techniques':
-      importInfluencingTechniques().catch(console.error);
+      importInfluencingTechniques().catch(log.error);
       break;
     case 'tactics':
-      importNegotiationTactics().catch(console.error);
+      importNegotiationTactics().catch(log.error);
       break;
     case 'personalities':
-      importPersonalityTypes().catch(console.error);
+      importPersonalityTypes().catch(log.error);
       break;
     case 'all':
       importAllCSVData()
         .then(() => validateImportedData())
-        .catch(console.error);
+        .catch(log.error);
       break;
     case 'validate':
-      validateImportedData().catch(console.error);
+      validateImportedData().catch(log.error);
       break;
     default:
-      console.log('Usage: tsx server/csv-import.ts [techniques|tactics|personalities|all|validate]');
-      console.log('Examples:');
-      console.log('  tsx server/csv-import.ts all         # Import all CSV files');
-      console.log('  tsx server/csv-import.ts techniques  # Import only techniques');
-      console.log('  tsx server/csv-import.ts validate    # Validate imported data');
+      log.info('Usage: tsx server/csv-import.ts [techniques|tactics|personalities|all|validate]');
+      log.info('Examples:');
+      log.info('  tsx server/csv-import.ts all         # Import all CSV files');
+      log.info('  tsx server/csv-import.ts techniques  # Import only techniques');
+      log.info('  tsx server/csv-import.ts validate    # Validate imported data');
   }
 }

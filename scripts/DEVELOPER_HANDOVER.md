@@ -25,14 +25,14 @@ scripts/
 │   ├── test_negotiation_utils.py    # Utility tests
 │   ├── test_negotiation_models.py   # Model tests
 │   └── README.md                     # Test guide
-├── README_NEGOTIATION.md            # 📖 Setup & flow guide
-└── DEVELOPER_HANDOVER.md            # 👨‍💻 This guide
+├── README.md                          # 📖 Setup & flow guide
+├── DEVELOPER_HANDOVER.md              # 👨‍💻 This guide
 ```
 
 ## 🎓 What You Need to Know
 
 ### **File Navigation (30 seconds)**
-1. **Need to understand the flow?** → `run_production_negotiation.py` or `README_NEGOTIATION.md` (flow diagram)
+1. **Need to understand the flow?** → `run_production_negotiation.py` or `README.md` (flow diagram)
 2. **Need to see data structures?** → `negotiation_models.py`
 3. **Need helper functions?** → `negotiation_utils.py`
 4. **Need to change prompts?** → Langfuse Dashboard (not code!)
@@ -242,20 +242,20 @@ pytest tests/test_negotiation_utils.py -v
 pytest tests/test_negotiation_models.py -v
 
 # Run single test by name
-pytest tests/test_negotiation_utils.py::test_safe_json_parse -v
+pytest tests/test_negotiation_models.py::test_negotiation_config -v
 ```
 
 ### **Expected Output**
 ```
 ============================= test session starts ==============================
-collected 50 items
+collected 41+ items
 
-tests/test_negotiation_utils.py::test_safe_json_parse PASSED           [  2%]
-tests/test_negotiation_utils.py::test_safe_json_parse_edge_cases PASSED [  4%]
+tests/test_negotiation_utils.py::test_analyze_convergence PASSED          [  2%]
+tests/test_negotiation_utils.py::test_format_dimensions PASSED            [  4%]
 ...
 tests/test_negotiation_models.py::test_negotiation_response_validation PASSED [100%]
 
-============================== 50 passed in 2.34s ===============================
+============================== 41+ passed in 2.34s ===============================
 ```
 
 ## 🔧 Code Quality Standards
@@ -381,7 +381,7 @@ model = LitellmModel(model="command-r-plus")                     # Cohere
 - `OPENAI_API_KEY` for OpenAI models
 - `ANTHROPIC_API_KEY` for Anthropic models
 - `GEMINI_API_KEY` for Google Gemini
-- `COHERE_API_KEY` for Cohere
+- `COHERE_API_KEY` for Cohere (optional)
 - etc.
 
 **Structured output support:**
@@ -394,7 +394,7 @@ model = LitellmModel(model="command-r-plus")                     # Cohere
 1. **Run the tests**: `pytest tests/ -v`
 2. **Check structured logs**: Look for ERROR/WARNING in stderr
 3. **Check Langfuse trace**: URL logged in DEBUG output
-4. **Check the README**: `README_NEGOTIATION.md`
+4. **Check the README**: `README.md`
 5. **Check function docstrings**: Every function explains itself
 
 ### **Need to Understand the Flow?**

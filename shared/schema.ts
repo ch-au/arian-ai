@@ -68,7 +68,15 @@ export const negotiations = pgTable("negotiations", {
   counterpartPersonality: text("counterpart_personality"), // Selected personality type
   zopaDistance: text("zopa_distance"), // "close", "medium", "far" 
   
+  // Phase2 specific fields
+  companyKnown: boolean("company_known").default(false),
+  counterpartKnown: boolean("counterpart_known").default(false),
+  negotiationFrequency: text("negotiation_frequency"), // "yearly" | "quarterly" | "monthly" | "ongoing"
+  powerBalance: integer("power_balance").default(50), // 0-100: 0 = seller more powerful, 50 = balanced, 100 = buyer more powerful
+  verhandlungsModus: text("verhandlungs_modus"), // "kooperativ" | "moderat" | "aggressiv" | "sehr-aggressiv"
+  
   // DEPRECATED: Will be removed after migration to negotiation_dimensions table
+  // Migration: Use negotiationDimensions table instead
   userZopa: jsonb("user_zopa"), // {volumen: {min,max,target}, preis: {min,max,target}, laufzeit: {min,max,target}, zahlungskonditionen: {min,max,target}}
   counterpartDistance: jsonb("counterpart_distance"), // {volumen: 0, preis: 0, laufzeit: 0, zahlungskonditionen: 0}
   
