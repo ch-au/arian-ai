@@ -11,6 +11,8 @@ vite.config.ts.*
 .env.development.local
 .env.test.local
 .env.production.local
+.env.*
+!.env.example
 
 # Database
 *.db
@@ -48,6 +50,7 @@ ehthumbs.db
 # Temporary folders
 tmp/
 temp/
+build/
 
 # Python
 __pycache__/
