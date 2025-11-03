@@ -4,7 +4,7 @@
  */
 
 import { db, storage } from '../storage';
-import { simulationQueue, simulationRuns, negotiations, influencingTechniques, negotiationTactics, personalityTypes } from '../../shared/schema';
+import { simulationQueue, simulationRuns, negotiations, influencingTechniques, negotiationTactics, personalityTypes, productResults } from '../../shared/schema';
 import { eq, and, or, lt, count, sum, desc, isNull } from 'drizzle-orm';
 import { PythonNegotiationService } from './python-negotiation-service';
 import { createRequestLogger } from './logger';

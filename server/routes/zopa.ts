@@ -28,7 +28,7 @@ export function createZopaRouter(): Router {
       );
       res.json(configurations);
     } catch (error) {
-      log.error({ err: error, contextId: req.params.contextId }, "Failed to get ZOPA configurations");
+      log.error({ err: error, agentId: req.params.agentId }, "Failed to get ZOPA configurations");
       res.status(500).json({ error: "Failed to get ZOPA configurations" });
     }
   });

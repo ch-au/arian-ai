@@ -17,7 +17,7 @@ export function createAnalyticsRouter(): Router {
       );
       res.json(report);
     } catch (error) {
-      log.error({ err: error, agentId, startDate, endDate }, "Failed to generate performance report");
+      log.error({ err: error, agentId: req.query.agentId, startDate: req.query.startDate, endDate: req.query.endDate }, "Failed to generate performance report");
       res.status(500).json({ error: "Failed to generate performance report" });
     }
   });

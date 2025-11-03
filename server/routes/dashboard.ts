@@ -22,7 +22,7 @@ export function createDashboardRouter(): Router {
       const trends = await analyticsService.getSuccessRateTrends(days);
       res.json(trends);
     } catch (error) {
-      log.error({ err: error, days }, "Failed to get success trends");
+      log.error({ err: error, days: req.query.days }, "Failed to get success trends");
       res.status(500).json({ error: "Failed to get success trends" });
     }
   });
@@ -33,7 +33,7 @@ export function createDashboardRouter(): Router {
       const agents = await analyticsService.getTopPerformingAgents(limit);
       res.json(agents);
     } catch (error) {
-      log.error({ err: error, limit }, "Failed to get top agents");
+      log.error({ err: error, limit: req.query.limit }, "Failed to get top agents");
       res.status(500).json({ error: "Failed to get top agents" });
     }
   });
