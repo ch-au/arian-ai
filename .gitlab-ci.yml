@@ -28,6 +28,16 @@ validate:python:
     - python -m py_compile *.py
   allow_failure: true
 
+# Python linting with Ruff
+validate:ruff:
+  stage: validate
+  image: python:3.11
+  script:
+    - pip install ruff
+    - ruff check scripts/ --config pyproject.toml || echo "Ruff found issues but not blocking merge"
+    - ruff format --check scripts/ --config pyproject.toml || echo "Ruff format check found issues"
+  allow_failure: true
+
 # Basic health check (always passes)
 validate:health:
   stage: validate
