@@ -1,0 +1,66 @@
+[
+  {
+    "id": "5806b84e-582e-47de-80cf-66055f45433f",
+    "name": "Analytical Alex",
+    "description": "A highly analytical negotiator focused on data-driven decisions with high conscientiousness.",
+    "personalityProfile": {
+      "openness": 0.7,
+      "neuroticism": 0.2,
+      "extraversion": 0.4,
+      "agreeableness": 0.6,
+      "conscientiousness": 0.9
+    },
+    "powerLevel": "8.50",
+    "preferredTactics": [],
+    "createdAt": "2025-08-27T10:16:50.483Z",
+    "updatedAt": "2025-08-27T10:16:50.483Z"
+  },
+  {
+    "id": "33e0e12a-d282-4415-b34e-73cfe7e75a99",
+    "name": "Collaborative Casey",
+    "description": "A relationship-focused negotiator with high agreeableness who seeks win-win solutions.",
+    "personalityProfile": {
+      "openness": 0.6,
+      "neuroticism": 0.3,
+      "extraversion": 0.8,
+      "agreeableness": 0.9,
+      "conscientiousness": 0.7
+    },
+    "powerLevel": "7.00",
+    "preferredTactics": [],
+    "createdAt": "2025-08-27T10:16:50.483Z",
+    "updatedAt": "2025-08-27T10:16:50.483Z"
+  },
+  {
+    "id": "62206c3e-e3db-4360-be40-d018f64ee50c",
+    "name": "Assertive Aaron",
+    "description": "A dominant negotiator with high extraversion who prefers direct approaches.",
+    "personalityProfile": {
+      "openness": 0.5,
+      "neuroticism": 0.3,
+      "extraversion": 0.9,
+      "agreeableness": 0.4,
+      "conscientiousness": 0.6
+    },
+    "powerLevel": "8.00",
+    "preferredTactics": [],
+    "createdAt": "2025-08-27T10:16:50.483Z",
+    "updatedAt": "2025-08-27T10:16:50.483Z"
+  },
+  {
+    "id": "da3eecb5-0b0d-4610-97e3-08dcbcc66842",
+    "name": "Creative Chris",
+    "description": "An innovative negotiator with high openness who brings creative solutions to complex deals.",
+    "personalityProfile": {
+      "openness": 0.9,
+      "neuroticism": 0.4,
+      "extraversion": 0.7,
+      "agreeableness": 0.7,
+      "conscientiousness": 0.5
+    },
+    "powerLevel": "7.50",
+    "preferredTactics": [],
+    "createdAt": "2025-08-27T10:16:50.483Z",
+    "updatedAt": "2025-08-27T10:16:50.483Z"
+  }
+]

@@ -1,0 +1,745 @@
+[
+  {
+    "id": "f263de8d-6aab-4fda-81ba-d99f1c1a82a4",
+    "name": "Zeitdruck",
+    "beschreibung": "Den Verhandlungspartner bewusst unter Zeitdruck setzen, insbesondere wenn seine Verhandlungsalternative (BATNA) im Laufe der Zeit schwächer wird.",
+    "anwendung": "Durch knappe Fristen oder Betonung von Dringlichkeit dafür sorgen, dass der andere schneller entscheiden muss.",
+    "wichtigeAspekte": [
+      "Funktioniert vor allem",
+      "wenn nur der Verhandlungspartner Zeitdruck hat. Derjenige mit schwindender Alternative ist im Nachteil."
+    ],
+    "keyPhrases": [
+      "Dieses Angebot gilt nur bis Ende der Woche, danach müssen wir es zurückziehen.",
+      "Wir brauchen spätestens bis morgen früh Ihre Zusage, sonst verschiebt sich das Projekt um einen Monat.",
+      "Wenn wir uns heute nicht einigen, können wir die Promotion nächste Woche nicht mehr starten."
+    ],
+    "createdAt": "2025-08-27T10:15:55.753Z"
+  },
+  {
+    "id": "327024b2-fbdf-4e6f-8e0e-be25aca25aff",
+    "name": "Mere-Exposure-Effekt",
+    "beschreibung": "Vertrautheit schaffen durch häufige Kontakte: Menschen finden Personen oder Angebote sympathischer, je öfter sie ihnen begegnen.",
+    "anwendung": "Mehrere Treffen oder Gespräche (formal und informell) einplanen, statt nur eine einzelne Verhandlungsrunde.",
+    "wichtigeAspekte": [
+      "Erfordert Zeit und regelmäßigen Kontakt – der Effekt tritt schleichend ein. Mit jeder Begegnung steigt oft die Vertrautheit und damit die Zustimmung."
+    ],
+    "keyPhrases": [
+      "Lassen Sie uns vor der Entscheidung noch ein, zwei weitere Termine vereinbaren, um alle Details zu besprechen.",
+      "Vielleicht können wir nächste Woche noch einmal telefonieren, um ein besseres Gefühl füreinander zu bekommen.",
+      "Ich schlage vor, dass wir uns regelmäßig austauschen, damit wir uns Schritt für Schritt annähern."
+    ],
+    "createdAt": "2025-08-27T10:15:55.753Z"
+  },
+  {
+    "id": "1ead6266-b494-46dd-b53e-e39df4de7126",
+    "name": "Kontrasteffekt",
+    "beschreibung": "Das eigentliche Angebot durch Vergleich besser aussehen lassen: Erst sehr unattraktive Optionen präsentieren, damit das spätere Angebot vorteilhaft wirkt.",
+    "anwendung": "Mit bewusst ungünstigen Vorschlägen beginnen, bevor man den tatsächlich angestrebten Vorschlag unterbreitet.",
+    "wichtigeAspekte": [
+      "Die Wahrnehmung des Gegenübers wird durch den Vergleich beeinflusst – nach einigen schlechten Optionen erscheint ein gemäßigtes Angebot attraktiver."
+    ],
+    "keyPhrases": [
+      "Wir könnten Ihre Produkte auch gar nicht ins Sortiment nehmen – aber wir würden Ihnen gerne zumindest eine kleine Fläche anbieten.",
+      "Zunächst müssten Sie die Werbekosten komplett allein tragen. Im Vergleich dazu ist unser Vorschlag, die Kosten zu teilen, sehr fair.",
+      "Entweder Sie liefern nur 100 Stück oder – was mir lieber wäre – wir nehmen 1000 Stück zu dem vereinbarten Preis."
+    ],
+    "createdAt": "2025-08-27T10:15:55.753Z"
+  },
+  {
+    "id": "d2cc4df2-06ee-4f31-8f59-5f6d8ecf5eb4",
+    "name": "Framing-Effekt",
+    "beschreibung": "Die Darstellung der Optionen beeinflussen: Die bevorzugte Option als Gewinn und die Alternative als Verlust rahmen.",
+    "anwendung": "Den eigenen Vorschlag als Chance/Gewinn präsentieren und die Nicht-Einigung oder das Gegenangebot als Verlust herausstellen.",
+    "wichtigeAspekte": [
+      "Menschen vermeiden Risiko bei Aussicht auf Gewinne und nehmen eher Risiko bei drohendem Verlust in Kauf – dieses Verhalten kann man durch entsprechende Darstellung nutzen."
+    ],
+    "keyPhrases": [
+      "Wenn Sie uns 5% Rabatt geben, gewinnen wir beide langfristig mehr Umsatz. Lehnen Sie ab, entgehen Ihnen diese zusätzlichen Verkäufe.",
+      "Sie sichern sich mit diesem Deal einen größeren Marktanteil – bei einem Scheitern der Verhandlung verlieren beide Seiten.",
+      "Überlegen Sie, was Sie alles gewinnen, wenn wir uns einigen: mehr Präsenz, mehr Umsatz – andernfalls wäre es ein Rückschlag."
+    ],
+    "createdAt": "2025-08-27T10:15:55.753Z"
+  },
+  {
+    "id": "2a15652f-5f1c-422d-a7f1-a3dcbbd68eec",
+    "name": "Schmeichelei",
+    "beschreibung": "Durch Komplimente und Anerkennung das Wohlwollen des Gegenübers gewinnen.",
+    "anwendung": "Den Verhandlungspartner ehrlich loben (für Erfolge, Fähigkeiten, Produkte) und Wertschätzung ausdrücken.",
+    "wichtigeAspekte": [
+      "Menschen mögen es",
+      "geschätzt zu werden – selbst wenn die Schmeichelei durchschaubar ist",
+      "erzeugt sie oft positive Stimmung. Allerdings sollte sie glaubwürdig bleiben."
+    ],
+    "keyPhrases": [
+      "Ihre Marke gehört zu den beliebtesten bei uns – das ist auch Ihr Verdienst durch das tolle Marketing.",
+      "Sie haben wirklich ein hervorragendes Gespür für Trends, das merkt man sofort.",
+      "Mit einem so erfahrenen Partner wie Ihnen zusammenzuarbeiten, ist für uns ein großer Gewinn."
+    ],
+    "createdAt": "2025-08-27T10:15:55.753Z"
+  },
+  {
+    "id": "4b0e98be-c04a-411b-8985-6089bfe34103",
+    "name": "Körperliche Nähe",
+    "beschreibung": "Räumliche Nähe herstellen, um Vertrautheit zu fördern und eine positive Verbindung aufzubauen.",
+    "anwendung": "Im Gespräch bewusst Nähe suchen – sich nebeneinander setzen oder in Pausen beim Gegenüber bleiben, anstatt Distanz zu wahren.",
+    "wichtigeAspekte": [
+      "Menschen verbinden mit Personen in ihrer unmittelbaren Nähe unbewusst mehr Vertrautheit und Sympathie. Körperliche Nähe (im angemessenen Rahmen) kann das Vertrauen stärken."
+    ],
+    "keyPhrases": [
+      "Kommen Sie doch bitte hierher, dann können wir die Unterlagen gemeinsam durchgehen.",
+      "Darf ich mich neben Sie setzen, damit wir zusammen auf den Bildschirm schauen können?",
+      "Lassen Sie uns die Pause gemeinsam nutzen – ich würde mich gerne weiter mit Ihnen unterhalten."
+    ],
+    "createdAt": "2025-08-27T10:15:55.753Z"
+  },
+  {
+    "id": "28bfcc17-7e26-472b-ae46-6baf1b5ecf6a",
+    "name": "Reziprozität",
+    "beschreibung": "Durch kleine Gefälligkeiten oder Zugeständnisse beim Gegenüber den Drang erzeugen, sich zu revanchieren.",
+    "anwendung": "Dem Verhandlungspartner unerwartet etwas Gutes tun (z. B. ein kleines Geschenk, Einladung zum Kaffee) oder freiwillig ein kleines Zugeständnis machen.",
+    "wichtigeAspekte": [
+      "Menschen fühlen sich verpflichtet",
+      "Gefallen zu erwidern. Wichtig ist",
+      "dass die Gabe als freiwillig und freundlich wahrgenommen wird",
+      "nicht als Bestechung."
+    ],
+    "keyPhrases": [
+      "Ich habe Ihnen eine Auswahl unserer neuen Produkte mitgebracht, probieren Sie gern mal.",
+      "Wir haben Ihnen bereits vorab den Vertragsentwurf vorbereitet, damit Sie weniger Arbeit haben.",
+      "Letzte Woche haben wir bei der Lieferung flexibel reagiert – vielleicht können Sie uns jetzt entgegenkommen."
+    ],
+    "createdAt": "2025-08-27T10:15:55.753Z"
+  },
+  {
+    "id": "2d34aaa6-38f8-4131-9a6b-c93be5df6d4b",
+    "name": "Gute Stimmung",
+    "beschreibung": "Für positive Stimmung sorgen, weil gut gelaunte Verhandlungspartner kooperativer sind.",
+    "anwendung": "Mit Humor, Freundlichkeit oder kleinen Aufmerksamkeiten das Gespräch auflockern und eine angenehme Atmosphäre schaffen.",
+    "wichtigeAspekte": [
+      "Gute Laune macht kompromissbereiter – aber die Maßnahmen sollten zum Gegenüber passen und authentisch sein",
+      "um nicht aufgesetzt zu wirken."
+    ],
+    "keyPhrases": [
+      "Ich habe Ihnen Ihren Lieblingskaffee mitgebracht, so fängt das Gespräch doch gut an.",
+      "Darf ich Ihnen zum Einstieg eine kleine Aufmerksamkeit überreichen?",
+      "*(zeigt ein witziges Bild)* Dachte, das lockert die Stimmung etwas auf."
+    ],
+    "createdAt": "2025-08-27T10:15:55.753Z"
+  },
+  {
+    "id": "e5850f36-c7d8-406c-b2e1-22df6f7a8411",
+    "name": "Ähnlichkeit",
+    "beschreibung": "Gemeinsamkeiten betonen, um Vertrauen und Sympathie herzustellen.",
+    "anwendung": "Im Gespräch nach echten Gemeinsamkeiten suchen (Herkunft, Hobbys, Werte etc.) und diese zur Sprache bringen.",
+    "wichtigeAspekte": [
+      "Menschen fühlen sich zu Verhandlungspartnern hingezogen",
+      "die ihnen ähnlich sind. Echte",
+      "nicht erzwungene Gemeinsamkeiten fördern die Bindung."
+    ],
+    "keyPhrases": [
+      "Sie kommen auch aus einer Händlerfamilie? Ich ebenfalls, ich kenne das seit meiner Kindheit.",
+      "Sie spielen Tennis? Ich bin auch begeisterter Tennisspieler, vielleicht begegnen wir uns mal auf dem Platz.",
+      "Interessant – Sie haben also ebenfalls in den USA studiert, das verbindet."
+    ],
+    "createdAt": "2025-08-27T10:15:55.753Z"
+  },
+  {
+    "id": "9724bb1f-ef47-4d70-89ab-cf829d7b363c",
+    "name": "Sozialer Beweis",
+    "beschreibung": "Sich auf die Meinung oder das Verhalten Anderer berufen, um das eigene Angebot attraktiver zu machen.",
+    "anwendung": "Zuerst eine leicht überzeugbare Person im Umfeld des Gegenübers gewinnen oder auf andere Referenzen verweisen, die bereits zugestimmt haben.",
+    "wichtigeAspekte": [
+      "Menschen orientieren sich am Verhalten anderer",
+      "besonders in unsicheren Situationen. Zustimmung von Dritten kann Skeptiker beeinflussen."
+    ],
+    "keyPhrases": [
+      "Ihr Kollege Herr Müller war mit einem ähnlichen Vorschlag auch sehr erfolgreich.",
+      "Andere namhafte Händler haben bereits ähnliche Vereinbarungen mit uns getroffen.",
+      "In unserer Branche gilt dieses Modell inzwischen als bewährte Praxis – viele setzen bereits darauf."
+    ],
+    "createdAt": "2025-08-27T10:15:55.753Z"
+  },
+  {
+    "id": "ed381a39-a3cb-4bc1-8e7a-1ce8db9a7117",
+    "name": "Reaktanz-Technik",
+    "beschreibung": "Die natürliche Trotzreaktion nutzen: Durch Übertreibung der Position des Gegenübers ihn dazu bringen, diese abzuschwächen.",
+    "anwendung": "Die Forderung des Gegenübers bewusst überspitzt zusammenfassen, sodass sie extremer klingt, und abwarten, ob er sie von sich aus relativiert.",
+    "wichtigeAspekte": [
+      "Menschen wollen ihre Handlungsfreiheit bewahren. Wird ihre Position übertrieben dargestellt",
+      "neigen sie dazu",
+      "sich davon zu distanzieren und moderater zu werden."
+    ],
+    "keyPhrases": [
+      "Also bestehen Sie darauf, überhaupt keine Zugeständnisse zu machen, egal was passiert?",
+      "Sie wollen unter keinen Umständen vom Listenpreis abweichen, habe ich das richtig verstanden?",
+      "Sie würden also lieber ganz auf einen Deal verzichten, als uns auch nur ein bisschen entgegenzukommen?"
+    ],
+    "createdAt": "2025-08-27T10:15:55.753Z"
+  },
+  {
+    "id": "d7650c52-2a56-4161-89d1-9f4c11088007",
+    "name": "Verzögerte Sympathie",
+    "beschreibung": "Sympathie erst nach und nach aufbauen, statt von Anfang an überschwänglich zu sein.",
+    "anwendung": "Anfangs zurückhaltend bleiben und die Wertschätzung für den Verhandlungspartner im Verlauf des Gesprächs steigern.",
+    "wichtigeAspekte": [
+      "Ein langsam wachsendes Vertrauen wirkt authentischer. Der Verhandlungspartner empfindet zunehmende Sympathie als echt",
+      "statt als aufgesetzte Strategie."
+    ],
+    "keyPhrases": [
+      "Anfangs war ich etwas skeptisch, aber je länger wir sprechen, desto sympathischer wird mir Ihre Perspektive.",
+      "Ich merke, dass mir Ihre Ideen mit der Zeit immer besser gefallen.",
+      "Je mehr ich darüber nachdenke, desto überzeugender finde ich Ihren Vorschlag."
+    ],
+    "createdAt": "2025-08-27T10:15:55.753Z"
+  },
+  {
+    "id": "d74cfaf2-1589-4162-97ce-8b74a1fa01e0",
+    "name": "Fehler eingestehen",
+    "beschreibung": "Durch das Zugeben eigener Schwächen Vertrauen aufbauen (niemand ist perfekt).",
+    "anwendung": "Eigene kleinere Fehler oder Unzulänglichkeiten offen ansprechen, statt sich als unfehlbar darzustellen.",
+    "wichtigeAspekte": [
+      "Ein Gegenüber ist weniger misstrauisch",
+      "wenn man nicht vollkommen perfekt erscheint. Offen gezeigte Menschlichkeit schafft Sympathie und Vertrauen."
+    ],
+    "keyPhrases": [
+      "Entschuldigen Sie, da habe ich mich verrechnet – mein Fehler.",
+      "Ich muss zugeben, ich habe anfangs selbst nicht alle Details überblickt.",
+      "Da ist mir wohl ein Missgeschick passiert, tut mir leid, ich bin auch nur ein Mensch."
+    ],
+    "createdAt": "2025-08-27T10:15:55.753Z"
+  },
+  {
+    "id": "b818461a-6b2e-4847-9bf6-17d7c8e1509c",
+    "name": "'Das ist noch nicht alles'-Taktik",
+    "beschreibung": "Ein Angebot attraktiver machen, indem man es in Etappen enthüllt und zusätzliche Vorteile erst nach und nach hinzufügt.",
+    "anwendung": "Nicht gleich alles auf einmal bieten, sondern einen Bonus oder eine Zugabe zurückhalten, die man erst später im Gespräch oben drauf legt.",
+    "wichtigeAspekte": [
+      "Unerwartete Extras steigern die Kauflaune. Der Verhandlungspartner fühlt sich durch nachträgliche Boni positiv überrascht und eher geneigt",
+      "zuzustimmen."
+    ],
+    "keyPhrases": [
+      "Wenn Sie heute bestellen, legen wir kostenlos ein Display-Paket obendrauf – und das ist noch nicht alles...",
+      "Sie bekommen 10% Rabatt und obendrein kostenlose Schulungen für Ihr Personal.",
+      "Zusätzlich übernehmen wir noch die Lieferkosten – das Angebot lohnt sich wirklich."
+    ],
+    "createdAt": "2025-08-27T10:15:55.753Z"
+  },
+  {
+    "id": "eef583fc-4b42-4836-9e10-636c0d4d4ae4",
+    "name": "Fuß-in-der-Tür-Technik",
+    "beschreibung": "Erst um eine kleine Gefälligkeit bitten, dann eine größere Forderung stellen – nach dem Prinzip, dass Zustimmung zu Kleinem die Bereitschaft zu Größerem erhöht.",
+    "anwendung": "Mit einer leichten, zumutbaren Bitte starten, der der andere wahrscheinlich zustimmt, und darauf aufbauend Schritt für Schritt die eigentliche, größere Forderung stellen.",
+    "wichtigeAspekte": [
+      "Weil Menschen konsistent handeln möchten",
+      "sagen sie nach einer ersten Zusage eher auch zu einem größeren Anliegen Ja. important: Die erste Bitte muss wirklich klein sein."
+    ],
+    "keyPhrases": [
+      "Könnten Sie uns zunächst eine kleine Probebestellung von 50 Stück ermöglichen?",
+      "Wären Sie grundsätzlich bereit, über einen Mengenrabatt zu sprechen, falls wir unser Volumen erhöhen?",
+      "Stimmen Sie mir zu, dass wir gemeinsam erfolgreicher sein können, wenn wir enger kooperieren?"
+    ],
+    "createdAt": "2025-08-27T10:15:55.753Z"
+  },
+  {
+    "id": "deb724fa-30bc-498b-a74b-66d196443b0a",
+    "name": "Tür-ins-Gesicht-Technik",
+    "beschreibung": "Mit einer überzogenen Forderung beginnen, die wahrscheinlich abgelehnt wird, um danach mit einem deutlich moderateren Angebot zu kommen.",
+    "anwendung": "Zuerst ein unrealistisch hohes (oder niedriges) Angebot machen und nach der erwarteten Ablehnung ein viel vernünftigeres hinterherschieben.",
+    "wichtigeAspekte": [
+      "Nach einer extremen Forderung wirkt ein gemäßigter Vorschlag vergleichsweise vernünftig",
+      "sodass die Wahrscheinlichkeit steigt",
+      "dass dieser angenommen wird."
+    ],
+    "keyPhrases": [
+      "Wir hätten gerne 20% Rabatt... *(nach Ablehnung)* Okay, dann lassen Sie es uns wenigstens bei 10% Rabatt versuchen.",
+      "Ursprünglich wollten wir, dass Sie alle Werbekosten übernehmen. Wenn das nicht geht, teilen wir sie uns hälftig – ist das fair?",
+      "Erst fordern wir Lieferung in 24 Stunden. Wenn das zu knapp ist, reichen uns auch 3 Tage."
+    ],
+    "createdAt": "2025-08-27T10:15:55.753Z"
+  },
+  {
+    "id": "5c42791c-3cc6-43db-a91c-1d483c917fd1",
+    "name": "Überzogene Positionierung",
+    "beschreibung": "Die eigene Forderung viel höher ansetzen, als eigentlich nötig, um mehr Verhandlungsspielraum zu haben.",
+    "anwendung": "Eine Verhandlungsposition bewusst überhöht darstellen (viel höherer Preis, viel größeres Volumen etc.), um dem Gegenüber größere Zugeständnisse abzuringen.",
+    "wichtigeAspekte": [
+      "Der Verhandlungspartner fühlt sich eher zu eigenen Zugeständnissen veranlasst",
+      "wenn er glaubt",
+      "man bewege sich von einer sehr strikten Position auf ihn zu. Die überzogene Forderung muss aber plausibel begründet sein."
+    ],
+    "keyPhrases": [
+      "Wir gehen davon aus, dass Sie mindestens 10 Paletten pro Markt abnehmen – darunter macht es für uns keinen Sinn.",
+      "Mein Budget lässt absolut nicht mehr als 5 € pro Stück zu.",
+      "Unser Ziel ist ein Jahresbonus von 15%."
+    ],
+    "createdAt": "2025-08-27T10:15:55.753Z"
+  },
+  {
+    "id": "06d4017e-e2a3-4579-b530-400fe7671fbc",
+    "name": "Bluffen",
+    "beschreibung": "Mit unwahren Behauptungen oder vorgetäuschten Konsequenzen Druck ausüben.",
+    "anwendung": "So tun, als hätte man alternative Optionen oder würde drastische Schritte ergreifen, obwohl das nicht der Fall ist, um den anderen zu Zugeständnissen zu bewegen.",
+    "wichtigeAspekte": [
+      "Ein glaubhafter Bluff erhöht den Druck auf den anderen. Wird der Bluff jedoch enttarnt oder wirkt er unglaubwürdig",
+      "verliert man das Vertrauen des Gegenübers."
+    ],
+    "keyPhrases": [
+      "Wir haben auch ein viel günstigeres Angebot von Ihrem Wettbewerber vorliegen.",
+      "Wenn wir uns heute nicht einigen, nehmen wir diese Produktlinie komplett aus dem Sortiment.",
+      "Mein Chef ist bereit, das Projekt zu stoppen, falls wir keine Einigung erzielen."
+    ],
+    "createdAt": "2025-08-27T10:15:55.753Z"
+  },
+  {
+    "id": "0dfcfde6-e259-47cf-8c1f-86809495f174",
+    "name": "Aggressives Auftreten",
+    "beschreibung": "Durch forsche, initiative Eröffnung und Dominanz den Ton der Verhandlung an sich reißen.",
+    "anwendung": "Proaktiv agieren – z. B. als Erster da sein, sofort die Agenda vorgeben, den anderen auch außerhalb der Meetings kontaktieren – um die Kontrolle über Ablauf und Tempo zu gewinnen.",
+    "wichtigeAspekte": [
+      "Wer die Initiative hat",
+      "bestimmt oft Zeit und Ort der Verhandlung und drängt dem anderen seinen Rhythmus auf. Allerdings kann zu viel Dominanz als unhöflich empfunden werden."
+    ],
+    "keyPhrases": [
+      "Ich war schon eine halbe Stunde vor dem Termin hier, damit wir pünktlich starten können.",
+      "Ich habe Sie gestern Abend noch angerufen, weil wir das umgehend klären müssen.",
+      "Lassen Sie uns direkt zur Sache kommen – warum haben Sie bisher nicht zugestimmt?"
+    ],
+    "createdAt": "2025-08-27T10:15:55.753Z"
+  },
+  {
+    "id": "7eb7bf2e-f662-40e2-8939-ed7a5922f7a0",
+    "name": "Einschüchterung",
+    "beschreibung": "Druck durch Androhung ernsthafter Konsequenzen ausüben, um den anderen zu Zugeständnissen zu bewegen.",
+    "anwendung": "Glaubhafte Drohungen oder Ultimaten aussprechen (z. B. Abbruch der Geschäftsbeziehung, rechtliche Schritte), um dem Gegenüber vor Augen zu führen, was bei Nichteinigung passiert.",
+    "wichtigeAspekte": [
+      "Ein verängstigter Verhandlungspartner gibt eher nach",
+      "um Schaden abzuwenden. Die Drohung muss realistisch sein",
+      "sonst verliert sie ihre Wirkung und schadet der Beziehung."
+    ],
+    "keyPhrases": [
+      "Sollten wir bis Monatsende keine Einigung haben, müssen wir die Zusammenarbeit leider beenden.",
+      "Wenn Sie auf diesem Preis bestehen, werden wir uns einen anderen Lieferanten suchen.",
+      "Falls Sie diese Bedingungen nicht akzeptieren, werden wir künftige Projekte ohne Sie planen."
+    ],
+    "createdAt": "2025-08-27T10:15:55.753Z"
+  },
+  {
+    "id": "6f372e59-d2fc-4c4b-bedf-5f78224ec7f1",
+    "name": "Falsche Angaben",
+    "beschreibung": "Bewusst falsche oder irreführende Informationen präsentieren, um einen Vorteil zu erzielen.",
+    "anwendung": "Unwahre Behauptungen über Fakten oder Daten aufstellen, in der Hoffnung, dass der andere sie nicht sofort überprüfen kann.",
+    "wichtigeAspekte": [
+      "Unter Zeitdruck oder inmitten von Informationsflut lässt sich nicht alles verifizieren – das wird auszunutzen versucht. Aber wenn die Täuschung auffliegt",
+      "ist das Vertrauen zerstört."
+    ],
+    "keyPhrases": [
+      "Unsere Verkaufszahlen sind in den letzten Monaten um 20% zurückgegangen.",
+      "Die Produktion kostet uns 15 € pro Stück.",
+      "Wir haben kaum Lagerbestand, wir brauchen dringend Nachschub."
+    ],
+    "createdAt": "2025-08-27T10:15:55.753Z"
+  },
+  {
+    "id": "04f05fbc-81a0-404f-a819-c97519861ef6",
+    "name": "Täuschung",
+    "beschreibung": "Wichtige Informationen weglassen oder Fakten verfälschen, um den Verhandlungspartner zu manipulieren.",
+    "anwendung": "Relevante Details bewusst verschweigen oder falsche Aussagen machen, damit der andere auf falscher Grundlage entscheidet.",
+    "wichtigeAspekte": [
+      "Der andere zieht falsche Schlüsse",
+      "wenn er unvollständige Infos hat. Wird die Täuschung entdeckt",
+      "zerstört das schlagartig die Vertrauensbasis."
+    ],
+    "keyPhrases": [
+      "Einen anderen Anbieter gibt es für uns eigentlich nicht.",
+      "Unser Budget ist vollständig aufgebraucht.",
+      "Wir sind selbstverständlich an einer langfristigen Partnerschaft interessiert."
+    ],
+    "createdAt": "2025-08-27T10:15:55.753Z"
+  },
+  {
+    "id": "151acd60-4134-400d-b19a-f394f0d6a249",
+    "name": "Ablenkungsmanöver",
+    "beschreibung": "Unwichtige Punkte aufbauschen, um dann darauf verzichten zu können und dafür bei wichtigen Themen Zugeständnisse zu erhalten.",
+    "anwendung": "Nebensächliche Forderungen vehement vertreten und später scheinbar großzügig nachgeben, damit der andere im Gegenzug bei wirklich wichtigen Punkten entgegenkommt.",
+    "wichtigeAspekte": [
+      "Es fällt dem Gegenüber schwer",
+      "echte Prioritäten zu erkennen",
+      "wenn man unwichtige Dinge als wichtig darstellt. Geschickt eingesetzt",
+      "fühlt er sich verpflichtet",
+      "für Ihr Entgegenkommen ebenfalls nachzugeben."
+    ],
+    "keyPhrases": [
+      "Wir können die Verpackung keinesfalls ändern, das ist ein absolutes Ausschlusskriterium.",
+      "Die 48-Stunden-Lieferzeit ist für uns unverzichtbar.",
+      "60 Tage Zahlungsziel sind ein Muss, da rücken wir nicht von ab."
+    ],
+    "createdAt": "2025-08-27T10:15:55.753Z"
+  },
+  {
+    "id": "10d97f32-3aba-4ee1-a272-b9f26e76afe3",
+    "name": "Ehrlichkeit betonen",
+    "beschreibung": "Die eigene Aufrichtigkeit hervorheben, um das Vertrauen des Gegenübers zu gewinnen, bevor man eine schwierige Aussage macht.",
+    "anwendung": "Gespräch mit Formulierungen einleiten, die besondere Ehrlichkeit suggerieren (z. B. „Ehrlich gesagt...“), um die Glaubwürdigkeit der anschließenden Aussage zu erhöhen.",
+    "wichtigeAspekte": [
+      "Wenn jemand seine Ehrlichkeit ausdrücklich betont",
+      "neigen Zuhörer dazu",
+      "das Folgende weniger zu hinterfragen. Allerdings nutzt sich diese Masche ab",
+      "wenn sie zu oft oder unglaubwürdig verwendet wird."
+    ],
+    "keyPhrases": [
+      "Um ganz ehrlich zu sein, Ihr Preisvorschlag ist für uns schwer tragbar.",
+      "Ehrlich gesagt, haben wir kaum Spielraum, aber ich mache Ihnen trotzdem ein Angebot.",
+      "Ganz offen gesprochen: Ich möchte fair bleiben und Ihnen nichts vormachen."
+    ],
+    "createdAt": "2025-08-27T10:15:55.753Z"
+  },
+  {
+    "id": "f41b6a99-261d-44f2-9ca8-bf04fa2ae2e9",
+    "name": "Verzögerung",
+    "beschreibung": "Den Verhandlungsprozess absichtlich in die Länge ziehen, um Zeitdruck aufzubauen oder auf bessere Bedingungen zu warten.",
+    "anwendung": "Meetings vertagen, Entscheidungen herauszögern oder bürokratische Hürden einbauen, damit sich eine Einigung verzögert.",
+    "wichtigeAspekte": [
+      "Je mehr die Zeit drängt",
+      "desto eher macht die andere Seite Zugeständnisse. Zudem kann man in der Zwischenzeit selbst an Verhandlungsstärke gewinnen (z. B. neue Alternativen). Aber Vorsicht: zu viel Verzögerung kann den Verhandlungspartner verärgern."
+    ],
+    "keyPhrases": [
+      "Lassen Sie uns das auf nächste Woche verschieben, einige Entscheider sind gerade im Urlaub.",
+      "Ich brauche noch die Freigabe der Zentrale, bevor wir hier weiterkommen.",
+      "Können wir das Thema vertagen? Intern sind noch ein paar Punkte offen."
+    ],
+    "createdAt": "2025-08-27T10:15:55.753Z"
+  },
+  {
+    "id": "5621f9ee-3a9d-4f55-a0cb-a32756c2ea1b",
+    "name": "Sprachbarriere ausnutzen",
+    "beschreibung": "Sprachliche Missverständnisse vorschieben, um Unklarheiten oder Täuschungen zu kaschieren, besonders in internationalen Verhandlungen.",
+    "anwendung": "Bei Nachfragen oder Widerspruch behaupten, man habe etwas falsch verstanden oder ausgedrückt aufgrund der Sprachbarriere, um Zeit zu gewinnen oder sich aus einer ungünstigen Aussage zu winden.",
+    "wichtigeAspekte": [
+      "In Verhandlungen mit unterschiedlicher Muttersprache kann man Übersetzungsprobleme als Ausrede nutzen. Das kann kurzfristig Spannungen entschärfen",
+      "wirkt aber schnell unglaubwürdig",
+      "wenn es zu oft bemüht wird."
+    ],
+    "keyPhrases": [
+      "Entschuldigen Sie, mein Deutsch/Englisch ist nicht perfekt – da gab es wohl ein Missverständnis.",
+      "Ich fürchte, ich habe Sie falsch verstanden, können wir das nochmal klären?",
+      "In unserer Sprache hat das eine etwas andere Bedeutung, entschuldigen Sie die Verwirrung."
+    ],
+    "createdAt": "2025-08-27T10:15:55.753Z"
+  },
+  {
+    "id": "a3f4ade8-467d-4ec7-9891-b463ffb9a10d",
+    "name": "Fachjargon verwenden",
+    "beschreibung": "Mit vielen Fachbegriffen und Abkürzungen sprechen, um den Verhandlungspartner zu beeindrucken oder zu verunsichern.",
+    "anwendung": "Bewusst komplizierte Terminologie einsetzen, sodass ein weniger versierter Gegenüber Schwierigkeiten hat zu folgen und möglicherweise unsicher wird.",
+    "wichtigeAspekte": [
+      "Übermäßiger Jargon kann den anderen einschüchtern und ihm das Gefühl geben",
+      "weniger kompetent zu sein. Das kann ihn zugänglicher machen",
+      "birgt aber die Gefahr",
+      "dass er nicht alles versteht oder sich ausgeschlossen fühlt."
+    ],
+    "keyPhrases": [
+      "Unsere ROI-Kennzahl und die OOS-Quote gemäß ABC-Analyse sind in Q3 signifikant gestiegen.",
+      "Wir haben die POS-Performance per SKU mittels einer Varianzanalyse evaluiert.",
+      "Die geplanten KPI-Ziele orientieren sich am FY-Budget und der EOM-Stockrotation."
+    ],
+    "createdAt": "2025-08-27T10:15:55.753Z"
+  },
+  {
+    "id": "7a0201ad-d48b-465d-9043-e6f6767690eb",
+    "name": "Stur bleiben",
+    "beschreibung": "Kompromisslos bei der eigenen Position bleiben, um den anderen zur Nachgiebigkeit zu drängen.",
+    "anwendung": "Sich weigern, auch nur in kleinen Punkten nachzugeben, und konsequent auf den eigenen Forderungen beharren.",
+    "wichtigeAspekte": [
+      "Totale Unnachgiebigkeit kann den Verhandlungspartner frustrieren",
+      "aber er könnte auch denken",
+      "Sie seien einfach so und eher selbst einlenken. Man riskiert allerdings einen Abbruch",
+      "wenn der andere keinen Weg sieht."
+    ],
+    "keyPhrases": [
+      "Tut mir leid, aber wir rücken von unserer Forderung nicht ab.",
+      "Das ist unser letztes Wort, da gibt es keinen Verhandlungsspielraum.",
+      "Wie oft Sie auch fragen – unsere Position bleibt unverändert."
+    ],
+    "createdAt": "2025-08-27T10:15:55.753Z"
+  },
+  {
+    "id": "3a2d0832-d291-433e-ae3f-4c66430ee519",
+    "name": "Pragmatismus betonen",
+    "beschreibung": "Das eigene Angebot als den einzig vernünftigen, pragmatischen Weg darstellen, dem man kaum widersprechen kann.",
+    "anwendung": "Argumentieren, dass der Vorschlag schlicht der praxisbewährte oder branchenübliche Weg ist und daher die logischste Wahl ist.",
+    "wichtigeAspekte": [
+      "Viele wollen als vernünftig gelten und folgen ‚Common Sense‘-Argumenten. Wichtig ist",
+      "dass der Vorschlag tatsächlich plausibel klingt – sonst erkennt der andere",
+      "dass es nur Rhetorik ist."
+    ],
+    "keyPhrases": [
+      "Praktisch gesehen gibt es keine sinnvollere Lösung als diese.",
+      "Das ist der branchenübliche Ansatz, alles andere wäre unrealistisch.",
+      "Seien wir doch pragmatisch: Dieser Weg hat sich bewährt und ist für beide Seiten das Beste."
+    ],
+    "createdAt": "2025-08-27T10:15:55.753Z"
+  },
+  {
+    "id": "3729a303-2615-404f-8acc-8c6b77b5ce4d",
+    "name": "Ortswechsel",
+    "beschreibung": "Die Verhandlung an einen anderen Ort verlegen, um den Verhandlungspartner aus seiner Komfortzone zu holen.",
+    "anwendung": "Ein Treffen an einem ungewohnten oder neutralen Ort vorschlagen oder während der Verhandlung den Raum wechseln.",
+    "wichtigeAspekte": [
+      "Ein ungewohntes Umfeld kann den anderen verunsichern",
+      "weil ihm der 'Heimvorteil' fehlt. Dadurch ist er evtl. eher geneigt nachzugeben. Doch der Ortswechsel darf nicht als Schikane empfunden werden."
+    ],
+    "keyPhrases": [
+      "Kommen Sie doch für das nächste Gespräch in unsere Zentrale, dann sehen Sie gleich unsere Abläufe.",
+      "Lassen Sie uns den Besprechungsraum wechseln – hier ist es etwas unruhig.",
+      "Vielleicht setzen wir das Gespräch in unserem Showroom fort, dort können wir direkt auf die Produkte schauen."
+    ],
+    "createdAt": "2025-08-27T10:15:55.753Z"
+  },
+  {
+    "id": "bb9c3ed6-acdc-4c07-8efe-14c6ce219b13",
+    "name": "Schuldengefühl erzeugen",
+    "beschreibung": "Dem Verhandlungspartner das Gefühl geben, etwas zurückgeben zu müssen, weil man ihm bereits entgegengekommen ist.",
+    "anwendung": "Im Verlauf oder vor der Verhandlung Gefälligkeiten erweisen (z. B. besondere Dienste, finanzielle Vorteile) und dann subtil darauf hinweisen, um eine Gegenleistung zu motivieren.",
+    "wichtigeAspekte": [
+      "Wenn der andere glaubt",
+      "Ihnen etwas schuldig zu sein",
+      "steigt seine Zugeständnisbereitschaft. Die Erwähnung vergangener Gefallen muss jedoch geschickt erfolgen",
+      "sonst wirkt es wie Vorwurf oder Erpressung."
+    ],
+    "keyPhrases": [
+      "Denken Sie daran, wir haben letztes Jahr extra eine Sonderlieferung für Sie eingeschoben.",
+      "Wir haben im Frühjahr Ihre Lieferengpässe intern aufgefangen – das sollten Sie nicht vergessen.",
+      "Ich habe mich damals für Ihr Produkt starkgemacht. Jetzt hoffe ich, dass Sie uns entgegenkommen."
+    ],
+    "createdAt": "2025-08-27T10:15:55.753Z"
+  },
+  {
+    "id": "9768b409-dcab-43a2-b442-f2b0418f8866",
+    "name": "Stress erzeugen",
+    "beschreibung": "Eine unkomfortable, stressige Verhandlungssituation schaffen, damit der andere schnell abschließen will.",
+    "anwendung": "Äußere Umstände unangenehm gestalten (z. B. Hitze, Enge, Lärm) oder Zeitdruck im Gespräch erzeugen, sodass das Gegenüber die Verhandlung als belastend empfindet.",
+    "wichtigeAspekte": [
+      "Unter Stress steigt der Wunsch",
+      "die Situation zu beenden – oft durch Nachgeben. Aber Vorsicht: Wenn der Druck zu groß wird",
+      "fühlt sich der andere unfair behandelt und könnte abbrechen."
+    ],
+    "keyPhrases": [
+      "Entschuldigen Sie die Hitze hier drin, unsere Klimaanlage ist leider ausgefallen.",
+      "Wir müssen das im Stehen besprechen, alle Konferenzräume sind belegt.",
+      "Es tut mir leid wegen des Lärms im Hintergrund, aber wir haben heute viel Betrieb."
+    ],
+    "createdAt": "2025-08-27T10:15:55.753Z"
+  },
+  {
+    "id": "c7e600bf-923a-4fc4-a9f7-4525efd950dd",
+    "name": "Informationsflut",
+    "beschreibung": "Den Verhandlungspartner mit einer Menge an Informationen überschütten, damit er den Überblick verliert.",
+    "anwendung": "Unzählige Daten, Berichte und Details präsentieren, sodass der andere Mühe hat, Wichtiges von Unwichtigem zu unterscheiden.",
+    "wichtigeAspekte": [
+      "Überforderung kann dazu führen",
+      "dass der andere resigniert zustimmt",
+      "weil er nicht alles durchdringen kann. Allerdings sollte die Infoflut nicht zu offensichtlich manipulativ wirken",
+      "sonst schaltet der andere auf stur."
+    ],
+    "keyPhrases": [
+      "Hier sind die 50-seitige Marktanalyse, unsere Verkaufszahlen der letzten 5 Jahre und eine Liste aller Marketingaktionen – gehen wir das alles durch.",
+      "Ich habe sämtliche Lagerbestände, Umsatzzahlen und Prognosen für jede Filiale dabei, die schauen wir uns an.",
+      "Lassen Sie mich Ihnen noch die Kundenumfragen, den Forschungsbericht und die ROI-Berechnung zeigen – all das ist relevant für unsere Entscheidung."
+    ],
+    "createdAt": "2025-08-27T10:15:55.753Z"
+  },
+  {
+    "id": "ed165791-021c-47c9-8107-940e18755248",
+    "name": "Unklare Vollmacht",
+    "beschreibung": "Vortäuschen, man habe volle Entscheidungsbefugnis, obwohl man in Wirklichkeit noch einen Vorgesetzten im Rücken hat.",
+    "anwendung": "So tun, als könne man einen Deal abschließen, um den anderen in Sicherheit zu wiegen – und nach Einigung anführen, die Chefetage müsse noch zustimmen, wodurch neue Bedingungen verhandelt werden können.",
+    "wichtigeAspekte": [
+      "Verschafft einem Verhandlungsspielraum nach hinten heraus (zweite Verhandlungsrunde)",
+      "untergräbt aber Vertrauen",
+      "wenn der andere merkt",
+      "dass man erst Entscheidungsfreiheit vorgespielt hat."
+    ],
+    "keyPhrases": [
+      "Ich kann das für uns beide hier und jetzt entscheiden.",
+      "Sie haben mein Wort, dass dieser Deal so steht.",
+      "*(später)* Leider muss mein Chef das final noch absegnen – ich hoffe, da ändert sich nichts Wesentliches."
+    ],
+    "createdAt": "2025-08-27T10:15:55.753Z"
+  },
+  {
+    "id": "f6a3e906-7efd-4821-844b-43c31893256d",
+    "name": "Persönliche Angriffe",
+    "beschreibung": "Den Verhandlungspartner persönlich attackieren oder herabsetzen, um ihn zu verunsichern oder abzulenken.",
+    "anwendung": "Abfällige Bemerkungen, Provokationen oder aggressives Verhalten einsetzen, die den anderen verletzen oder aus der Fassung bringen sollen.",
+    "wichtigeAspekte": [
+      "Ein verunsicherter oder verärgerter Gegenüber will die Situation eher beenden – vielleicht durch Nachgeben. Allerdings riskiert man",
+      "dass er dichtmacht oder ebenfalls aggressiv reagiert. Die Beziehung kann nachhaltig Schaden nehmen."
+    ],
+    "keyPhrases": [
+      "Ihr Vorschlag ist völlig unrealistisch – kennen Sie den Markt überhaupt?",
+      "Bei allem Respekt, das ist ja eine lächerliche Kalkulation.",
+      "Sie verschwenden gerade meine Zeit mit solchen Forderungen."
+    ],
+    "createdAt": "2025-08-27T10:15:55.753Z"
+  },
+  {
+    "id": "4cac48da-381b-4722-8468-ea4cb0819765",
+    "name": "Guter-Kerl/Böser-Kerl",
+    "beschreibung": "Im Team eine Doppelrolle spielen: Einer verhält sich hart und unnachgiebig, der andere gibt sich verständnisvoll, um den Gegenüber zu beeinflussen.",
+    "anwendung": "Abgesprochenes Vorgehen, bei dem ein Verhandler sehr konfrontativ auftritt und hohe Forderungen stellt, während der andere auf den Verhandlungspartner eingeht, Kompromisse anbietet und vermittelt.",
+    "wichtigeAspekte": [
+      "Durch den Kontrast zieht es den Verhandlungspartner zum 'guten Kerl'",
+      "dessen Vorschläge im Vergleich moderat erscheinen. Wichtig: Das Theater muss überzeugend sein",
+      "sonst verliert es Wirkung."
+    ],
+    "keyPhrases": [
+      "Das Angebot ist vollkommen inakzeptabel, darüber verhandle ich nicht weiter!",
+      "Wir finden bestimmt einen Kompromiss, der für beide Seiten passt. Lassen Sie uns gemeinsam eine Lösung suchen."
+    ],
+    "createdAt": "2025-08-27T10:15:55.753Z"
+  },
+  {
+    "id": "d9c79102-10c4-4d62-a107-b439e0294c57",
+    "name": "Forderungsschraube",
+    "beschreibung": "Für jedes eigene Zugeständnis gleichzeitig eine neue oder höhere Forderung stellen.",
+    "anwendung": "Immer wenn man dem anderen entgegenkommt, umgehend an anderer Stelle die Ansprüche erhöhen, sodass die Gesamtbelastung für den anderen gleich bleibt oder steigt.",
+    "wichtigeAspekte": [
+      "Der andere wird mürbe",
+      "weil jede Einigung neue Forderungen nach sich zieht. Aus Angst vor weiteren Forderungen neigt er dazu",
+      "schnell abzuschließen – oder er bricht genervt ab",
+      "wenn es zu viel wird."
+    ],
+    "keyPhrases": [
+      "Wir haben Ihnen beim Liefertermin entgegengekommen, dafür müsste der Preis aber noch weiter runter.",
+      "Wenn wir die Werbekosten übernehmen sollen, erhöhen wir im Gegenzug unsere Mengenforderung.",
+      "Weil wir Ihnen hier nachgeben, erwarten wir an anderer Stelle ein Entgegenkommen."
+    ],
+    "createdAt": "2025-08-27T10:15:55.753Z"
+  },
+  {
+    "id": "376f2db3-5303-4494-bef0-5fb99090e5aa",
+    "name": "Selbstbindung",
+    "beschreibung": "Sich selbst so festlegen oder einschränken, dass man angeblich keinen Verhandlungsspielraum mehr hat, wodurch der andere nachgeben muss, um Schlimmeres zu verhindern.",
+    "anwendung": "Unumkehrbare Schritte gehen oder öffentlich Versprechen abgeben, sodass man glaubhaft nicht mehr zurückkann. Der Verhandlungspartner steht dann vor der Wahl, das kleine Übel (Zugeständnis) hinzunehmen oder ein größeres Problem zu riskieren.",
+    "wichtigeAspekte": [
+      "Die Taktik muss glaubwürdig sein: Der andere muss glauben",
+      "dass man wirklich keinen Spielraum mehr hat. Dann wird er rational lieber das kleinere Opfer bringen",
+      "als den großen Schaden zu riskieren."
+    ],
+    "keyPhrases": [
+      "Ich habe dem Vorstand bereits fest zugesagt, mindestens 1000 Stück abzunehmen – ich kann das jetzt nicht mehr ändern.",
+      "Unsere Werbung mit diesem Angebot ist schon draußen, wir können den Preis nicht mehr korrigieren.",
+      "Ich habe intern mein Wort gegeben, diesen Deal so abzuschließen – wenn das platzt, stehe ich im eigenen Haus schlecht da."
+    ],
+    "createdAt": "2025-08-27T10:15:55.753Z"
+  },
+  {
+    "id": "140300e5-e38e-45f6-8a8b-ae98d869aabf",
+    "name": "Drohungen",
+    "beschreibung": "Klare Androhung negativer Konsequenzen für den Fall, dass der eigene Vorschlag abgelehnt wird.",
+    "anwendung": "Dem Gegenüber unmissverständlich aufzeigen, welche ernsten Folgen eine Nichteinigung hätte (z. B. Vertragskündigung, Konkurrenz zuwenden).",
+    "wichtigeAspekte": [
+      "Nur wirksam",
+      "wenn die Drohung als realistisch eingeschätzt wird. Sie erzeugt beim anderen den Wunsch",
+      "den Konflikt zu vermeiden",
+      "kann aber auch Trotz oder Eskalation hervorrufen. Sie sollte daher mit Bedacht eingesetzt werden."
+    ],
+    "keyPhrases": [
+      "Wenn wir uns nicht einigen, werden wir die Zusammenarbeit beenden müssen.",
+      "Sollten Sie auf diesem Standpunkt beharren, sehen wir uns gezwungen, einen anderen Partner zu suchen.",
+      "Falls Sie das Angebot ablehnen, müssen wir rechtliche Schritte prüfen."
+    ],
+    "createdAt": "2025-08-27T10:15:55.753Z"
+  },
+  {
+    "id": "ed97bdc7-0bf8-48dd-98d4-11f5c3b5542c",
+    "name": "Verhandlungsverweigerung",
+    "beschreibung": "Sich weigern, überhaupt weiterzuverhandeln, um den andere unter Druck zu setzen, Zugeständnisse zu machen.",
+    "anwendung": "Kommunizieren, dass unter den aktuellen Bedingungen keine Verhandlung stattfinden wird bzw. abbrechen, bis der andere entgegenkommt.",
+    "wichtigeAspekte": [
+      "Ein starkes Druckmittel",
+      "da die Aussicht auf Scheitern den anderen oft zum Einlenken bewegt",
+      "um die Verhandlung zu retten. Es birgt aber das Risiko",
+      "dass tatsächlich keine Einigung mehr erfolgt",
+      "wenn die Fronten zu verhärtet sind."
+    ],
+    "keyPhrases": [
+      "Unter diesen Umständen gibt es für uns nichts mehr zu besprechen.",
+      "Dann müssen wir die Gespräche hier beenden.",
+      "Wenn das Ihr finales Angebot ist, brauchen wir nicht weiter zu verhandeln."
+    ],
+    "createdAt": "2025-08-27T10:15:55.753Z"
+  },
+  {
+    "id": "8ef1999c-3b18-45b9-bdd6-55ca4902db13",
+    "name": "Extremes Erstangebot",
+    "beschreibung": "Mit einem unrealistisch extremen Einstieg in die Verhandlung gehen (sehr hoher oder sehr niedriger Preis), um die Ankerwirkung zu nutzen.",
+    "anwendung": "Das erste Angebot bewusst weit außerhalb des eigentlich akzeptablen Bereichs platzieren, um die Erwartungen des Gegenübers in diese Richtung zu verschieben.",
+    "wichtigeAspekte": [
+      "Der erste Anker beeinflusst die Denkweise des Gegenübers: Ein extrem niedriges/hohes Angebot lässt sein eigenes Angebot im Vergleich moderater erscheinen. Allerdings darf das Erstangebot nicht völlig absurd sein",
+      "sonst bricht die Verhandlung gleich ab."
+    ],
+    "keyPhrases": [
+      "Wir zahlen 1 € pro Stück.",
+      "Für die Zweitplatzierung bieten wir 0 € an.",
+      "Wir bestellen 10.000 Stück, aber erwarten dafür 50% Rabatt."
+    ],
+    "createdAt": "2025-08-27T10:15:55.753Z"
+  },
+  {
+    "id": "442f4c4e-3cd6-49ab-90a8-b7a2753f1491",
+    "name": "Hartherziger Partner",
+    "beschreibung": "Einen strengen Dritten (z. B. Chef oder Partner) vorschieben, der angeblich Zugeständnisse verbietet, um Verständnis für die eigene Härte zu wecken.",
+    "anwendung": "Dem Gegenüber sagen, man selbst wäre zu Kompromissen bereit, aber der 'böse' Partner/Vorgesetzte im Hintergrund lasse es nicht zu.",
+    "wichtigeAspekte": [
+      "Der Verhandlungspartner könnte die Ausrede akzeptieren und weniger Druck ausüben",
+      "da er den Widerstand dem abwesenden Dritten zuschreibt. Diese Taktik funktioniert aber nur",
+      "solange dieser Dritte nicht direkt involviert wird und die Geschichte glaubhaft bleibt."
+    ],
+    "keyPhrases": [
+      "Glauben Sie mir, ich würde Ihnen gerne entgegenkommen, aber mein Chef hat mir klare Grenzen gesetzt.",
+      "Ich persönlich hätte die 5% Extra-Rabatt gegeben, aber mein Partner lässt mich nicht.",
+      "Mein Vorgesetzter besteht auf dieser harten Linie, da habe ich leider keinen Spielraum."
+    ],
+    "createdAt": "2025-08-27T10:15:55.753Z"
+  },
+  {
+    "id": "ef40890c-19ef-48bd-9743-39e0892e388b",
+    "name": "Friss oder stirb",
+    "beschreibung": "Dem Gegenüber ein ultimatives Angebot machen, das er entweder exakt so annimmt oder ablehnt – ohne Möglichkeit zur Verhandlung.",
+    "anwendung": "Eine finale Position beziehen und klarstellen, dass es keinerlei Verhandlungsspielraum gibt: Entweder das Angebot wird akzeptiert, oder es gibt keinen Abschluss.",
+    "wichtigeAspekte": [
+      "Setzt den anderen massiv unter Druck",
+      "da er glaubt",
+      "keine Alternative zu haben. Oft wird ein solches Ultimatum zähneknirschend akzeptiert",
+      "sofern es noch halbwegs tragbar ist. Ist es jedoch zu extrem",
+      "riskiert man einen kompletten Abbruch."
+    ],
+    "keyPhrases": [
+      "Das ist unser letztes Angebot – nehmen Sie es an oder lehnen Sie es ab.",
+      "Mehr können wir nicht bieten. Sie müssen jetzt entscheiden, ob Sie das akzeptieren.",
+      "Entweder Sie akzeptieren diese Konditionen, oder es gibt keinen Vertrag."
+    ],
+    "createdAt": "2025-08-27T10:15:55.753Z"
+  },
+  {
+    "id": "c96be3e8-ff16-449e-b33d-235416419c3e",
+    "name": "Kleine Zusatzforderung",
+    "beschreibung": "Kurz vor Abschluss noch eine kleine Bitte/Forderung hinzufügen, mit der der andere nicht gerechnet hat.",
+    "anwendung": "Wenn die Einigung fast erreicht ist, im letzten Moment noch eine geringfügige Zugabe erbitten – in der Annahme, dass der andere zustimmt, um das Geschäft nicht scheitern zu lassen.",
+    "wichtigeAspekte": [
+      "Kleine",
+      "späte Forderungen werden oft noch akzeptiert",
+      "damit der Deal zustande kommt. Wichtig ist",
+      "dass sie wirklich klein sind und erst zum Schluss kommen",
+      "damit der andere nicht das Gefühl bekommt",
+      "von vornherein überrumpelt worden zu sein."
+    ],
+    "keyPhrases": [
+      "Eine Kleinigkeit noch: Können Sie die Lieferung frei Haus übernehmen?",
+      "Bevor wir zum Abschluss kommen – könnten Sie uns noch ein Display gratis dazugeben?",
+      "Ich hätte noch eine Bitte: Wären 2% Skonto zusätzlich möglich?"
+    ],
+    "createdAt": "2025-08-27T10:15:55.753Z"
+  }
+]

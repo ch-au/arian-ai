@@ -1,0 +1,8 @@
+# OpenAI Agents SDK + Langfuse tracing deps
+openai-agents[litellm]==0.3.1  # Includes LiteLLM support for multi-model
+langfuse>=2.47.0
+nest_asyncio>=1.6.0
+python-dotenv>=1.0.1
+
+# Official OpenAI Agents instrumentation for Langfuse
+openinference-instrumentation-openai-agents>=0.1.0

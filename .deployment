@@ -1,0 +1,9 @@
+# Azure App Service Configuration
+# This file helps Azure Oryx build system understand the project structure
+
+SCM_DO_BUILD_DURING_DEPLOYMENT=true
+POST_BUILD_COMMAND="npm run build:copy-python || echo 'Python copy skipped'"
+
+# Python runtime detection
+# Azure will automatically detect Python if requirements.txt is in root
+# Since we have it in scripts/, we'll handle it in startup.sh

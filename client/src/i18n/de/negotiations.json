@@ -1,0 +1,55 @@
+{
+  "title": "Verhandlungen",
+  "subtitle": "Verwalten und überwachen Sie Ihre AI-Verhandlungssitzungen",
+  "newNegotiation": "Neue Verhandlung",
+  "stopAll": "Alle stoppen",
+  "table": {
+    "title": "Titel",
+    "type": "Art & Beziehung",
+    "status": "Status",
+    "simulationRuns": "Simulationsläufe",
+    "created": "Erstellt",
+    "successScore": "Erfolgsquote",
+    "actions": "Aktionen"
+  },
+  "status": {
+    "configured": "Konfiguriert",
+    "running": "Läuft",
+    "completed": "Abgeschlossen",
+    "error": "Fehler",
+    "pending": "Ausstehend"
+  },
+  "type": {
+    "oneShot": "Einmalig",
+    "multiYear": "Mehrjährig"
+  },
+  "relationship": {
+    "first": "Erstmalig",
+    "longStanding": "Langjährig"
+  },
+  "actions": {
+    "view": "Ansehen",
+    "edit": "Bearbeiten",
+    "start": "Starten",
+    "stop": "Stoppen",
+    "monitor": "Überwachen",
+    "delete": "Löschen"
+  },
+  "deleteDialog": {
+    "title": "Verhandlung löschen",
+    "description": "Sind Sie sicher, dass Sie diese Verhandlung löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden und wird alle Simulationsläufe und Gesprächsprotokolle dauerhaft entfernen.",
+    "cancel": "Abbrechen",
+    "confirm": "Löschen"
+  },
+  "emptyState": {
+    "title": "Noch keine Verhandlungen",
+    "description": "Erstellen Sie Ihre erste AI-Verhandlungssitzung, um mit automatisierten Verhandlungen zwischen intelligenten Agenten zu beginnen. Sie können verschiedene Techniken und Taktiken testen, um die effektivsten Strategien zu finden.",
+    "action": "Erste Verhandlung erstellen"
+  },
+  "progress": {
+    "completed": "abgeschlossen",
+    "activelyRunning": "aktiv laufend",
+    "pending": "ausstehend",
+    "failed": "fehlgeschlagen"
+  }
+}
