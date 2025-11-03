@@ -1,0 +1,42 @@
+{
+  "buttons": {
+    "save": "Speichern",
+    "cancel": "Abbrechen",
+    "delete": "Löschen",
+    "edit": "Bearbeiten",
+    "create": "Erstellen",
+    "back": "Zurück",
+    "next": "Weiter",
+    "finish": "Abschließen",
+    "start": "Starten",
+    "stop": "Stoppen",
+    "export": "Exportieren",
+    "import": "Importieren",
+    "add": "Hinzufügen",
+    "remove": "Entfernen",
+    "close": "Schließen",
+    "confirm": "Bestätigen",
+    "loading": "Lädt..."
+  },
+  "common": {
+    "yes": "Ja",
+    "no": "Nein",
+    "optional": "Optional",
+    "required": "Erforderlich",
+    "error": "Fehler",
+    "success": "Erfolg",
+    "warning": "Warnung",
+    "info": "Information"
+  },
+  "roles": {
+    "buyer": "Käufer",
+    "seller": "Verkäufer"
+  },
+  "status": {
+    "pending": "Ausstehend",
+    "running": "Läuft",
+    "completed": "Abgeschlossen",
+    "failed": "Fehlgeschlagen",
+    "timeout": "Zeitüberschreitung"
+  }
+}

@@ -1,0 +1,195 @@
+{
+  "title": "Neue Verhandlung konfigurieren",
+  "steps": {
+    "grundeinstellungen": "Grundeinstellungen",
+    "dimensionen": "Verhandlungsdimensionen",
+    "taktiken": "Taktiken & Techniken",
+    "gegenseite": "Gegenseite",
+    "review": "Überprüfen"
+  },
+  "grundeinstellungen": {
+    "title": {
+      "label": "Verhandlungstitel",
+      "placeholder": "z.B. Milka Schokolade Jahresvertrag 2025"
+    },
+    "userRole": {
+      "label": "Ihre Rolle",
+      "buyer": "Käufer",
+      "seller": "Verkäufer"
+    },
+    "negotiationType": {
+      "label": "Verhandlungsart",
+      "oneShot": "Einmalig",
+      "multiYear": "Mehrjährig"
+    },
+    "companyKnown": {
+      "label": "Ist das Unternehmen bekannt?",
+      "yes": "Ja, bekanntes Unternehmen",
+      "no": "Nein, erstmaliger Kontakt"
+    },
+    "counterpartKnown": {
+      "label": "Ist der Verhandlungspartner im Unternehmen bekannt?",
+      "yes": "Ja, bekannte Person",
+      "no": "Nein, neue Kontaktperson"
+    },
+    "negotiationFrequency": {
+      "label": "Verhandlungsfrequenz",
+      "yearly": "Jährlich",
+      "quarterly": "Quartalsweise",
+      "monthly": "Monatlich",
+      "ongoing": "Laufend"
+    },
+    "powerBalance": {
+      "label": "Macht-Balance",
+      "sellerPower": "Verkäufer mächtiger",
+      "balanced": "Ausgeglichen",
+      "buyerPower": "Käufer mächtiger",
+      "description": "Wer hat mehr Verhandlungsmacht?"
+    },
+    "maxRounds": {
+      "label": "Maximale Verhandlungsrunden",
+      "description": "Anzahl der Angebot-Reaktion-Zyklen (1-15)"
+    },
+    "marktProduktKontext": {
+      "label": "Markt- und Produktkontext",
+      "description": "Beschreiben Sie die Produkte, Dienstleistungen oder Märkte dieser Verhandlung",
+      "placeholder": "z.B. Wir verhandeln über Milka Schokolade 100g Tafeln für den deutschen Einzelhandel. Marktführer mit 23% Marktanteil..."
+    },
+    "importantContext": {
+      "label": "Wichtiger Verhandlungskontext",
+      "description": "Zusätzliche Hintergrundinformationen zur Verhandlung (optional)",
+      "placeholder": "Beschreiben Sie wichtige Hintergrundinformationen...",
+      "voiceButton": "Spracheingabe starten"
+    }
+  },
+  "dimensionen": {
+    "title": "Verhandlungsdimensionen",
+    "description": "Definieren Sie Produkte und übergreifende Konditionen",
+    "konditionen": {
+      "title": "Übergreifende Konditionen",
+      "description": "Zusätzliche Verhandlungsdimensionen wie Lieferzeit, Zahlungsziel, etc.",
+      "add": "Kondition hinzufügen",
+      "remove": "Entfernen",
+      "name": "Name",
+      "namePlaceholder": "z.B. Lieferzeit, Zahlungsziel",
+      "einheit": "Einheit",
+      "einheitPlaceholder": "z.B. Tage, Monate, %",
+      "minWert": "Minimalwert",
+      "maxWert": "Maximalwert",
+      "zielWert": "Zielwert",
+      "priorität": "Priorität",
+      "mustHave": "Must-have (1)",
+      "important": "Wichtig (2)",
+      "flexible": "Flexibel (3)"
+    },
+    "produkte": {
+      "title": "Produkte",
+      "description": "Fügen Sie bis zu 10 Produkte hinzu",
+      "add": "Produkt hinzufügen",
+      "remove": "Entfernen",
+      "produktName": "Produktname",
+      "produktNamePlaceholder": "z.B. Milka Schokolade 100g",
+      "zielPreis": "Zielpreis (€)",
+      "minPreis": "Min. Preis (€)",
+      "maxPreis": "Max. Preis (€)",
+      "volumen": "Geschätztes Volumen",
+      "maxLimit": "Maximal 10 Produkte erlaubt"
+    }
+  },
+  "taktikenTechniken": {
+    "title": "Taktiken & Techniken",
+    "info": {
+      "title": "Kombinatorisches Testing",
+      "description": "Es werden {{count}} Simulationen erstellt (alle Kombinationen)"
+    },
+    "selected": "ausgewählt",
+    "selectAll": "Alle auswählen",
+    "deselectAll": "Alle abwählen",
+    "tactics": {
+      "title": "Verhandlungstaktiken",
+      "description": "Wählen Sie strategische Taktiken aus",
+      "categories": {
+        "integrative": "Integrativ",
+        "competitive": "Kompetitiv",
+        "defensive": "Defensiv",
+        "undefined": "Andere"
+      }
+    },
+    "techniques": {
+      "title": "Beeinflussungs-Techniken",
+      "description": "Wählen Sie psychologische Techniken aus"
+    },
+    "summary": {
+      "totalCombinations": "Gesamt Kombinationen",
+      "tactics": "Taktiken",
+      "techniques": "Techniken"
+    }
+  },
+  "gegenseite": {
+    "title": "Gegenseite konfigurieren",
+    "beschreibung": {
+      "label": "Beschreibung der Gegenseite",
+      "description": "Beschreiben Sie Ihren Verhandlungspartner (per Text oder Sprache)",
+      "placeholder": "Beschreiben Sie Ihren Verhandlungspartner: Unternehmensgröße, Marktposition, bekannte Prioritäten, vergangene Verhandlungen..."
+    },
+    "modus": {
+      "label": "Verhandlungsmodus der Gegenseite",
+      "description": "Wie agiert Ihr Verhandlungspartner typischerweise?",
+      "kooperativ": "Kooperativ",
+      "kooperativDesc": "Win-Win fokussiert, sucht gemeinsame Lösungen",
+      "moderat": "Moderat",
+      "moderatDesc": "Ausgewogener Ansatz zwischen Kooperation und Wettbewerb",
+      "aggressiv": "Aggressiv",
+      "aggressivDesc": "Kompetitiv, fokussiert auf eigenen Vorteil",
+      "sehrAggressiv": "Sehr Aggressiv",
+      "sehrAggressivDesc": "Zero-sum Mindset, maximiert eigenen Gewinn",
+      "badges": {
+        "kooperativ": "Win-Win",
+        "moderat": "Ausgewogen",
+        "aggressiv": "Kompetitiv",
+        "sehrAggressiv": "Zero-Sum"
+      }
+    },
+    "distanz": {
+      "label": "Geschätzte Distanz zur eigenen Position",
+      "description": "Wie weit sind die Positionen der Gegenseite von Ihren eigenen entfernt?",
+      "info": "Negative Werte = weit entfernt, Positive Werte = nah/überlappend",
+      "noDimensions": "Bitte definieren Sie zuerst Produkte oder Konditionen in Screen 2",
+      "veryFar": "Sehr weit",
+      "far": "Weit",
+      "close": "Nah",
+      "veryClose": "Sehr nah",
+      "aligned": "Übereinstimmend"
+    }
+  },
+  "review": {
+    "title": "Konfiguration überprüfen",
+    "summary": {
+      "title": "Zusammenfassung",
+      "description": "Überprüfen Sie Ihre Konfiguration vor dem Start",
+      "products": "Produkte",
+      "conditions": "Konditionen",
+      "tactics": "Taktiken",
+      "techniques": "Techniken",
+      "totalSimulations": "Gesamt Simulationen",
+      "counterpartMode": "Gegenseite Modus"
+    },
+    "intelligence": {
+      "title": "KI Marktanalyse",
+      "description": "Generieren Sie aktuelle Markteinschätzungen für Ihre Verhandlung",
+      "generate": "Marktanalyse generieren",
+      "generating": "Generiere...",
+      "analyzing": "Analysiere aktuelle Marktdaten mit Gemini Flash...",
+      "noResults": "Keine Ergebnisse verfügbar",
+      "relevanz": {
+        "hoch": "Hoch",
+        "mittel": "Mittel",
+        "niedrig": "Niedrig"
+      }
+    },
+    "submit": {
+      "readyTitle": "Bereit zum Start",
+      "readyDescription": "Klicken Sie auf 'Simulation starten' um alle Kombinationen zu testen"
+    }
+  }
+}
