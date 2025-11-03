@@ -29,7 +29,7 @@ router.post('/queue/:negotiationId', async (req, res) => {
       message: `Created queue with ${queueRequest.techniques.length * queueRequest.tactics.length * (queueRequest.personalities.length || 1) * (queueRequest.zopaDistances.length || 1)} simulations`
     });
   } catch (error) {
-    log.error({ err: error, negotiationId }, 'Failed to create simulation queue');
+    log.error({ err: error, negotiationId: req.params.negotiationId }, 'Failed to create simulation queue');
     res.status(500).json({ 
       success: false, 
       error: error instanceof Error ? error.message : 'Unknown error' 
@@ -55,7 +55,7 @@ router.get('/queues', async (req, res) => {
     const queues = await SimulationQueueService.getQueuesByNegotiation(negotiationId as string);
     res.json(queues);
   } catch (error) {
-    log.error({ err: error, negotiationId }, 'Failed to get queues');
+    log.error({ err: error, negotiationId: req.query.negotiationId }, 'Failed to get queues');
     res.status(500).json({ 
       success: false, 
       error: error instanceof Error ? error.message : 'Unknown error' 
@@ -74,7 +74,7 @@ router.get('/queue/:queueId/status', async (req, res) => {
     
     res.json({ success: true, data: status });
   } catch (error) {
-    log.error({ err: error, queueId }, 'Failed to get queue status');
+    log.error({ err: error, queueId: req.params.queueId }, 'Failed to get queue status');
     res.status(500).json({ 
       success: false, 
       error: error instanceof Error ? error.message : 'Unknown error' 
@@ -100,8 +100,9 @@ router.post('/queue/:queueId/execute', async (req, res) => {
       });
     } else if (executeRequest.mode === 'all') {
       // Execute all in background
+      const qId = queueId;
       SimulationQueueService.executeAll(queueId).catch(error => {
-        log.error({ err: error, queueId }, 'Background execution failed');
+        log.error({ err: error, queueId: qId }, 'Background execution failed');
       });
       
       res.json({ 
@@ -115,7 +116,7 @@ router.post('/queue/:queueId/execute', async (req, res) => {
       });
     }
   } catch (error) {
-    log.error({ err: error, queueId }, 'Failed to execute simulations');
+    log.error({ err: error, queueId: req.params.queueId }, 'Failed to execute simulations');
     res.status(500).json({ 
       success: false, 
       error: error instanceof Error ? error.message : 'Unknown error' 
@@ -134,7 +135,7 @@ router.post('/queue/:queueId/pause', async (req, res) => {
     
     res.json({ success: true, message: 'Queue paused successfully' });
   } catch (error) {
-    log.error({ err: error, queueId }, 'Failed to pause queue');
+    log.error({ err: error, queueId: req.params.queueId }, 'Failed to pause queue');
     res.status(500).json({ 
       success: false, 
       error: error instanceof Error ? error.message : 'Unknown error' 
@@ -153,7 +154,7 @@ router.post('/queue/:queueId/resume', async (req, res) => {
     
     res.json({ success: true, message: 'Queue resumed successfully' });
   } catch (error) {
-    log.error({ err: error, queueId }, 'Failed to resume queue');
+    log.error({ err: error, queueId: req.params.queueId }, 'Failed to resume queue');
     res.status(500).json({ 
       success: false, 
       error: error instanceof Error ? error.message : 'Unknown error' 
@@ -172,7 +173,7 @@ router.post('/queue/:queueId/stop', async (req, res) => {
     
     res.json({ success: true, message: 'Queue stopped successfully' });
   } catch (error) {
-    log.error({ err: error, queueId }, 'Failed to stop queue');
+    log.error({ err: error, queueId: req.params.queueId }, 'Failed to stop queue');
     res.status(500).json({ 
       success: false, 
       error: error instanceof Error ? error.message : 'Unknown error' 
@@ -191,7 +192,7 @@ router.get('/recovery/:negotiationId', async (req, res) => {
     
     res.json({ success: true, data: recoveryData });
   } catch (error) {
-    log.error({ err: error, negotiationId }, 'Failed to check recovery opportunities');
+    log.error({ err: error, negotiationId: req.params.negotiationId }, 'Failed to check recovery opportunities');
     res.status(500).json({ 
       success: false, 
       error: error instanceof Error ? error.message : 'Unknown error' 
@@ -217,7 +218,7 @@ router.post('/recovery/:negotiationId/recover', async (req, res) => {
       message: `Recovered ${orphanedSimulations?.length || 0} simulations`
     });
   } catch (error) {
-    log.error({ err: error, negotiationId }, 'Failed to recover simulations');
+    log.error({ err: error, negotiationId: req.params.negotiationId }, 'Failed to recover simulations');
     res.status(500).json({ 
       success: false, 
       error: error instanceof Error ? error.message : 'Unknown error' 
@@ -236,7 +237,7 @@ router.get('/queue/:queueId/results', async (req, res) => {
     
     res.json({ success: true, data: results });
   } catch (error) {
-    log.error({ err: error, queueId }, 'Failed to get simulation results');
+    log.error({ err: error, queueId: req.params.queueId }, 'Failed to get simulation results');
     res.status(500).json({ 
       success: false, 
       error: error instanceof Error ? error.message : 'Unknown error' 
@@ -259,7 +260,7 @@ router.get('/queue/by-negotiation/:negotiationId', async (req, res) => {
       res.json({ success: false, message: 'No queue found for this negotiation' });
     }
   } catch (error) {
-    log.error({ err: error, negotiationId }, 'Failed to find queue by negotiation');
+    log.error({ err: error, negotiationId: req.params.negotiationId }, 'Failed to find queue by negotiation');
     res.status(500).json({ 
       success: false, 
       error: error instanceof Error ? error.message : 'Unknown error' 
@@ -281,7 +282,7 @@ router.get('/queue/:queueId/runs', async (req, res) => {
       data: runs
     });
   } catch (error) {
-    log.error({ err: error, queueId }, 'Failed to get queue runs');
+    log.error({ err: error, queueId: req.params.queueId }, 'Failed to get queue runs');
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error'
@@ -304,7 +305,7 @@ router.post('/queue/:queueId/restart-failed', async (req, res) => {
       restartedCount
     });
   } catch (error) {
-    log.error({ err: error, queueId }, 'Failed to restart failed simulations');
+    log.error({ err: error, queueId: req.params.queueId }, 'Failed to restart failed simulations');
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error'
@@ -365,7 +366,7 @@ router.post('/run/:runId/restart', async (req, res) => {
       runNumber: result.runNumber
     });
   } catch (error) {
-    log.error({ err: error, runId }, '[API] Failed to restart simulation run');
+    log.error({ err: error, runId: req.params.runId }, '[API] Failed to restart simulation run');
     if (error instanceof Error && error.stack) {
       log.error({ stack: error.stack }, '[API] Error stack');
     }
@@ -390,7 +391,7 @@ router.post('/queue/:queueId/start', async (req, res) => {
       message: 'Queue started/resumed successfully'
     });
   } catch (error) {
-    log.error({ err: error, queueId }, 'Failed to start queue');
+    log.error({ err: error, queueId: req.params.queueId }, 'Failed to start queue');
     res.status(500).json({
       success: false, 
       error: error instanceof Error ? error.message : 'Unknown error' 

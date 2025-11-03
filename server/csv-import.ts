@@ -119,15 +119,15 @@ export async function importNegotiationTactics(): Promise<void> {
     
     // Log sample for verification
     if (inserted.length > 0) {
-      log.info('📝 Sample tactic:', {
+      log.info({
         name: inserted[0].name,
         aspectsCount: Array.isArray(inserted[0].wichtigeAspekte) ? inserted[0].wichtigeAspekte.length : 0,
         phrasesCount: Array.isArray(inserted[0].keyPhrases) ? inserted[0].keyPhrases.length : 0
-      });
+      }, '📝 Sample tactic:');
     }
-    
+
   } catch (error) {
-    log.error('❌ Error importing negotiation tactics:', error);
+    log.error({ err: error }, '❌ Error importing negotiation tactics:');
     throw error;
   }
 }
@@ -172,14 +172,14 @@ export async function importPersonalityTypes(): Promise<void> {
     
     // Log sample for verification
     if (inserted.length > 0) {
-      log.info('📝 Sample personality type:', {
+      log.info({
         archetype: inserted[0].archetype,
         behaviorDescription: inserted[0].behaviorDescription.substring(0, 100) + '...'
-      });
+      }, '📝 Sample personality type:');
     }
-    
+
   } catch (error) {
-    log.error('❌ Error importing personality types:', error);
+    log.error({ err: error }, '❌ Error importing personality types:');
     throw error;
   }
 }
@@ -223,7 +223,7 @@ export async function importAllCSVData(): Promise<void> {
     log.info('🎉 All CSV data imported successfully!');
     
   } catch (error) {
-    log.error('💥 CSV import failed:', error);
+    log.error({ err: error }, '💥 CSV import failed:');
     throw error;
   }
 }

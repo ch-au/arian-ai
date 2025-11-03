@@ -166,8 +166,8 @@ export function TaktikenTechnikenStep({
           {Object.keys(tacticsByCategory).map((category) => (
             <div key={category} className="space-y-3">
               <div className="flex items-center gap-2">
-                <h4 className="font-semibold text-sm">{getCategoryLabel(category)}</h4>
-                <Badge variant={getCategoryBadgeVariant(category) as any}>
+                <h4 className="font-semibold text-sm">{getCategoryLabel(category as TacticOption['category'] | 'undefined')}</h4>
+                <Badge variant={getCategoryBadgeVariant(category as TacticOption['category']) as any}>
                   {tacticsByCategory[category].length}
                 </Badge>
               </div>
