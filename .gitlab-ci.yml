@@ -92,7 +92,7 @@ deploy:azure:
     - build:app
   before_script:
     - echo "Preparing deployment package..."
-    - apk add --no-cache zip
+    - apt-get update && apt-get install -y zip
     - zip -r deployment.zip dist/ node_modules/ package.json package-lock.json startup.sh scripts/ .deployment -x "*.git*"
   script:
     - echo "Logging into Azure..."
@@ -104,7 +104,7 @@ deploy:azure:
   after_script:
     - echo "Checking health endpoint..."
     - sleep 30
-    - wget -qO- "https://${AZURE_WEBAPP_NAME}.azurewebsites.net/health" || echo "Health check failed, app may still be starting"
+    - curl -f "https://${AZURE_WEBAPP_NAME}.azurewebsites.net/health" || echo "Health check failed, app may still be starting"
   only:
     - main
   when: on_success
