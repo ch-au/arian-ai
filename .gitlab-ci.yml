@@ -99,17 +99,17 @@ deploy:azure:
       if [ -z "$AZURE_RESOURCE_GROUP" ]; then echo "ERROR: AZURE_RESOURCE_GROUP not set"; exit 1; fi
       if [ -z "$AZURE_WEBAPP_NAME" ]; then echo "ERROR: AZURE_WEBAPP_NAME not set"; exit 1; fi
     - echo "All required variables are set"
-    - echo "Preparing deployment package..."
-    - mkdir -p deploy
-    - cp -r dist deploy/
-    - cp -r node_modules deploy/
-    - cp -r scripts deploy/
-    - cp package.json package-lock.json startup.sh .deployment deploy/
-    - ls -la deploy/
     - echo "Logging into Azure..."
     - az login --service-principal -u $AZURE_CLIENT_ID -p $AZURE_CLIENT_SECRET --tenant $AZURE_TENANT_ID
-    - echo "Deploying to Azure App Service..."
-    - cd deploy && az webapp deploy --resource-group $AZURE_RESOURCE_GROUP --name $AZURE_WEBAPP_NAME --src-path . --type zip --async false
+    - echo "Preparing deployment package..."
+    - python3 -m zipfile -c deployment.zip dist/ node_modules/ scripts/ package.json package-lock.json startup.sh .deployment
+    - ls -lh deployment.zip
+    - echo "Getting deployment credentials..."
+    - PUBLISH_CREDS=$(az webapp deployment list-publishing-credentials --resource-group $AZURE_RESOURCE_GROUP --name $AZURE_WEBAPP_NAME --query "{username:publishingUserName, password:publishingPassword}" -o json)
+    - DEPLOY_USER=$(echo $PUBLISH_CREDS | python3 -c "import sys, json; print(json.load(sys.stdin)['username'])")
+    - DEPLOY_PASS=$(echo $PUBLISH_CREDS | python3 -c "import sys, json; print(json.load(sys.stdin)['password'])")
+    - echo "Deploying to Azure App Service via Kudu API..."
+    - curl -X POST "https://${AZURE_WEBAPP_NAME}.scm.azurewebsites.net/api/zipdeploy" --user "${DEPLOY_USER}:${DEPLOY_PASS}" --data-binary "@deployment.zip" -H "Content-Type:application/zip"
     - echo "Deployment completed successfully"
     - echo "Application URL https://${AZURE_WEBAPP_NAME}.azurewebsites.net"
     - echo "Waiting for app to start..."
