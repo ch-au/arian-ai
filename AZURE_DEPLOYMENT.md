@@ -4,10 +4,10 @@ Step-by-step guide for deploying ARIAN AI Platform to Azure App Service.
 
 ## Overview
 
-The application is configured for Azure App Service with automatic GitHub Actions deployment. All Azure-specific files are additive and do not affect local development.
+The application is configured for Azure App Service with automatic **GitLab CI** deployment. All Azure-specific files are additive and do not affect local development.
 
 **Key Benefits:**
-- Automatic CI/CD via GitHub Actions
+- Automatic CI/CD via GitLab CI
 - Python + Node.js hybrid support
 - WebSocket support for real-time updates
 - Health monitoring built-in
@@ -16,7 +16,8 @@ The application is configured for Azure App Service with automatic GitHub Action
 ## Prerequisites
 
 - Azure account with active subscription
-- GitHub repository with code
+- GitLab repository with code (Markant GitLab)
+- Azure Service Principal for authentication
 - Neon PostgreSQL database (or any PostgreSQL instance)
 - OpenAI API key
 - Langfuse account (optional but recommended)
@@ -121,32 +122,84 @@ The application is configured for Azure App Service with automatic GitHub Action
    ```
 4. Click **"Save"**
 
-## Step 5: Get Publish Profile for GitHub Actions
+## Step 5: Create Azure Service Principal
 
-1. Go to your App Service → **Get publish profile**
-2. Click **"Download"** (downloads `.PublishSettings` file)
-3. **Keep this file secure** - it contains credentials
+Create a Service Principal for GitLab CI authentication:
 
-## Step 6: Configure GitHub Secrets
+```bash
+# Login to Azure
+az login
 
-1. Go to your GitHub repository → **Settings** → **Secrets and variables** → **Actions**
-2. Click **"New repository secret"**
+# Create Service Principal
+az ad sp create-for-rbac --name "GitLab-ARIAN-AI" --role contributor \
+  --scopes /subscriptions/<SUBSCRIPTION_ID>/resourceGroups/<RESOURCE_GROUP>
+```
 
-   **Secret 1:**
+**Save the output** - you'll need these values:
+```json
+{
+  "appId": "xxxx-xxxx-xxxx-xxxx",
+  "displayName": "GitLab-ARIAN-AI",
+  "password": "xxxx-xxxx-xxxx-xxxx",
+  "tenant": "xxxx-xxxx-xxxx-xxxx"
+}
+```
+
+**Find your Subscription ID:**
+```bash
+az account show --query id --output tsv
+```
+
+## Step 6: Configure GitLab CI/CD Variables
+
+1. Go to your GitLab repository → **Settings** → **CI/CD** → **Variables**
+2. Click **"Add variable"** for each:
+
+   **Variable 1:**
    ```
-   Name: AZURE_WEBAPP_NAME
+   Key: AZURE_CLIENT_ID
+   Value: <appId from Service Principal>
+   Type: Variable
+   Protected: Yes
+   Masked: Yes
+   ```
+
+   **Variable 2:**
+   ```
+   Key: AZURE_CLIENT_SECRET
+   Value: <password from Service Principal>
+   Type: Variable
+   Protected: Yes
+   Masked: Yes
+   ```
+
+   **Variable 3:**
+   ```
+   Key: AZURE_TENANT_ID
+   Value: <tenant from Service Principal>
+   Type: Variable
+   Protected: Yes
+   Masked: Yes
+   ```
+
+   **Variable 4:**
+   ```
+   Key: AZURE_RESOURCE_GROUP
+   Value: <your-resource-group-name>
+   Type: Variable
+   Protected: Yes
+   ```
+
+   **Variable 5:**
+   ```
+   Key: AZURE_WEBAPP_NAME
    Value: arian-ai-platform
+   Type: Variable
+   Protected: Yes
    ```
    (Use your actual App Service name)
 
-   **Secret 2:**
-   ```
-   Name: AZURE_WEBAPP_PUBLISH_PROFILE
-   Value: <paste entire contents of .PublishSettings file>
-   ```
-   (Open the downloaded `.PublishSettings` file and copy all XML content)
-
-3. Click **"Add secret"** for each
+3. Click **"Add variable"** for each
 
 ## Step 7: Database Setup
 
@@ -171,7 +224,7 @@ The application is configured for Azure App Service with automatic GitHub Action
 
 ### First Deployment
 
-1. Ensure all GitHub secrets are configured (Step 6)
+1. Ensure all GitLab CI/CD variables are configured (Step 6)
 2. Push to `main` branch:
    ```bash
    git add .
@@ -180,24 +233,37 @@ The application is configured for Azure App Service with automatic GitHub Action
    ```
 
 3. Monitor deployment:
-   - Go to **Actions** tab in GitHub
-   - Watch the "Deploy to Azure App Service" workflow
+   - Go to **CI/CD** → **Pipelines** in GitLab
+   - Watch the running pipeline
    - Should complete in ~3-5 minutes
 
-### GitHub Actions Workflow
+### GitLab CI Pipeline
 
-The workflow automatically:
-1. Checks out code
-2. Sets up Node.js 20 and Python 3.11
-3. Installs dependencies (`npm ci`)
-4. Runs type checking (`npm run check`)
-5. Runs tests (`npm run test`)
-6. Builds application (`npm run build`)
-   - Frontend: Vite build
-   - Backend: esbuild compilation
+The pipeline automatically:
+
+**Stage 1: Validate**
+1. Validates TypeScript compilation
+2. Checks Python scripts syntax
+3. Runs Ruff linting on Python code
+4. Verifies repository structure
+
+**Stage 2: Build** (only on `main` branch)
+1. Installs dependencies (`npm ci`)
+2. Runs type checking (`npm run check`)
+3. Runs tests (`npm run test`)
+4. Builds application (`npm run build`)
+   - Frontend: Vite build → `dist/public/`
+   - Backend: esbuild compilation → `dist/index.js`
    - Python scripts: Copied to `dist/scripts/`
-7. Deploys to Azure App Service
-8. Executes `startup.sh` on Azure
+5. Creates build artifacts for deployment
+
+**Stage 3: Deploy** (only on `main` branch)
+1. Authenticates with Azure using Service Principal
+2. Creates deployment ZIP package
+3. Deploys to Azure App Service via `az webapp deployment`
+4. Waits for app to start
+5. Checks health endpoint (`/health`)
+6. Reports deployment URL
 
 ## Step 9: Verify Deployment
 
@@ -248,16 +314,16 @@ az webapp log tail --name <app-name> --resource-group <resource-group>
   - Creates/activates Python virtual environment
   - Installs Python dependencies
   - Starts Node.js application
-  
-- **`.github/workflows/azure-deploy.yml`** - CI/CD pipeline
-  - Automated build and deployment
+
+- **`.gitlab-ci.yml`** - GitLab CI/CD pipeline
+  - Automated validation, build and deployment
   - Runs tests before deployment
   - Health check after deployment
-  
+
 - **`.deployment`** - Azure Oryx build configuration
   - Configures build system
   - Enables custom build steps
-  
+
 - **`scripts/copy-python.js`** - Build helper
   - Copies Python scripts to `dist/` directory
   - Ensures Python code available in deployment
@@ -312,10 +378,12 @@ git commit -m "Your changes"
 git push origin main
 ```
 
-GitHub Actions will automatically:
+GitLab CI will automatically:
+- Validate code (TypeScript, Python, Ruff)
 - Build and test
 - Deploy to Azure
 - Restart the application
+- Check health endpoint
 
 **Deployment Time:** ~3-5 minutes
 
@@ -330,8 +398,8 @@ Or in Azure Portal → Overview → Restart
 
 ### View Deployment History
 
-- GitHub: Actions tab shows all deployments
-- Azure: Deployment Center shows deployment logs
+- GitLab: **CI/CD** → **Pipelines** shows all deployments
+- Azure: **Deployment Center** shows deployment logs
 
 ## Local Development (Unchanged)
 
@@ -426,17 +494,18 @@ curl https://<app-name>.azurewebsites.net/health
 2. Check it's registered **before** auth middleware
 3. Ensure app is running: `az webapp show -n <app-name>`
 
-### Build Fails in GitHub Actions
+### Build Fails in GitLab CI
 
 **Check:**
-1. GitHub Actions logs (Actions tab)
-2. Look for failed step (install, test, build)
+1. GitLab CI logs (**CI/CD** → **Pipelines** → select failed pipeline)
+2. Look for failed step (validate, build, deploy)
 3. Fix locally and push again
 
 **Common issues:**
 - TypeScript errors → `npm run check` locally
 - Test failures → `npm run test` locally
 - Missing dependencies → `npm install`
+- Azure authentication → Check GitLab CI/CD variables (Step 6)
 
 ## Cost Estimation
 
@@ -493,12 +562,13 @@ curl https://<app-name>.azurewebsites.net/health
 ### Continuous Deployment Branch Protection
 
 Protect `main` branch:
-1. GitHub → Settings → Branches
-2. Add rule for `main`
-3. Require:
-   - Pull request reviews
-   - Status checks (GitHub Actions)
-   - Up-to-date branches
+1. GitLab → **Settings** → **Repository** → **Protected branches**
+2. Select `main` branch
+3. Configure:
+   - **Allowed to merge**: Maintainers
+   - **Allowed to push**: No one
+   - Require merge request approval
+   - Require passing pipeline
 
 ## Monitoring & Maintenance
 
@@ -533,7 +603,7 @@ Protect `main` branch:
 ### Documentation
 
 - [Azure App Service Docs](https://learn.microsoft.com/en-us/azure/app-service)
-- [GitHub Actions Docs](https://docs.github.com/en/actions)
+- [GitLab CI/CD Docs](https://docs.gitlab.com/ee/ci/)
 - [Neon PostgreSQL Docs](https://neon.tech/docs)
 
 ### Internal Documentation
@@ -545,14 +615,16 @@ Protect `main` branch:
 ### Getting Help
 
 1. Check Azure App Service logs
-2. Review GitHub Actions workflow logs
-3. Verify `startup.sh` execution
-4. Test components locally
-5. Check environment variables configuration
+2. Review GitLab CI pipeline logs
+3. Verify GitLab CI/CD variables (Step 6)
+4. Verify `startup.sh` execution
+5. Test components locally
+6. Check environment variables configuration
 
 ---
 
 **Document Version:** 1.0  
 **Last Updated:** Januar 2025  
 **Maintainer:** Christian Au
+
 

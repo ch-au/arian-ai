@@ -58,3 +58,4 @@ jobs:
           # Note: Replace with your actual Azure Web App URL
           # curl -f https://${{ secrets.AZURE_WEBAPP_NAME }}.azurewebsites.net/health || exit 1
 
+
