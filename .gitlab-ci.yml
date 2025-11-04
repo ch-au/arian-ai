@@ -90,20 +90,24 @@ deploy:azure:
   image: mcr.microsoft.com/azure-cli:latest
   dependencies:
     - build:app
-  before_script:
-    - echo "Preparing deployment package..."
-    - apt-get update && apt-get install -y zip
-    - zip -r deployment.zip dist/ node_modules/ package.json package-lock.json startup.sh scripts/ .deployment -x "*.git*"
   script:
+    - echo "Verifying required environment variables..."
+    - |
+      if [ -z "$AZURE_CLIENT_ID" ]; then echo "ERROR: AZURE_CLIENT_ID not set"; exit 1; fi
+      if [ -z "$AZURE_CLIENT_SECRET" ]; then echo "ERROR: AZURE_CLIENT_SECRET not set"; exit 1; fi
+      if [ -z "$AZURE_TENANT_ID" ]; then echo "ERROR: AZURE_TENANT_ID not set"; exit 1; fi
+      if [ -z "$AZURE_RESOURCE_GROUP" ]; then echo "ERROR: AZURE_RESOURCE_GROUP not set"; exit 1; fi
+      if [ -z "$AZURE_WEBAPP_NAME" ]; then echo "ERROR: AZURE_WEBAPP_NAME not set"; exit 1; fi
+    - echo "All required variables are set"
     - echo "Logging into Azure..."
     - az login --service-principal -u $AZURE_CLIENT_ID -p $AZURE_CLIENT_SECRET --tenant $AZURE_TENANT_ID
     - echo "Deploying to Azure App Service..."
-    - az webapp deployment source config-zip --resource-group $AZURE_RESOURCE_GROUP --name $AZURE_WEBAPP_NAME --src deployment.zip
+    - az webapp deploy --resource-group $AZURE_RESOURCE_GROUP --name $AZURE_WEBAPP_NAME --src-path . --type zip --async false
     - echo "Deployment completed successfully"
     - echo "Application URL https://${AZURE_WEBAPP_NAME}.azurewebsites.net"
-  after_script:
-    - echo "Checking health endpoint..."
+    - echo "Waiting for app to start..."
     - sleep 30
+    - echo "Checking health endpoint..."
     - curl -f "https://${AZURE_WEBAPP_NAME}.azurewebsites.net/health" || echo "Health check failed, app may still be starting"
   only:
     - main
