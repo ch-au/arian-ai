@@ -99,10 +99,17 @@ deploy:azure:
       if [ -z "$AZURE_RESOURCE_GROUP" ]; then echo "ERROR: AZURE_RESOURCE_GROUP not set"; exit 1; fi
       if [ -z "$AZURE_WEBAPP_NAME" ]; then echo "ERROR: AZURE_WEBAPP_NAME not set"; exit 1; fi
     - echo "All required variables are set"
+    - echo "Preparing deployment package..."
+    - mkdir -p deploy
+    - cp -r dist deploy/
+    - cp -r node_modules deploy/
+    - cp -r scripts deploy/
+    - cp package.json package-lock.json startup.sh .deployment deploy/
+    - ls -la deploy/
     - echo "Logging into Azure..."
     - az login --service-principal -u $AZURE_CLIENT_ID -p $AZURE_CLIENT_SECRET --tenant $AZURE_TENANT_ID
     - echo "Deploying to Azure App Service..."
-    - az webapp deploy --resource-group $AZURE_RESOURCE_GROUP --name $AZURE_WEBAPP_NAME --src-path . --type zip --async false
+    - cd deploy && az webapp deploy --resource-group $AZURE_RESOURCE_GROUP --name $AZURE_WEBAPP_NAME --src-path . --type zip --async false
     - echo "Deployment completed successfully"
     - echo "Application URL https://${AZURE_WEBAPP_NAME}.azurewebsites.net"
     - echo "Waiting for app to start..."
