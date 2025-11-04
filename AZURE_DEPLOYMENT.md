@@ -259,11 +259,12 @@ The pipeline automatically:
 
 **Stage 3: Deploy** (only on `main` branch)
 1. Authenticates with Azure using Service Principal
-2. Creates deployment ZIP package
-3. Deploys to Azure App Service via `az webapp deployment`
-4. Waits for app to start
-5. Checks health endpoint (`/health`)
-6. Reports deployment URL
+2. Creates deployment ZIP package using Python zipfile module
+3. Retrieves publishing credentials from Azure
+4. Deploys to Azure App Service via Kudu ZipDeploy API (HTTP POST)
+5. Waits for app to start (30 seconds)
+6. Checks health endpoint (`/health`)
+7. Reports deployment URL
 
 ## Step 9: Verify Deployment
 
