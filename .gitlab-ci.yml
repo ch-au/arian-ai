@@ -109,13 +109,13 @@ deploy:azure:
     - DEPLOY_USER=$(echo "$PUBLISH_CREDS" | python3 -c "import sys, json; print(json.load(sys.stdin)['username'])")
     - DEPLOY_PASS=$(echo "$PUBLISH_CREDS" | python3 -c "import sys, json; print(json.load(sys.stdin)['password'])")
     - echo "Building deployment URL..."
-    - KUDU_URL="https://${AZURE_WEBAPP_NAME}.scm.azurewebsites.net/api/zipdeploy"
-    - APP_URL="https://${AZURE_WEBAPP_NAME}.azurewebsites.net"
+    - KUDU_URL="https://${AZURE_WEBAPP_NAME}.scm.germanywestcentral-01.azurewebsites.net/api/zipdeploy"
+    - APP_URL="https://${AZURE_WEBAPP_NAME}.germanywestcentral-01.azurewebsites.net"
     - echo "Testing DNS resolution and connectivity..."
-    - echo "Hostname - ${AZURE_WEBAPP_NAME}.scm.azurewebsites.net"
-    - getent hosts ${AZURE_WEBAPP_NAME}.scm.azurewebsites.net || echo "DNS lookup failed - hostname cannot be resolved"
+    - echo "Hostname - ${AZURE_WEBAPP_NAME}.scm.germanywestcentral-01.azurewebsites.net"
+    - getent hosts ${AZURE_WEBAPP_NAME}.scm.germanywestcentral-01.azurewebsites.net || echo "DNS lookup failed - hostname cannot be resolved"
     - echo "Testing HTTPS connectivity..."
-    - curl -v --connect-timeout 10 --max-time 15 "https://${AZURE_WEBAPP_NAME}.scm.azurewebsites.net" 2>&1 | head -30 || echo "HTTPS connection test failed"
+    - curl -v --connect-timeout 10 --max-time 15 "https://${AZURE_WEBAPP_NAME}.scm.germanywestcentral-01.azurewebsites.net" 2>&1 | head -30 || echo "HTTPS connection test failed"
     - echo "Deploying to Azure App Service via Kudu API..."
     - curl -v -X POST "${KUDU_URL}" --user "${DEPLOY_USER}:${DEPLOY_PASS}" --data-binary "@deployment.zip" -H "Content-Type:application/zip"
     - echo "Deployment completed successfully"
