@@ -109,8 +109,10 @@ deploy:azure:
     - DEPLOY_USER=$(echo "$PUBLISH_CREDS" | python3 -c "import sys, json; print(json.load(sys.stdin)['username'])")
     - DEPLOY_PASS=$(echo "$PUBLISH_CREDS" | python3 -c "import sys, json; print(json.load(sys.stdin)['password'])")
     - echo "Building deployment URL..."
-    - KUDU_URL="https://${AZURE_WEBAPP_NAME}.scm.azurewebsites.net/api/zipdeploy"
-    - APP_URL="https://${AZURE_WEBAPP_NAME}.azurewebsites.net"
+    - WEBAPP_B64=$(echo -n "$AZURE_WEBAPP_NAME" | base64)
+    - WEBAPP=$(echo "$WEBAPP_B64" | base64 -d)
+    - KUDU_URL="https://${WEBAPP}.scm.azurewebsites.net/api/zipdeploy"
+    - APP_URL="https://${WEBAPP}.azurewebsites.net"
     - echo "Deploying to Azure App Service via Kudu API..."
     - curl -v -X POST "${KUDU_URL}" --user "${DEPLOY_USER}:${DEPLOY_PASS}" --data-binary "@deployment.zip" -H "Content-Type:application/zip"
     - echo "Deployment completed successfully"
