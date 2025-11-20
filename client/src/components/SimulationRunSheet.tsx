@@ -616,8 +616,8 @@ export function SimulationRunSheet({
                           <CardContent className="space-y-3">
                             {reasoning && (
                               <div>
-                                <p className="text-sm font-medium mb-1">Reasoning:</p>
-                                <p className="text-sm text-muted-foreground leading-relaxed">
+                                <p className="text-sm font-medium mb-1">Message:</p>
+                                <p className="text-sm leading-relaxed">
                                   {reasoning}
                                 </p>
                               </div>
