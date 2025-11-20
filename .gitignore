@@ -62,3 +62,6 @@ __pycache__/
 venv/
 ENV/
 env/
+
+__pycache__/
+*.pyc
