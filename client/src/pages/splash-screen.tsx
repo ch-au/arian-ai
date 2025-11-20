@@ -32,9 +32,9 @@ export default function SplashScreen() {
           </p>
         </div>
 
-        <Link href="/handler/sign-in">
-          <Button 
-            size="lg" 
+        <Link href="/login">
+          <Button
+            size="lg"
             className="bg-white text-black hover:bg-gray-200 font-semibold px-8 py-6 text-lg rounded-full transition-all transform hover:scale-105"
           >
             <LogIn className="mr-2 h-5 w-5" />

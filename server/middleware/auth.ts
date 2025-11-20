@@ -6,31 +6,22 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     // Get token from Authorization header
     const authHeader = req.headers.authorization;
 
-    // TEMPORARY: If no auth header, use default admin user for backward compatibility
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      console.warn("⚠️  No auth token provided, using default admin user (ID: 1)");
-      (req as any).user = { id: 1, username: "admin" };
-      return next();
+      return res.status(401).json({ error: "Unauthorized - No token provided" });
     }
 
     const token = authHeader.substring(7); // Remove "Bearer " prefix
     const user = await AuthService.verifyToken(token);
 
     if (!user) {
-      // TEMPORARY: Fall back to default user instead of rejecting
-      console.warn("⚠️  Invalid token, using default admin user (ID: 1)");
-      (req as any).user = { id: 1, username: "admin" };
-      return next();
+      return res.status(401).json({ error: "Unauthorized - Invalid token" });
     }
 
     // Attach user to request
     (req as any).user = user;
     next();
   } catch (error) {
-    // TEMPORARY: Fall back to default user instead of rejecting
-    console.warn("⚠️  Auth error, using default admin user (ID: 1)");
-    (req as any).user = { id: 1, username: "admin" };
-    next();
+    return res.status(401).json({ error: "Unauthorized" });
   }
 }
 

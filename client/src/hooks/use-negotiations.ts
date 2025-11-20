@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useUser } from "@stackframe/react";
+import { useAuth } from "@/contexts/auth-context";
 
 export type NegotiationStatus = "planned" | "running" | "completed" | "aborted";
 
@@ -156,7 +156,7 @@ export function mapNegotiation(raw: any): NegotiationListItem {
 }
 
 export function useNegotiations() {
-  const user = useUser();
+  const { user } = useAuth();
   return useQuery<NegotiationListItem[]>({
     queryKey: ["/api/negotiations"],
     select: (data) => (data ?? []).map(mapNegotiation),

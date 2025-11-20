@@ -13,6 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { fetchWithAuth } from "@/lib/fetch-with-auth";
 
 interface NegotiationAnalysis {
   negotiation: {
@@ -120,7 +121,7 @@ export default function NegotiationAnalysisPage() {
 
     setIsEvaluating(true);
     try {
-      const response = await fetch(`/api/negotiations/${negotiationId}/analysis/evaluate`, {
+      const response = await fetchWithAuth(`/api/negotiations/${negotiationId}/analysis/evaluate`, {
         method: "POST",
       });
 
@@ -143,12 +144,13 @@ export default function NegotiationAnalysisPage() {
 
     setIsGeneratingPlaybook(true);
     try {
-      const response = await fetch(`/api/negotiations/${negotiationId}/playbook`, {
+      const response = await fetchWithAuth(`/api/negotiations/${negotiationId}/playbook`, {
         method: "POST",
       });
 
       if (!response.ok) {
-        throw new Error("Failed to generate playbook");
+        const errorData = await response.json().catch(() => ({ error: response.statusText }));
+        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
       }
 
       const result = await response.json();
@@ -159,9 +161,9 @@ export default function NegotiationAnalysisPage() {
       } else {
         alert(`Fehler beim Generieren des Playbooks: ${result.error || 'Unbekannter Fehler'}`);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Playbook generation failed:", error);
-      alert("Fehler beim Generieren des Playbooks");
+      alert(`Fehler beim Generieren des Playbooks: ${error.message || error}`);
     } finally {
       setIsGeneratingPlaybook(false);
     }

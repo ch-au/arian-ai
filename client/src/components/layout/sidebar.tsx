@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { useUser } from "@stackframe/react";
+import { useAuth } from "@/contexts/auth-context";
 import { queryClient } from "@/lib/queryClient";
 import { useNegotiationContext } from "@/contexts/negotiation-context";
 import { useQuery } from "@tanstack/react-query";
@@ -30,13 +30,17 @@ const navigationItems = [
 export default function Sidebar() {
   const [location] = useLocation();
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const user = useUser();
+  const { user } = useAuth();
   const { selectedNegotiationId } = useNegotiationContext();
+
+  // Check if we're currently on the playbook page
+  const isOnPlaybookPage = location.startsWith(`/playbook/`);
 
   // Fetch negotiation stats to determine if links should be enabled
   const { data: negotiationStats } = useQuery<any>({
     queryKey: [`/api/negotiations/${selectedNegotiationId}`],
     enabled: !!selectedNegotiationId,
+    refetchInterval: 5000, // Refetch every 5 seconds to detect playbook updates
   });
 
   const simulationStats = negotiationStats?.simulationStats;
@@ -45,7 +49,7 @@ export default function Sidebar() {
     simulationStats?.completedRuns === simulationStats?.totalRuns &&
     simulationStats?.runningRuns === 0 &&
     simulationStats?.pendingRuns === 0;
-  const hasPlaybook = !!negotiationStats?.playbook;
+  const hasPlaybook = !!negotiationStats?.negotiation?.playbook || isOnPlaybookPage;
 
   // Context-aware navigation items (shown when a negotiation is selected)
   const contextNavigationItems = selectedNegotiationId ? [
@@ -271,37 +275,18 @@ export default function Sidebar() {
               <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center text-primary shadow-sm flex-shrink-0">
                 <User className="h-4 w-4" />
               </div>
-              {!isCollapsed && (
+              {!isCollapsed && user && (
                 <div className="flex flex-col overflow-hidden min-w-0 animate-in fade-in slide-in-from-left-2">
-                  <span className="text-sm font-medium truncate text-primary-foreground">{user.displayName || 'User'}</span>
-                  <span className="text-xs opacity-70 truncate text-primary-foreground/70">{user.primaryEmail}</span>
+                  <span className="text-sm font-medium truncate text-primary-foreground">{user.username}</span>
+                  <span className="text-xs opacity-70 truncate text-primary-foreground/70">User ID: {user.id}</span>
                 </div>
               )}
             </div>
-            {!isCollapsed && (
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="h-8 w-8 text-primary-foreground/70 hover:text-primary-foreground hover:bg-primary-foreground/10 flex-shrink-0"
-                onClick={async () => {
-                  await queryClient.cancelQueries();
-                  await user.signOut();
-                  // Small delay to allow React to unmount protected components before clearing cache
-                  // This prevents "unauthorized" errors during the unmounting phase
-                  setTimeout(() => {
-                    queryClient.clear();
-                  }, 100);
-                }}
-                title="Sign Out"
-              >
-                <LogOut className="h-4 w-4" />
-              </Button>
-            )}
           </div>
         ) : (
-          <Link href="/handler/sign-in">
-            <Button 
-              variant="ghost" 
+          <Link href="/login">
+            <Button
+              variant="ghost"
               className={cn(
                 "w-full text-primary-foreground hover:bg-primary-foreground/10 hover:text-primary-foreground",
                 isCollapsed ? "px-0" : "justify-start"

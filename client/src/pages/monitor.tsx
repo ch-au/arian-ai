@@ -14,6 +14,7 @@ import { useWebSocket } from "@/hooks/use-websocket";
 import { useNegotiationDetail } from "@/hooks/use-negotiation-detail";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { fetchWithAuth } from "@/lib/fetch-with-auth";
 
 // Monitor Components
 import {
@@ -143,7 +144,7 @@ export default function MonitorPage() {
     staleTime: 0,
     queryFn: async ({ queryKey }) => {
       const [, id] = queryKey;
-      const response = await fetch(`/api/negotiations/${id}/analysis`);
+      const response = await fetchWithAuth(`/api/negotiations/${id}/analysis`);
       if (!response.ok) {
         throw new Error("Analyse konnte nicht geladen werden");
       }
@@ -164,7 +165,7 @@ export default function MonitorPage() {
       if (!negotiationId) {
         throw new Error("Keine Verhandlungs-ID vorhanden.");
       }
-      const response = await fetch(`/api/simulations/queue/by-negotiation/${negotiationId}`);
+      const response = await fetchWithAuth(`/api/simulations/queue/by-negotiation/${negotiationId}`);
       if (!response.ok) {
         throw new Error("Simulation-Queue konnte nicht geladen werden.");
       }
@@ -194,7 +195,7 @@ export default function MonitorPage() {
       if (!queueId) {
         throw new Error("Keine Queue-ID vorhanden.");
       }
-      const response = await fetch(`/api/simulations/queue/${queueId}/runs`);
+      const response = await fetchWithAuth(`/api/simulations/queue/${queueId}/runs`);
       if (!response.ok) {
         throw new Error("Simulation-Läufe konnten nicht geladen werden.");
       }
