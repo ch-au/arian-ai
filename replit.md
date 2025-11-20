@@ -41,7 +41,8 @@ This installs packages to the user site-packages directory (`.pythonlibs/lib/pyt
 - `nest_asyncio>=1.6.0` - Async support
 - `python-dotenv>=1.0.1` - Environment variables
 - `openinference-instrumentation-openai-agents>=0.1.0` - Instrumentation
-- `google-genai` - Gemini API for market intelligence (installed separately)
+- `psycopg2-binary>=2.9.11` - Database connectivity for playbook generation
+- `google-genai>=1.51.0` - Gemini API for market intelligence
 
 **Vite Configuration for Replit:**
 - Port 5000 with `strictPort: true`
