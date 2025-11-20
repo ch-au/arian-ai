@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { NegotiationEngine } from "./services/negotiation-engine";
 import simulationQueueRoutes from "./api/simulation-queue";
+import simulationRunsRoutes from "./api/simulation-runs";
 import { setNegotiationEngine, SimulationQueueService } from "./services/simulation-queue";
 // import testWebSocketRoutes, { setTestNegotiationEngine } from "./api/test-websocket";
 import { createDashboardRouter } from "./routes/dashboard";
@@ -45,7 +46,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Simulation queue management routes
   app.use("/api/simulations", simulationQueueRoutes);
-  
+
+  // Simulation run details routes
+  app.use("/api/simulation-runs", simulationRunsRoutes);
+
   // Test WebSocket routes
   // app.use("/api/test", testWebSocketRoutes);
 

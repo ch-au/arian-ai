@@ -35,7 +35,7 @@ interface SimulationRun {
   techniqueName?: string;
   tacticId: string;
   tacticName?: string;
-  status: "pending" | "running" | "completed" | "failed";
+  status: "pending" | "running" | "completed" | "failed" | "timeout";
   currentRound: number;
   maxRounds: number;
   dealValue?: number | string | null;
@@ -298,7 +298,7 @@ export default function MonitorPage() {
     const completed = liveRuns.filter((r) => r.status === "completed").length;
     const running = liveRuns.filter((r) => r.status === "running").length;
     const pending = liveRuns.filter((r) => r.status === "pending").length;
-    const failed = liveRuns.filter((r) => r.status === "failed").length;
+    const failed = liveRuns.filter((r) => r.status === "failed" || r.status === "timeout").length;
 
     // Estimate time remaining (rough estimate: 30s per simulation)
     const estimatedTimeRemaining = (pending + running) * 30;
@@ -471,7 +471,7 @@ export default function MonitorPage() {
               disabled={retryMutation.isPending}
             >
               {retryMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RotateCcw className="w-4 h-4 mr-2" />}
-              {retryMutation.isPending ? "Wiederholt …" : `Fehlgeschlagene wiederholen (${queueStats.failed})`}
+              {retryMutation.isPending ? "Wiederholt …" : `Nicht abgeschlossene wiederholen (${queueStats.failed})`}
             </Button>
           )}
           {queueStats.running > 0 && (

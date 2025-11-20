@@ -34,6 +34,11 @@ export interface SimulationResultArtifacts {
 const PRICE_KEYWORDS = ["preis", "price", "prize"];
 const VOLUME_KEYWORDS = ["volumen", "volume", "menge", "absatz", "stk", "pieces"];
 
+function isValidUUID(value: string): boolean {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(value);
+}
+
 export function buildSimulationResultArtifacts({
   runId,
   negotiation,
@@ -133,12 +138,12 @@ function buildProductRows({ runId, products, entries, matchedKeys, userRole }: P
   for (const product of products) {
     const attrs = (product.attrs ?? {}) as Record<string, unknown>;
     const normalizedName = normalizeKey(product.name ?? "");
-    
+
     // Also normalize product_key if available (often more reliable)
     const productKey = attrs.product_key ? normalizeKey(String(attrs.product_key)) : "";
 
     // Strategy 1: Exact match on normalized name or product_key
-    let priceEntry = entries.find((entry) => 
+    let priceEntry = entries.find((entry) =>
       (normalizedName && entry.normalized === normalizedName) ||
       (productKey && entry.normalized === productKey)
     );
@@ -157,20 +162,20 @@ function buildProductRows({ runId, products, entries, matchedKeys, userRole }: P
       // But filter out generic "preis" keys to avoid false positives
       priceEntry = entries.find((entry) => {
         if (hasKeyword(entry.normalized, ["gesamt", "total", "summe"])) return false;
-        
+
         const key = entry.normalized;
         const name = normalizedName;
         const pKey = productKey;
-        
+
         // Check for common prefix (at least 5 chars)
         if (name.length > 5 && key.startsWith(name.slice(0, 6))) return true;
         if (pKey.length > 5 && key.startsWith(pKey.slice(0, 6))) return true;
-        
+
         // Check if key is contained in name (or vice versa) if length is significant
         if (name.length > 4 && key.length > 4) {
            if (name.includes(key) || key.includes(name)) return true;
         }
-        
+
         return false;
       });
     }
@@ -193,6 +198,12 @@ function buildProductRows({ runId, products, entries, matchedKeys, userRole }: P
       continue;
     }
 
+    // Skip products without valid UUIDs - they cannot be inserted due to FK constraint
+    if (!product.id || !isValidUUID(product.id)) {
+      console.log(`[PRODUCT_RESULTS] Skipping product without valid UUID: ${product.name} (id: ${product.id})`);
+      continue;
+    }
+
     const roleAwareMin = userRole === "buyer" ? null : minPrice;
     const roleAwareMax = userRole === "seller" ? null : maxPrice;
 
@@ -207,7 +218,7 @@ function buildProductRows({ runId, products, entries, matchedKeys, userRole }: P
 
     rows.push({
       simulationRunId: runId,
-      productId: product.id || `fallback-${runId}-${rows.length}`,
+      productId: product.id,
       productName: product.name,
       targetPrice: formatDecimal(targetPrice ?? agreedPrice, 2),
       minMaxPrice: formatDecimal(maxPrice ?? minPrice ?? agreedPrice, 2),
@@ -229,51 +240,10 @@ function buildProductRows({ runId, products, entries, matchedKeys, userRole }: P
     });
   }
 
-  if (rows.length === 0) {
-    const fallbackRow = buildFallbackProductRow(runId, entries, userRole);
-    if (fallbackRow) {
-      rows.push(fallbackRow.row);
-      totalDealValue += fallbackRow.dealValue;
-    }
-  }
+  // Note: We no longer create fallback product rows since they would violate FK constraints
+  // Deal value and other metrics will be captured in otherDimensions instead
 
   return { rows, totalDealValue };
-}
-
-function buildFallbackProductRow(runId: string, entries: NormalizedEntry[], userRole: "buyer" | "seller") {
-  const priceEntry = entries.find((entry) => hasKeyword(entry.normalized, PRICE_KEYWORDS) && entry.numeric !== null);
-  if (!priceEntry || priceEntry.numeric === null) {
-    return null;
-  }
-  const volumeEntry = entries.find((entry) => hasKeyword(entry.normalized, VOLUME_KEYWORDS));
-  const agreedPrice = priceEntry.numeric;
-  const volumeValue = Math.max(1, Math.round(coerceNumber(volumeEntry?.numeric ?? volumeEntry?.raw) ?? 1));
-  const subtotal = agreedPrice * volumeValue;
-
-  const row: InsertProductResult = {
-    simulationRunId: runId,
-    productId: `fallback-${runId}`,
-    productName: "Gesamt",
-    targetPrice: formatDecimal(agreedPrice, 2),
-    minMaxPrice: formatDecimal(agreedPrice, 2),
-    estimatedVolume: volumeValue,
-    agreedPrice: formatDecimal(agreedPrice, 2),
-    priceVsTarget: null,
-    absoluteDeltaFromTarget: formatDecimal(0, 4),
-    priceVsMinMax: null,
-    absoluteDeltaFromMinMax: formatDecimal(0, 4),
-    withinZopa: true,
-    zopaUtilization: null,
-    subtotal: formatDecimal(subtotal, 2),
-    targetSubtotal: formatDecimal(subtotal, 2),
-    deltaFromTargetSubtotal: formatDecimal(0, 2),
-    performanceScore: formatDecimal(100, 2),
-    dimensionKey: priceEntry.key,
-    negotiationRound: null,
-    metadata: {},
-  };
-
-  return { row, dealValue: subtotal };
 }
 
 function resolveProductDataset(products: Product[], negotiation: NegotiationRecord | null): ProductLike[] {

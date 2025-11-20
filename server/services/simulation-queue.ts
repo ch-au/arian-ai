@@ -104,6 +104,23 @@ export class SimulationQueueService {
       throw new Error(`Negotiation not found: ${negotiationId}`);
     }
 
+    // Check if a queue already exists for this negotiation
+    const existingQueues = await db.select()
+      .from(simulationQueue)
+      .where(eq(simulationQueue.negotiationId, negotiationId));
+
+    if (existingQueues.length > 0) {
+      const activeQueue = existingQueues.find(q =>
+        q.status === 'pending' || q.status === 'running'
+      );
+
+      if (activeQueue) {
+        this.log.warn({ negotiationId, queueId: activeQueue.id },
+          '[SIMULATION-QUEUE] Queue already exists for this negotiation, returning existing queue');
+        return activeQueue.id;
+      }
+    }
+
     const scenario = negotiation.scenario ?? {};
     const techniques =
       request.techniques?.length ? request.techniques : scenario.selectedTechniques ?? [];
@@ -752,44 +769,22 @@ export class SimulationQueueService {
 
       const dimensionValues = result.finalOffer?.dimension_values ?? {};
       const negotiationIdForRun = nextSimulation.negotiationId || '';
-      const negotiationRecord = (negotiationIdForRun ? await storage.getNegotiation(negotiationIdForRun) : null) ?? null;
-      const products = negotiationIdForRun ? await storage.getProductsByNegotiation(negotiationIdForRun) : [];
 
-      this.log.info({
-        simulationId: nextSimulation.id.slice(0, 8),
-        hasFinalOffer: !!result.finalOffer,
-        dimensionValuesKeys: Object.keys(dimensionValues).join(', '),
-        productsCount: products.length
-      }, "[DEAL_VALUE] Calling buildSimulationResultArtifacts");
-
-      const artifacts = buildSimulationResultArtifacts({
-        runId: nextSimulation.id,
-        negotiation: negotiationRecord,
-        products,
-        dimensionValues,
-        conversationLog: normalizedConversationLog,
-      });
-
-      this.log.debug(
-        {
-          simulationId: nextSimulation.id,
-          dealValue: artifacts.dealValue,
-          dimensionsCaptured: artifacts.dimensionRows.length,
-          productsCaptured: artifacts.productRows.length,
-        },
-        "[RESULTS] Processed simulation artifacts",
-      );
-
+      // CRITICAL: Mark simulation as completed FIRST, before any analytics processing
+      // This ensures Python execution success is persisted even if post-processing fails
+      //
+      // Design Decision: We intentionally do NOT use a transaction here because:
+      // 1. Simulation completion must be committed immediately (Python succeeded)
+      // 2. Analytics failures are non-critical and should not rollback the simulation
+      // 3. Operators need to distinguish "negotiation failed" from "analytics failed"
       await db.update(simulationRuns)
         .set({
           status: status,
           completedAt: new Date(),
           conversationLog: normalizedConversationLog,
           totalRounds: result.totalRounds,
-          otherDimensions: artifacts.otherDimensions, // Only non-product dimensions
-          dealValue: artifacts.dealValue,
           actualCost: actualCost.toString(),
-          outcome: result.outcome, // Store the detailed outcome
+          outcome: result.outcome,
           metadata: {
             ...(nextSimulation.metadata ?? {}),
             checkpoint: null,
@@ -797,23 +792,97 @@ export class SimulationQueueService {
         })
         .where(eq(simulationRuns.id, nextSimulation.id));
 
-      // Persist structured dimension + product results for analytics
-      await db.delete(dimensionResults).where(eq(dimensionResults.simulationRunId, nextSimulation.id));
-      if (artifacts.dimensionRows.length) {
-        await db.insert(dimensionResults).values(artifacts.dimensionRows);
-        this.log.debug(
-          { simulationId: nextSimulation.id, count: artifacts.dimensionRows.length },
-          "[RESULTS] Stored dimension results",
-        );
-      }
+      this.log.info({
+        simulationId: nextSimulation.id,
+        runNumber: nextSimulation.runNumber,
+        outcome: result.outcome,
+        totalRounds: result.totalRounds,
+        actualCost
+      }, `✅ Simulation Run #${nextSimulation.runNumber} completed: ${result.outcome}, ${result.totalRounds} rounds`);
 
-      await db.delete(productResults).where(eq(productResults.simulationRunId, nextSimulation.id));
-      if (artifacts.productRows.length) {
-        await db.insert(productResults).values(artifacts.productRows);
+      // Post-processing: Build and persist analytics (wrapped in try/catch)
+      // Failures here should NOT flip the simulation back to failed status
+      try {
+        const negotiationRecord = (negotiationIdForRun ? await storage.getNegotiation(negotiationIdForRun) : null) ?? null;
+        const products = negotiationIdForRun ? await storage.getProductsByNegotiation(negotiationIdForRun) : [];
+
+        this.log.info({
+          simulationId: nextSimulation.id.slice(0, 8),
+          hasFinalOffer: !!result.finalOffer,
+          dimensionValuesKeys: Object.keys(dimensionValues).join(', '),
+          productsCount: products.length
+        }, "[DEAL_VALUE] Calling buildSimulationResultArtifacts");
+
+        const artifacts = buildSimulationResultArtifacts({
+          runId: nextSimulation.id,
+          negotiation: negotiationRecord,
+          products,
+          dimensionValues,
+          conversationLog: normalizedConversationLog,
+        });
+
         this.log.debug(
-          { simulationId: nextSimulation.id, count: artifacts.productRows.length, dealValue: artifacts.dealValue },
-          "[RESULTS] Stored product results",
+          {
+            simulationId: nextSimulation.id,
+            dealValue: artifacts.dealValue,
+            dimensionsCaptured: artifacts.dimensionRows.length,
+            productsCaptured: artifacts.productRows.length,
+          },
+          "[RESULTS] Processed simulation artifacts",
         );
+
+        // Update deal value and dimensions (separate from critical status update)
+        await db.update(simulationRuns)
+          .set({
+            otherDimensions: artifacts.otherDimensions,
+            dealValue: artifacts.dealValue,
+          })
+          .where(eq(simulationRuns.id, nextSimulation.id));
+
+        // Persist structured dimension + product results for analytics
+        await db.delete(dimensionResults).where(eq(dimensionResults.simulationRunId, nextSimulation.id));
+        if (artifacts.dimensionRows.length) {
+          await db.insert(dimensionResults).values(artifacts.dimensionRows);
+          this.log.debug(
+            { simulationId: nextSimulation.id, count: artifacts.dimensionRows.length },
+            "[RESULTS] Stored dimension results",
+          );
+        }
+
+        await db.delete(productResults).where(eq(productResults.simulationRunId, nextSimulation.id));
+        if (artifacts.productRows.length) {
+          await db.insert(productResults).values(artifacts.productRows);
+          this.log.debug(
+            { simulationId: nextSimulation.id, count: artifacts.productRows.length, dealValue: artifacts.dealValue },
+            "[RESULTS] Stored product results",
+          );
+        }
+
+        this.log.info({
+          simulationId: nextSimulation.id.slice(0, 8),
+          dealValue: artifacts.dealValue
+        }, `[RESULTS] Analytics persisted successfully, Deal: €${artifacts.dealValue || 0}`);
+
+      } catch (analyticsError) {
+        // Post-processing failure should NOT affect simulation success
+        const errMsg = analyticsError instanceof Error ? analyticsError.message : String(analyticsError);
+        this.log.error({
+          err: analyticsError,
+          simulationId: nextSimulation.id,
+          runNumber: nextSimulation.runNumber,
+        }, `⚠️  Analytics post-processing failed for Run #${nextSimulation.runNumber}: ${errMsg}`);
+
+        // Store the analytics error in metadata for debugging, but keep status as completed
+        await db.update(simulationRuns)
+          .set({
+            metadata: {
+              ...(nextSimulation.metadata ?? {}),
+              checkpoint: null,
+              analyticsError: errMsg,
+              analyticsErrorAt: new Date().toISOString(),
+            },
+          })
+          .where(eq(simulationRuns.id, nextSimulation.id));
       }
       
       // Update queue completed count
@@ -831,20 +900,11 @@ export class SimulationQueueService {
         .where(eq(simulationRuns.queueId, queueId));
         
       await db.update(simulationQueue)
-        .set({ 
+        .set({
           completedCount: completedCount.count || 0,
           actualTotalCost: (totalCost.total || 0).toString()
         })
         .where(eq(simulationQueue.id, queueId));
-      
-      this.log.info({
-        simulationId: nextSimulation.id,
-        runNumber: nextSimulation.runNumber,
-        outcome: result.outcome,
-        totalRounds: result.totalRounds,
-        dealValue: artifacts.dealValue,
-        actualCost
-      }, `✅ Completed Run #${nextSimulation.runNumber}: ${result.outcome}, ${result.totalRounds} rounds, Deal: €${artifacts.dealValue || 0}`);
 
       // Broadcast simulation completed event
       this.broadcastEvent({
@@ -966,6 +1026,13 @@ export class SimulationQueueService {
         errorMessage,
         errorStack
       }, `❌ Simulation Run #${nextSimulation.runNumber} failed: ${errorMessage}`);
+
+      // Log to console for visibility
+      console.error(`\n========== SIMULATION FAILED ==========`);
+      console.error(`Run #${nextSimulation.runNumber} (${nextSimulation.id.slice(0, 8)})`);
+      console.error(`Error: ${errorMessage}`);
+      console.error(`Stack: ${errorStack?.substring(0, 500)}`);
+      console.error(`=======================================\n`);
 
       // Increment retry count
       const newRetryCount = (nextSimulation.retryCount || 0) + 1;
@@ -1919,9 +1986,9 @@ export class SimulationQueueService {
   }
 
   /**
-   * Retry failed simulation runs
+   * Retry failed or timed-out simulation runs
    * @param queueId - Queue ID to retry runs for
-   * @param runIds - Optional array of specific run IDs to retry (if empty, retries all failed runs)
+   * @param runIds - Optional array of specific run IDs to retry (if empty, retries all failed/timed-out runs)
    * @returns Number of runs marked for retry
    */
   static async retryFailedRuns(queueId: string, runIds?: string[]): Promise<{
@@ -1931,13 +1998,13 @@ export class SimulationQueueService {
     this.log.info({
       queueId: queueId.slice(0, 8),
       specificRuns: runIds?.length
-    }, `[RETRY] Retrying ${runIds ? `${runIds.length} specific` : 'all failed'} runs`);
+    }, `[RETRY] Retrying ${runIds ? `${runIds.length} specific` : 'all failed/timed-out'} runs`);
 
     try {
       // Build query conditions
       let query;
       if (runIds && runIds.length > 0) {
-        // Retry specific runs
+        // Retry specific runs (failed or timed-out)
         query = db.update(simulationRuns)
           .set({
             status: 'pending',
@@ -1953,11 +2020,14 @@ export class SimulationQueueService {
             and(
               eq(simulationRuns.queueId, queueId),
               inArray(simulationRuns.id, runIds),
-              eq(simulationRuns.status, 'failed')
+              or(
+                eq(simulationRuns.status, 'failed'),
+                eq(simulationRuns.status, 'timeout')
+              )
             )
           );
       } else {
-        // Retry all failed runs in queue
+        // Retry all failed/timed-out runs in queue
         query = db.update(simulationRuns)
           .set({
             status: 'pending',
@@ -1971,7 +2041,10 @@ export class SimulationQueueService {
           .where(
             and(
               eq(simulationRuns.queueId, queueId),
-              eq(simulationRuns.status, 'failed')
+              or(
+                eq(simulationRuns.status, 'failed'),
+                eq(simulationRuns.status, 'timeout')
+              )
             )
           );
       }
@@ -2003,13 +2076,13 @@ export class SimulationQueueService {
 
       const retriedIds = retriedRuns.map(r => r.id);
 
-      // Reset queue status to pending if it was failed
+      // Reset queue status to pending if it was failed or completed
       const [queue] = await db.select()
         .from(simulationQueue)
         .where(eq(simulationQueue.id, queueId))
         .limit(1);
 
-      if (queue && queue.status === 'failed') {
+      if (queue && (queue.status === 'failed' || queue.status === 'completed')) {
         await db.update(simulationQueue)
           .set({ status: 'pending' })
           .where(eq(simulationQueue.id, queueId));
@@ -2019,6 +2092,12 @@ export class SimulationQueueService {
         queueId: queueId.slice(0, 8),
         retriedCount: retriedIds.length
       }, `[RETRY] Marked ${retriedIds.length} runs for retry`);
+
+      // Start the queue to trigger background processor
+      if (retriedIds.length > 0) {
+        this.log.info(`Starting queue ${queueId.slice(0, 8)} after retrying ${retriedIds.length} runs`);
+        await this.startQueue(queueId);
+      }
 
       // Broadcast retry event
       const [firstRun] = await db.select()

@@ -22,7 +22,7 @@ interface SimulationRun {
   techniqueName?: string;
   tacticId: string;
   tacticName?: string;
-  status: "pending" | "running" | "completed" | "failed";
+  status: "pending" | "running" | "completed" | "failed" | "timeout";
   currentRound: number;
   maxRounds: number;
   dealValue?: number | string | null;
@@ -345,8 +345,8 @@ function SimulationRunCard({ run }: { run: SimulationRun }) {
 
 export function ActiveRunsTable({ runs }: ActiveRunsTableProps) {
   const sortedRuns = [...runs].sort((a, b) => {
-    // Sort by status: running > pending > completed > failed
-    const statusOrder = { running: 0, pending: 1, completed: 2, failed: 3 };
+    // Sort by status: running > pending > completed > failed/timeout
+    const statusOrder = { running: 0, pending: 1, completed: 2, failed: 3, timeout: 3 };
     return statusOrder[a.status] - statusOrder[b.status];
   });
 

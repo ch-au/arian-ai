@@ -298,7 +298,7 @@ class NegotiationService:
             # Solution: Use JSON mode fallback for Gemini models (still structured, just different validation)
             if "gemini" in model_name.lower():
                 logger.debug(f"Using JSON mode for Gemini model: {model_name}")
-                output_schema = None  # Will parse JSON response
+                output_schema = None  # Will parse JSON response manually
             else:
                 logger.debug(f"Using structured output for model: {model_name}")
                 output_schema = AgentOutputSchema(NegotiationResponse, strict_json_schema=False)
@@ -1496,9 +1496,29 @@ class NegotiationService:
 
                 try:
                     response_data = json.loads(response_str)
-                except Exception as e:
-                    logger.error(f"Failed to parse response. Raw output (first 500 chars): {response_str[:500]}")
-                    raise ValueError(f"Could not parse response: {response_str[:200]} - Error: {e}")
+                except json.JSONDecodeError as e:
+                    # Try to fix common JSON issues
+                    logger.warning(f"Initial JSON parse failed: {e}. Attempting to fix...")
+
+                    # If response is too long, it might be truncated mid-JSON
+                    # Try to find the last complete closing brace
+                    if len(response_str) > 3000:
+                        logger.warning(f"Response is very long ({len(response_str)} chars), attempting to find valid JSON boundary")
+                        # Find last occurrence of }}\n or }} at end
+                        for i in range(len(response_str) - 1, max(0, len(response_str) - 500), -1):
+                            if response_str[i] == '}':
+                                try:
+                                    truncated = response_str[:i+1]
+                                    response_data = json.loads(truncated)
+                                    logger.info(f"Successfully parsed truncated JSON at position {i}")
+                                    break
+                                except:
+                                    continue
+                        else:
+                            raise ValueError(f"Could not parse response even after truncation: {response_str[:200]}... - Error: {e}")
+                    else:
+                        logger.error(f"Failed to parse response. Raw output (first 500 chars): {response_str[:500]}")
+                        raise ValueError(f"Could not parse response: {response_str[:200]} - Error: {e}")
 
             # Normalize dimension values to ensure they're numeric and fix product key mismatches
             try:

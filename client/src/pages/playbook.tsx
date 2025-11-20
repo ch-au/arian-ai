@@ -6,6 +6,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Download, Loader2, AlertCircle } from "lucide-react";
 import { Link } from "wouter";
+import { useState } from "react";
+import { SimulationRunSheet } from "@/components/SimulationRunSheet";
 
 interface PlaybookData {
   success: boolean;
@@ -24,11 +26,42 @@ interface PlaybookData {
 export default function PlaybookPage() {
   const [, params] = useRoute("/playbook/:id");
   const negotiationId = params?.id;
+  const [selectedSimulationRunId, setSelectedSimulationRunId] = useState<string | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   const { data, isLoading, error } = useQuery<PlaybookData>({
     queryKey: [`/api/negotiations/${negotiationId}/playbook`],
     enabled: !!negotiationId,
   });
+
+  // Process playbook to fix escaped markdown links
+  const processedPlaybook = data?.playbook
+    ? data.playbook
+        // Remove ALL backslash escapes from markdown links (aggressive cleaning)
+        .replace(/\\(\[)/g, '$1')  // Remove \[ -> [
+        .replace(/\\(\])/g, '$1')  // Remove \] -> ]
+        .replace(/\\(\()/g, '$1')  // Remove \( -> (
+        .replace(/\\(\))/g, '$1')  // Remove \) -> )
+    : '';
+
+  // Debug: Log a sample of the processed playbook
+  if (processedPlaybook && typeof window !== 'undefined') {
+    const sampleMatch = processedPlaybook.match(/\[44be5c86[^\]]*\][^\n]*/);
+    if (sampleMatch) {
+      console.log('DEBUG - Found link sample:', sampleMatch[0]);
+    }
+  }
+
+  // Helper to detect if a string is a UUID
+  const isSimulationRunUUID = (text: string): boolean => {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(text);
+  };
+
+  // Handler for clicking on simulation run links
+  const handleSimulationRunClick = (runId: string) => {
+    setSelectedSimulationRunId(runId);
+    setSheetOpen(true);
+  };
 
   const handleDownload = () => {
     if (!data?.playbook) return;
@@ -153,8 +186,60 @@ export default function PlaybookPage() {
             prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-sm
             prose-pre:bg-muted prose-pre:p-4 prose-pre:rounded-lg prose-pre:overflow-x-auto
           ">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {data.playbook}
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                a: ({ node, children, href, ...props }) => {
+                  // Extract text from children (can be string or array)
+                  let childText = '';
+                  if (typeof children === 'string') {
+                    childText = children;
+                  } else if (Array.isArray(children)) {
+                    childText = children.map(c => typeof c === 'string' ? c : '').join('');
+                  } else if (children) {
+                    childText = children.toString();
+                  }
+
+                  const hrefText = href || '';
+
+                  // Check if the link text (children) is a UUID (simulation run ID)
+                  if (isSimulationRunUUID(childText.trim())) {
+                    return (
+                      <a
+                        onClick={(e) => {
+                          e.preventDefault();
+                          handleSimulationRunClick(childText.trim());
+                        }}
+                        className="cursor-pointer text-primary hover:underline font-medium"
+                        {...props}
+                      >
+                        {hrefText || childText}
+                      </a>
+                    );
+                  }
+
+                  // Check if href is a UUID (alternative format)
+                  if (isSimulationRunUUID(hrefText.trim())) {
+                    return (
+                      <a
+                        onClick={(e) => {
+                          e.preventDefault();
+                          handleSimulationRunClick(hrefText.trim());
+                        }}
+                        className="cursor-pointer text-primary hover:underline font-medium"
+                        {...props}
+                      >
+                        {children}
+                      </a>
+                    );
+                  }
+
+                  // Regular link
+                  return <a href={href} {...props}>{children}</a>;
+                }
+              }}
+            >
+              {processedPlaybook}
             </ReactMarkdown>
           </div>
         </CardContent>
@@ -175,6 +260,13 @@ export default function PlaybookPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Simulation Run Details Sheet */}
+      <SimulationRunSheet
+        simulationRunId={selectedSimulationRunId}
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+      />
     </div>
   );
 }

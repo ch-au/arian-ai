@@ -273,6 +273,16 @@ async def generate_playbook(negotiation_id: str) -> Dict[str, Any]:
                 # Extract response text
                 playbook_markdown = response.choices[0].message.content
 
+                # Post-process: Convert [uuid](Label) to [Label](uuid) for better markdown compatibility
+                import re
+                uuid_pattern = r'\[([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\]\(([^)]+)\)'
+                playbook_markdown = re.sub(
+                    uuid_pattern,
+                    r'[\2](\1)',  # Swap: [uuid](label) -> [label](uuid)
+                    playbook_markdown,
+                    flags=re.IGNORECASE
+                )
+
                 # Update generation with output and usage
                 generation.update(
                     output=playbook_markdown,
