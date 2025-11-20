@@ -6,14 +6,14 @@ import { setNegotiationEngine, SimulationQueueService } from "./services/simulat
 // import testWebSocketRoutes, { setTestNegotiationEngine } from "./api/test-websocket";
 import { createDashboardRouter } from "./routes/dashboard";
 import { createAgentRouter } from "./routes/agents";
-import { createContextRouter } from "./routes/contexts";
-import { createZopaRouter } from "./routes/zopa";
 import { createNegotiationRouter } from "./routes/negotiations";
 import { createStrategyRouter } from "./routes/strategies";
 import { createAnalyticsRouter } from "./routes/analytics";
 import { createSystemRouter } from "./routes/system";
 import marketIntelligenceRouter from "./routes/market-intelligence";
 import transcribeRouter from "./routes/transcribe";
+import { createRegistrationRouter } from "./routes/registrations";
+import authRouter from "./routes/auth";
 
 let negotiationEngine: NegotiationEngine;
 
@@ -30,12 +30,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Start the background queue processor
   SimulationQueueService.startBackgroundProcessor();
 
+  // Auth routes (no auth required for login/register)
+  app.use("/api/auth", authRouter);
+
   app.use("/api/dashboard", createDashboardRouter());
   app.use("/api/agents", createAgentRouter());
-  app.use("/api/contexts", createContextRouter());
-  app.use("/api/zopa", createZopaRouter());
   app.use("/api/negotiations", createNegotiationRouter(negotiationEngine));
   app.use("/api", createStrategyRouter());
+  app.use("/api/registrations", createRegistrationRouter());
   app.use("/api/analytics", createAnalyticsRouter());
   app.use("/api", createSystemRouter(negotiationEngine));
   app.use("/api/market-intelligence", marketIntelligenceRouter);

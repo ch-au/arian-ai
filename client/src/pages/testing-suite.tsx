@@ -1,455 +1,378 @@
-import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import React, { useMemo, useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
-import { 
-  Play, 
-  Square, 
-  RotateCcw, 
-  Download, 
-  TestTube, 
-  CheckCircle, 
-  XCircle, 
-  Clock,
-  Beaker,
-  Target,
-  Zap
-} from "lucide-react";
-import { apiRequest, queryClient } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { ArrowRight, BarChart2, LineChart, Play } from "lucide-react";
+import { useNegotiations } from "@/hooks/use-negotiations";
+import { useNegotiationDetail } from "@/hooks/use-negotiation-detail";
+import { buildRadarMetrics, buildActualValuesRadar, buildComparisonSummary } from "@/lib/run-comparison";
+import {
+  RadarChart,
+  Radar,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
+  Legend,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
 
-interface TestScenario {
+interface AnalysisRun {
   id: string;
-  name: string;
-  description: string;
-  status: "pending" | "running" | "completed" | "failed";
-  progress: number;
-  results?: {
-    totalRuns: number;
-    successfulRuns: number;
-    averageScore: number;
-    averageDuration: number;
-    totalCost: number;
-  };
+  techniqueName: string;
+  tacticName: string;
+  dealValue: number;
+  totalRounds: number;
+  outcome: string;
+  actualCost?: number;
+  completedAt?: string;
+  zopaDistance?: string | null;
+  dimensionResults?: Array<{
+    dimensionName: string;
+    finalValue: string | number;
+    achievedTarget: boolean;
+  }>;
+  productResults?: Array<{
+    productName: string;
+    agreedPrice: string | number;
+    withinZopa?: boolean;
+  }>;
+  techniqueEffectivenessScore?: number;
+  tacticEffectivenessScore?: number;
 }
 
+interface AnalysisResponse {
+  runs: AnalysisRun[];
+}
+
+const OUTCOME_OPTIONS: Array<{ id: string; label: string }> = [
+  { id: "ALL", label: "Alle Outcomes" },
+  { id: "DEAL_ACCEPTED", label: "Deal erzielt" },
+  { id: "WALK_AWAY", label: "Abbruch" },
+  { id: "FAILED", label: "Fehlgeschlagen" },
+];
+
 export default function TestingSuite() {
-  const [selectedScenarios, setSelectedScenarios] = useState<string[]>([]);
-  const [testConfig, setTestConfig] = useState({
-    iterations: 10,
-    timeout: 300, // 5 minutes
-    parallelRuns: 3,
-    enableDetailedLogging: true,
-  });
-  const { toast } = useToast();
+  const [, setLocation] = useLocation();
+  const [selectedNegotiationId, setSelectedNegotiationId] = useState<string | null>(null);
+  const [selectedRunIds, setSelectedRunIds] = useState<string[]>([]);
+  const [outcomeFilter, setOutcomeFilter] = useState("ALL");
+  const [searchTerm, setSearchTerm] = useState("");
 
-  // Mock test scenarios - in real app this would come from API
-  const [testScenarios, setTestScenarios] = useState<TestScenario[]>([
-    {
-      id: "scenario-1",
-      name: "High-Volume Product Negotiation",
-      description: "Test agents negotiating bulk product purchases with varying volume requirements",
-      status: "pending",
-      progress: 0,
-    },
-    {
-      id: "scenario-2",
-      name: "Price-Sensitive Service Agreement",
-      description: "Focus on price negotiations with tight margin constraints",
-      status: "pending",
-      progress: 0,
-    },
-    {
-      id: "scenario-3",
-      name: "Multi-Parameter Complex Deal",
-      description: "Test complex negotiations involving price, volume, payment terms, and duration",
-      status: "completed",
-      progress: 100,
-      results: {
-        totalRuns: 10,
-        successfulRuns: 8,
-        averageScore: 84.6,
-        averageDuration: 4.2,
-        totalCost: 12.45,
-      },
-    },
-    {
-      id: "scenario-4",
-      name: "Personality Clash Simulation",
-      description: "Test negotiations between agents with conflicting personality traits",
-      status: "pending",
-      progress: 0,
-    },
-    {
-      id: "scenario-5",
-      name: "Time-Constrained Negotiations",
-      description: "Simulate negotiations with aggressive deadlines and time pressure",
-      status: "failed",
-      progress: 60,
-      results: {
-        totalRuns: 6,
-        successfulRuns: 2,
-        averageScore: 45.3,
-        averageDuration: 8.1,
-        totalCost: 18.67,
-      },
-    },
-  ]);
+  const { data: negotiations = [] } = useNegotiations();
+  const negotiationOptions = useMemo(
+    () =>
+      negotiations.map((neg) => ({
+        id: neg.id,
+        label: neg.title,
+        summary: neg.summary,
+      })),
+    [negotiations],
+  );
 
-  const { data: agents } = useQuery({
-    queryKey: ["/api/agents"],
-  });
-
-  const { data: contexts } = useQuery({
-    queryKey: ["/api/contexts"],
-  });
-
-  const runTestsMutation = useMutation({
-    mutationFn: async (config: any) => {
-      // Simulate test execution
-      return new Promise((resolve) => {
-        setTimeout(() => resolve({ success: true }), 2000);
-      });
-    },
-    onSuccess: () => {
-      toast({
-        title: "Tests Started",
-        description: "Test scenarios are now running. You'll be notified when they complete.",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "Error",
-        description: "Failed to start test scenarios. Please try again.",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case "pending":
-        return <Clock className="w-4 h-4 text-gray-500" />;
-      case "running":
-        return <Play className="w-4 h-4 text-blue-500" />;
-      case "completed":
-        return <CheckCircle className="w-4 h-4 text-green-500" />;
-      case "failed":
-        return <XCircle className="w-4 h-4 text-red-500" />;
-      default:
-        return <TestTube className="w-4 h-4 text-gray-500" />;
+  useEffect(() => {
+    if (!selectedNegotiationId && negotiationOptions.length > 0) {
+      setSelectedNegotiationId(negotiationOptions[0].id);
     }
-  };
+  }, [negotiationOptions, selectedNegotiationId]);
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "pending":
-        return "gray";
-      case "running":
-        return "blue";
-      case "completed":
-        return "green";
-      case "failed":
-        return "red";
-      default:
-        return "gray";
-    }
-  };
+  const { data: negotiationDetail } = useNegotiationDetail(selectedNegotiationId);
 
-  const handleScenarioToggle = (scenarioId: string) => {
-    setSelectedScenarios(prev => 
-      prev.includes(scenarioId) 
-        ? prev.filter(id => id !== scenarioId)
-        : [...prev, scenarioId]
-    );
-  };
+  const { data: analysis, isLoading: loadingAnalysis } = useQuery<AnalysisResponse>({
+    queryKey: selectedNegotiationId ? ["testing-suite-analysis-v2", selectedNegotiationId] : [],
+    enabled: Boolean(selectedNegotiationId),
+    staleTime: 0,
+    queryFn: async ({ queryKey }) => {
+      const [, negotiationId] = queryKey;
+      const response = await fetch(`/api/negotiations/${negotiationId}/analysis`);
+      if (!response.ok) {
+        throw new Error("Analyse konnte nicht geladen werden");
+      }
+      return response.json();
+    },
+  });
 
-  const handleRunTests = () => {
-    if (selectedScenarios.length === 0) {
-      toast({
-        title: "No Scenarios Selected",
-        description: "Please select at least one test scenario to run.",
-        variant: "destructive",
-      });
-      return;
-    }
+  const runs = analysis?.runs ?? [];
 
-    runTestsMutation.mutate({
-      scenarios: selectedScenarios,
-      config: testConfig,
+  useEffect(() => {
+    setSelectedRunIds([]);
+  }, [selectedNegotiationId]);
+
+  const filteredRuns = useMemo(() => {
+    return runs.filter((run) => {
+      const matchesOutcome = outcomeFilter === "ALL" || run.outcome === outcomeFilter;
+      const matchesSearch =
+        searchTerm.trim().length === 0 ||
+        run.techniqueName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        run.tacticName.toLowerCase().includes(searchTerm.toLowerCase());
+      return matchesOutcome && matchesSearch;
     });
+  }, [runs, outcomeFilter, searchTerm]);
 
-    // Simulate updating scenario status
-    setTestScenarios(prev => 
-      prev.map(scenario => 
-        selectedScenarios.includes(scenario.id)
-          ? { ...scenario, status: "running" as const, progress: 0 }
-          : scenario
-      )
+  const selectedRuns = filteredRuns.filter((run) => selectedRunIds.includes(run.id));
+
+  const radarData = buildActualValuesRadar(selectedRuns);
+  const summary = buildComparisonSummary(selectedRuns);
+
+  const handleToggleRun = (runId: string) => {
+    setSelectedRunIds((prev) =>
+      prev.includes(runId) ? prev.filter((id) => id !== runId) : [...prev, runId],
     );
   };
 
-  const formatDuration = (minutes: number) => {
-    return `${minutes.toFixed(1)}m`;
-  };
-
-  const calculateOverallStats = () => {
-    const completedScenarios = testScenarios.filter(s => s.status === "completed" && s.results);
-    if (completedScenarios.length === 0) {
-      return { successRate: 0, averageScore: 0, totalCost: 0, totalRuns: 0 };
+  const handleSelectAll = () => {
+    if (selectedRunIds.length === filteredRuns.length) {
+      setSelectedRunIds([]);
+    } else {
+      setSelectedRunIds(filteredRuns.map((run) => run.id));
     }
-
-    const totalRuns = completedScenarios.reduce((sum, s) => sum + (s.results?.totalRuns || 0), 0);
-    const successfulRuns = completedScenarios.reduce((sum, s) => sum + (s.results?.successfulRuns || 0), 0);
-    const totalScore = completedScenarios.reduce((sum, s) => sum + ((s.results?.averageScore || 0) * (s.results?.totalRuns || 0)), 0);
-    const totalCost = completedScenarios.reduce((sum, s) => sum + (s.results?.totalCost || 0), 0);
-
-    return {
-      successRate: totalRuns > 0 ? (successfulRuns / totalRuns) * 100 : 0,
-      averageScore: totalRuns > 0 ? totalScore / totalRuns : 0,
-      totalCost,
-      totalRuns,
-    };
   };
-
-  const overallStats = calculateOverallStats();
 
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
+    <div className="p-6 space-y-6">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Testing Suite</h1>
-          <p className="text-gray-600 mt-1">Multi-scenario testing and validation for AI negotiations</p>
+          <p className="text-gray-600">
+            Wähle eine Verhandlung und vergleiche Simulation-Runs auf einen Blick.
+          </p>
         </div>
-        <div className="flex items-center space-x-3">
-          <Button variant="outline" size="sm">
-            <Download className="w-4 h-4 mr-2" />
-            Export Results
-          </Button>
-          <Button 
-            onClick={handleRunTests}
-            disabled={runTestsMutation.isPending || selectedScenarios.length === 0}
-          >
+        <div className="flex gap-3 flex-wrap">
+          <Button variant="ghost" size="sm" onClick={() => selectedNegotiationId && setLocation(`/monitor/${selectedNegotiationId}`)}>
             <Play className="w-4 h-4 mr-2" />
-            Run Selected Tests
+            Monitor öffnen
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => selectedNegotiationId && setLocation(`/negotiations/${selectedNegotiationId}/analysis`)}>
+            <BarChart2 className="w-4 h-4 mr-2" />
+            Analyse öffnen
           </Button>
         </div>
       </div>
 
-      {/* Overall Statistics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-3">
-              <Beaker className="w-8 h-8 text-blue-600" />
-              <div>
-                <p className="text-sm text-gray-600">Total Runs</p>
-                <p className="text-xl font-bold text-gray-900">{overallStats.totalRuns}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-3">
-              <Target className="w-8 h-8 text-green-600" />
-              <div>
-                <p className="text-sm text-gray-600">Success Rate</p>
-                <p className="text-xl font-bold text-gray-900">{overallStats.successRate.toFixed(1)}%</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-3">
-              <CheckCircle className="w-8 h-8 text-purple-600" />
-              <div>
-                <p className="text-sm text-gray-600">Avg Score</p>
-                <p className="text-xl font-bold text-gray-900">{overallStats.averageScore.toFixed(1)}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-3">
-              <Zap className="w-8 h-8 text-yellow-600" />
-              <div>
-                <p className="text-sm text-gray-600">Total Cost</p>
-                <p className="text-xl font-bold text-gray-900">${overallStats.totalCost.toFixed(2)}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Test Configuration */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Test Configuration</CardTitle>
-            <CardDescription>Configure test parameters and execution settings</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle>Verhandlung wählen</CardTitle>
+          <CardDescription>Alle Runs dieser Verhandlung stehen für den Vergleich bereit.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid md:grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="iterations">Iterations per Scenario</Label>
-              <Input
-                id="iterations"
-                type="number"
-                value={testConfig.iterations}
-                onChange={(e) => setTestConfig(prev => ({ ...prev, iterations: parseInt(e.target.value) || 10 }))}
-                min="1"
-                max="100"
-              />
+              <Label>Verhandlung</Label>
+              <Select value={selectedNegotiationId ?? undefined} onValueChange={setSelectedNegotiationId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Verhandlung auswählen" />
+                </SelectTrigger>
+                <SelectContent>
+                  {negotiationOptions.map((option) => (
+                    <SelectItem key={option.id} value={option.id}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-
             <div>
-              <Label htmlFor="timeout">Timeout (seconds)</Label>
-              <Input
-                id="timeout"
-                type="number"
-                value={testConfig.timeout}
-                onChange={(e) => setTestConfig(prev => ({ ...prev, timeout: parseInt(e.target.value) || 300 }))}
-                min="60"
-                max="1800"
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="parallel">Parallel Runs</Label>
-              <Select 
-                value={testConfig.parallelRuns.toString()} 
-                onValueChange={(value) => setTestConfig(prev => ({ ...prev, parallelRuns: parseInt(value) }))}
-              >
+              <Label>Outcome-Filter</Label>
+              <Select value={outcomeFilter} onValueChange={setOutcomeFilter}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="1">1 (Sequential)</SelectItem>
-                  <SelectItem value="2">2 Parallel</SelectItem>
-                  <SelectItem value="3">3 Parallel</SelectItem>
-                  <SelectItem value="5">5 Parallel</SelectItem>
+                  {OUTCOME_OPTIONS.map((option) => (
+                    <SelectItem key={option.id} value={option.id}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
-
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="logging"
-                checked={testConfig.enableDetailedLogging}
-                onCheckedChange={(checked) => 
-                  setTestConfig(prev => ({ ...prev, enableDetailedLogging: checked as boolean }))
-                }
-              />
-              <Label htmlFor="logging" className="text-sm">Enable detailed logging</Label>
+          </div>
+          {negotiationDetail && (
+            <div className="flex flex-wrap gap-4 text-sm text-gray-600">
+              <div>
+                <span className="font-medium">Unternehmen:</span>{" "}
+                {negotiationDetail.negotiation.scenario?.companyProfile?.organization ?? "n/v"}
+              </div>
+              <div>
+                <span className="font-medium">Gegenpartei:</span>{" "}
+                {negotiationDetail.negotiation.scenario?.counterpartProfile?.name ?? "n/v"}
+              </div>
+              <div>
+                <span className="font-medium">Produkte:</span> {negotiationDetail.products.length}
+              </div>
             </div>
+          )}
+        </CardContent>
+      </Card>
 
-            <Button variant="outline" className="w-full">
-              <RotateCcw className="w-4 h-4 mr-2" />
-              Reset to Defaults
-            </Button>
-          </CardContent>
-        </Card>
+      <Card>
+        <CardHeader className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div>
+            <CardTitle>Simulation Runs</CardTitle>
+            <CardDescription>Markiere Runs, um sie im Vergleich anzuzeigen.</CardDescription>
+          </div>
+          <Input
+            placeholder="Technik oder Taktik suchen…"
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            className="max-w-xs"
+          />
+        </CardHeader>
+        <CardContent className="p-0">
+          {loadingAnalysis ? (
+            <div className="p-6 text-gray-500">Lade Simulationen …</div>
+          ) : runs.length === 0 ? (
+            <div className="p-6 text-gray-500">Für diese Verhandlung existieren noch keine Runs.</div>
+          ) : (
+            <ScrollArea className="max-h-[420px]">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 sticky top-0 z-10">
+                  <tr>
+                    <th className="w-12 p-3 text-left">
+                      <Checkbox
+                        checked={
+                          selectedRunIds.length > 0 && selectedRunIds.length === filteredRuns.length
+                        }
+                        onCheckedChange={handleSelectAll}
+                      />
+                    </th>
+                    <th className="p-3 text-left">Technik</th>
+                    <th className="p-3 text-left">Taktik</th>
+                    <th className="p-3 text-left">Outcome</th>
+                    <th className="p-3 text-left">Deal Value</th>
+                    <th className="p-3 text-left">Runden</th>
+                    <th className="p-3 text-left">Kosten</th>
+                    <th className="p-3 text-left">Abschluss</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredRuns.map((run) => (
+                    <tr key={run.id} className="border-b hover:bg-gray-50">
+                      <td className="p-3">
+                        <Checkbox
+                          checked={selectedRunIds.includes(run.id)}
+                          onCheckedChange={() => handleToggleRun(run.id)}
+                        />
+                      </td>
+                      <td className="p-3">
+                        <div className="font-medium text-gray-900">{run.techniqueName}</div>
+                        <div className="text-xs text-gray-500">{run.id.slice(0, 6)}</div>
+                      </td>
+                      <td className="p-3">{run.tacticName}</td>
+                      <td className="p-3">
+                        <Badge variant={run.outcome === "DEAL_ACCEPTED" ? "default" : "secondary"}>
+                          {run.outcome.replace("_", " ")}
+                        </Badge>
+                      </td>
+                      <td className="p-3">{run.dealValue ? `€ ${run.dealValue.toFixed(0)}` : "–"}</td>
+                      <td className="p-3">{run.totalRounds ?? "–"}</td>
+                      <td className="p-3">
+                        {run.actualCost ? `€ ${Number(run.actualCost).toFixed(2)}` : "–"}
+                      </td>
+                      <td className="p-3 text-xs text-gray-500">
+                        {run.completedAt ? new Date(run.completedAt).toLocaleString("de-DE") : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </ScrollArea>
+          )}
+        </CardContent>
+      </Card>
 
-        {/* Test Scenarios */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle>Test Scenarios</CardTitle>
+            <CardTitle>Vergleich ausgewählter Runs</CardTitle>
             <CardDescription>
-              Select and manage test scenarios for comprehensive validation
+              {selectedRuns.length < 2
+                ? "Bitte mindestens zwei Runs auswählen, um den Radar-Vergleich zu sehen."
+                : "Radar-Diagramm zeigt relative Performance pro Kennzahl."}
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {testScenarios.map((scenario) => (
-                <div key={scenario.id} className="border border-gray-200 rounded-lg p-4">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start space-x-3">
-                      <Checkbox
-                        checked={selectedScenarios.includes(scenario.id)}
-                        onCheckedChange={() => handleScenarioToggle(scenario.id)}
-                        disabled={scenario.status === "running"}
-                      />
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-2 mb-2">
-                          {getStatusIcon(scenario.status)}
-                          <h4 className="font-medium text-gray-900">{scenario.name}</h4>
-                          <Badge variant={getStatusColor(scenario.status) as any}>
-                            {scenario.status}
-                          </Badge>
-                        </div>
-                        <p className="text-sm text-gray-600 mb-3">{scenario.description}</p>
-                        
-                        {scenario.status === "running" && (
-                          <div className="mb-3">
-                            <div className="flex items-center justify-between mb-1">
-                              <span className="text-sm text-gray-600">Progress</span>
-                              <span className="text-sm font-medium">{scenario.progress}%</span>
-                            </div>
-                            <Progress value={scenario.progress} className="h-2" />
-                          </div>
-                        )}
-
-                        {scenario.results && (
-                          <div className="grid grid-cols-2 gap-4 text-sm">
-                            <div>
-                              <span className="text-gray-600">Success Rate:</span>
-                              <span className="font-medium ml-1">
-                                {((scenario.results.successfulRuns / scenario.results.totalRuns) * 100).toFixed(1)}%
-                              </span>
-                            </div>
-                            <div>
-                              <span className="text-gray-600">Avg Score:</span>
-                              <span className="font-medium ml-1">{scenario.results.averageScore.toFixed(1)}</span>
-                            </div>
-                            <div>
-                              <span className="text-gray-600">Duration:</span>
-                              <span className="font-medium ml-1">{formatDuration(scenario.results.averageDuration)}</span>
-                            </div>
-                            <div>
-                              <span className="text-gray-600">Cost:</span>
-                              <span className="font-medium ml-1">${scenario.results.totalCost.toFixed(2)}</span>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-6 flex items-center justify-between">
-              <p className="text-sm text-gray-600">
-                {selectedScenarios.length} of {testScenarios.length} scenarios selected
-              </p>
-              <div className="space-x-2">
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  onClick={() => setSelectedScenarios(testScenarios.map(s => s.id))}
-                >
-                  Select All
-                </Button>
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  onClick={() => setSelectedScenarios([])}
-                >
-                  Clear Selection
-                </Button>
+          <CardContent className="h-[360px]">
+            {selectedRuns.length < 2 ? (
+              <div className="h-full flex items-center justify-center text-gray-500">
+                Markiere mindestens zwei Runs in der Tabelle.
               </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%" key={selectedRunIds.join(',')}>
+                <RadarChart data={radarData}>
+                  <PolarGrid />
+                  <PolarAngleAxis dataKey="metric" />
+                  <PolarRadiusAxis angle={45} domain={[0, 100]} />
+                  {selectedRuns.map((run, index) => (
+                    <Radar
+                      key={run.id}
+                      name={`${run.techniqueName} × ${run.tacticName}${run.zopaDistance ? ` (${run.zopaDistance})` : ''}`}
+                      dataKey={run.id}
+                      strokeWidth={2}
+                      stroke={`hsl(${index * 55}, 70%, 45%)`}
+                      fill={`hsl(${index * 55}, 70%, 60%)`}
+                      fillOpacity={0.2}
+                    />
+                  ))}
+                  <Legend />
+                  <Tooltip />
+                </RadarChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Vergleichs-KPIs</CardTitle>
+            <CardDescription>Aggregierte Werte für die aktuelle Auswahl.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <p className="text-sm text-gray-500">Ausgewählte Runs</p>
+              <p className="text-3xl font-bold">{selectedRuns.length}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Ø Deal Value</p>
+              <p className="text-xl font-semibold">
+                {selectedRuns.length ? `€ ${summary.avgDealValue.toFixed(0)}` : "—"}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Ø Runden</p>
+              <p className="text-xl font-semibold">
+                {selectedRuns.length ? summary.avgRounds.toFixed(1) : "—"}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Dimensionserfolg</p>
+              <p className="text-xl font-semibold">
+                {selectedRuns.length ? `${summary.successShare.toFixed(1)}%` : "—"}
+              </p>
+            </div>
+            <div className="flex flex-col gap-2">
+              <Button
+                variant="outline"
+                disabled={!selectedRuns.length}
+                onClick={() => selectedNegotiationId && setLocation(`/analysis/${selectedNegotiationId}`)}
+              >
+                <LineChart className="w-4 h-4 mr-2" />
+                Analyse-Detail
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={!selectedRuns.length}
+                onClick={() => selectedNegotiationId && setLocation(`/reports?negotiationId=${selectedNegotiationId}`)}
+              >
+                <ArrowRight className="w-4 h-4 mr-2" />
+                Ergebnis exportieren
+              </Button>
             </div>
           </CardContent>
         </Card>

@@ -1,8 +1,8 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Brain, RefreshCw, CheckCircle, AlertCircle } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 
@@ -15,16 +15,15 @@ interface EvaluationStats {
 
 export default function EvaluationBackfillCard() {
   const [isBackfilling, setIsBackfilling] = useState(false);
-  const queryClient = useQueryClient();
 
   const { data: stats, isLoading, refetch } = useQuery<EvaluationStats>({
-    queryKey: ["/api/negotiations/evaluation-status"],
-    refetchInterval: isBackfilling ? 5000 : false, // Poll while backfilling
+    queryKey: ["/api/dashboard/evaluation-status"],
+    refetchInterval: isBackfilling ? 5000 : false,
   });
 
   const backfillMutation = useMutation({
     mutationFn: async () => {
-      const response = await fetch("/api/negotiations/backfill-evaluations", {
+      const response = await fetch("/api/dashboard/evaluations/backfill", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       });
@@ -32,9 +31,7 @@ export default function EvaluationBackfillCard() {
       return response.json();
     },
     onSuccess: (data) => {
-      console.log("Backfill started:", data);
       setIsBackfilling(true);
-      // Refetch stats after a delay to show progress
       setTimeout(() => {
         refetch();
       }, 2000);
@@ -57,80 +54,56 @@ export default function EvaluationBackfillCard() {
     });
   };
 
-  if (isLoading) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Brain className="w-5 h-5" />
-            AI Evaluation Status
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">Loading...</p>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (!stats) return null;
-
-  const percentageEvaluated = stats.evaluationRate || 0;
-  const isComplete = stats.needingEvaluation === 0;
+  const percentageEvaluated = stats?.evaluationRate || 0;
+  const isComplete = stats ? stats.needingEvaluation === 0 : false;
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Brain className="w-5 h-5" />
-          AI Evaluation Status
+          KI-Auswertungen
         </CardTitle>
-        <CardDescription>
-          AI summaries for completed simulation runs
-        </CardDescription>
+        <CardDescription>Automatische Bewertungen für abgeschlossene Simulationen</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Stats Overview */}
         <div className="grid grid-cols-3 gap-4">
           <div className="text-center">
-            <div className="text-2xl font-bold text-blue-600">{stats.total}</div>
-            <div className="text-xs text-muted-foreground">Total Eligible</div>
+            <div className="text-2xl font-bold text-blue-600">{stats?.total ?? "–"}</div>
+            <div className="text-xs text-muted-foreground">Gesamt</div>
           </div>
           <div className="text-center">
-            <div className="text-2xl font-bold text-green-600">{stats.evaluated}</div>
-            <div className="text-xs text-muted-foreground">Evaluated</div>
+            <div className="text-2xl font-bold text-green-600">{stats?.evaluated ?? "–"}</div>
+            <div className="text-xs text-muted-foreground">Ausgewertet</div>
           </div>
           <div className="text-center">
-            <div className="text-2xl font-bold text-orange-600">{stats.needingEvaluation}</div>
-            <div className="text-xs text-muted-foreground">Pending</div>
+            <div className="text-2xl font-bold text-orange-600">{stats?.needingEvaluation ?? "–"}</div>
+            <div className="text-xs text-muted-foreground">Offen</div>
           </div>
         </div>
 
-        {/* Progress Bar */}
         <div className="space-y-2">
           <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Completion Rate</span>
+            <span className="text-muted-foreground">Fortschritt</span>
             <span className="font-medium">{percentageEvaluated.toFixed(1)}%</span>
           </div>
           <Progress value={percentageEvaluated} className="h-2" />
         </div>
 
-        {/* Status Badge */}
         <div className="flex items-center justify-center gap-2">
           {isComplete ? (
             <Badge variant="default" className="gap-1">
               <CheckCircle className="w-3 h-3" />
-              All evaluations complete
+              Alle Bewertungen abgeschlossen
             </Badge>
           ) : (
             <Badge variant="secondary" className="gap-1">
               <AlertCircle className="w-3 h-3" />
-              {stats.needingEvaluation} simulation{stats.needingEvaluation !== 1 ? 's' : ''} need evaluation
+              {stats?.needingEvaluation ?? 0} Simulationen offen
             </Badge>
           )}
         </div>
 
-        {/* Action Buttons */}
         <div className="flex gap-2">
           {!isComplete && (
             <Button
@@ -141,12 +114,12 @@ export default function EvaluationBackfillCard() {
               {backfillMutation.isPending || isBackfilling ? (
                 <>
                   <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                  Evaluating...
+                  Bewertung läuft …
                 </>
               ) : (
                 <>
                   <Brain className="w-4 h-4 mr-2" />
-                  Generate AI Summaries
+                  KI-Bewertung starten
                 </>
               )}
             </Button>
@@ -163,12 +136,14 @@ export default function EvaluationBackfillCard() {
 
         {isBackfilling && (
           <p className="text-xs text-muted-foreground text-center">
-            Evaluations are running in the background. This may take several minutes.
+            Die Bewertungen laufen im Hintergrund und können mehrere Minuten dauern.
           </p>
+        )}
+
+        {isLoading && (
+          <p className="text-xs text-muted-foreground text-center">Lade aktuelle Kennzahlen …</p>
         )}
       </CardContent>
     </Card>
   );
 }
-
-

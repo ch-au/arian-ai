@@ -1,337 +1,191 @@
-# Data Model Specification
+# Data Model Specification (November 2025)
 
-This reference describes the canonical PostgreSQL schema that powers ARIAN AI. Update this file whenever tables or key fields change so the data model stays aligned with product requirements.
-
-## Core Tables
-
-### `negotiations`
-Master record for a negotiation configuration.
-
-**Key Fields:**
-- `id` (UUID): Primary key
-- `title`, `negotiation_type`, `relationship_type`: Business context
-- `product_market_description`, `additional_comments`: User input
-- `status`: Lifecycle state (`pending`, `running`, `completed`, `failed`, `configured`)
-- `user_role`: `buyer` or `seller` - which role the user represents
-- `max_rounds`: Maximum negotiation rounds (default: 10)
-- `selected_techniques`, `selected_tactics`: UUID arrays of selected strategies
-- `counterpart_personality`, `zopa_distance`: AI agent configuration
-
-**Phase2 Specific Fields:**
-- `company_known` (boolean): Whether the company is known to the counterpart
-- `counterpart_known` (boolean): Whether the counterpart is known
-- `negotiation_frequency` (text): `yearly` | `quarterly` | `monthly` | `ongoing`
-- `power_balance` (integer): 0-100 (0 = seller more powerful, 50 = balanced, 100 = buyer more powerful)
-- `verhandlungs_modus` (text): `kooperativ` | `moderat` | `aggressiv` | `sehr-aggressiv`
-
-**DEPRECATED Fields** (will be removed after migration):
-- `user_zopa` (JSONB): Legacy ZOPA configuration - use `negotiation_dimensions` table instead
-- `counterpart_distance` (JSONB): Legacy counterpart distance - use `negotiation_dimensions` table instead
-
-**Metadata:**
-- `metadata` (JSONB): Flexible storage for additional context (e.g., `geschätzteDistanz` for Phase2)
-- `sonderinteressen` (text): Special interests or requirements
-
-**Relationships:**
-- One-to-many: `simulation_queue`, `simulation_runs`, `products`, `negotiation_dimensions`
-- Many-to-one: `negotiation_contexts`, `agents` (buyer/seller)
-
-### `products`
-Multiple products per negotiation (Phase 2 enhancement).
-
-**Key Fields:**
-- `negotiation_id`: Foreign key to negotiations
-- `produkt_name`: Product name/description
-- `ziel_preis`: Target price (role-dependent: ideal for buyer, target for seller)
-- `min_max_preis`: Min/Max boundary (role-dependent: max for buyer, min for seller)
-- `geschätztes_volumen`: Estimated volume/quantity
-
-**Purpose:** Enables multi-product negotiations with individual ZOPA boundaries per product.
-
-### `negotiation_dimensions`
-Flexible ZOPA definitions beyond price (e.g., payment terms, delivery time).
-
-**Key Fields:**
-- `negotiation_id`: Foreign key to negotiations
-- `name`: Dimension name (e.g., "payment_terms", "delivery_time")
-- `min_value`, `max_value`, `target_value`: Boundary values
-- `priority`: Importance (1=must-have, 2=important, 3=flexible)
-- `unit`: Optional unit (e.g., "days", "months")
-
-**Constraint:** `UNIQUE (negotiation_id, name)` ensures no duplicate dimensions per negotiation.
-
-### `simulation_queue`
-Aggregate execution tracking for a negotiation's simulation runs.
-
-**Key Fields:**
-- `negotiation_id`: Foreign key to negotiations
-- `total_simulations`: N techniques × M tactics × P personalities × D distances
-- `completed_count`, `failed_count`, `paused_count`: Progress counters
-- `status`: `pending`, `running`, `paused`, `completed`, `failed`
-- `estimated_total_cost`, `actual_total_cost`: API cost tracking
-- `crash_recovery_checkpoint`: Resume point for interrupted queues
-
-**Purpose:** Tracks overall progress for combinatorial simulation runs.
-
-### `simulation_runs`
-One record per technique-tactic-personality-distance combination.
-
-**Key Fields:**
-- `queue_id`, `negotiation_id`: Foreign keys
-- `run_number`, `execution_order`: Sequencing
-- `technique_id`, `tactic_id`: Strategy combination being tested
-- `personality_id`, `zopa_distance`: AI agent configuration
-- `status`: `pending`, `running`, `completed`, `failed`, `timeout`
-- `outcome`: `DEAL_ACCEPTED`, `WALK_AWAY`, `TERMINATED`, `MAX_ROUNDS_REACHED`, `ERROR`
-
-**Results:**
-- `deal_value`: Sum of all product subtotals (price × volume)
-- `conversation_log`: JSONB array of negotiation messages
-- `other_dimensions`: JSONB object with non-price terms (payment, delivery, etc.)
-- `total_rounds`, `actual_cost`: Process metrics
-
-**AI Evaluation Fields** (Januar 2025):
-- `tactical_summary`: 2-3 sentence analysis in German
-- `technique_effectiveness_score`: 1-10 rating for influence technique
-- `tactic_effectiveness_score`: 1-10 rating for negotiation tactic
-
-**Purpose:** Stores individual simulation execution and results.
-
-### `product_results`
-Per-product outcomes for each simulation run.
-
-**Key Fields:**
-- `simulation_run_id`, `product_id`: Foreign keys
-- `product_name`: Denormalized for easy access
-- `target_price`, `min_max_price`, `estimated_volume`: Config (denormalized)
-
-**Results:**
-- `agreed_price`: Final negotiated price
-- `price_vs_target`: Percentage difference from target (e.g., "+15.3%")
-- `absolute_delta_from_target`: Absolute difference
-- `within_zopa`: Boolean - is price within ZOPA boundaries?
-- `zopa_utilization`: Percentage of ZOPA range used
-- `subtotal`: `agreed_price × estimated_volume`
-- `performance_score`: 0-100 score based on ZOPA achievement
-
-**Purpose:** Enables per-product analysis in multi-product negotiations.
-
-### `negotiation_rounds`
-Turn-by-turn negotiation transcript (optional, for detailed analysis).
-
-**Key Fields:**
-- `simulation_run_id`: Foreign key
-- `round`: Round number (1, 2, 3...)
-- `speaker`: `BUYER` or `SELLER`
-- `message`: Negotiation message text
-- `proposal`: JSONB with offer details
-- `response_time_ms`: AI generation latency
-
-**Purpose:** Detailed conversation flow analysis and debugging.
-
-## Reference Data Tables
-
-### `influencing_techniques`
-Psychological influence strategies (10 techniques).
-
-**Key Fields:**
-- `name`: Technique name (e.g., "Reziprozität", "Social Proof")
-- `beschreibung`: Description
-- `anwendung`: How to apply
-- `wichtige_aspekte`: JSONB array of key aspects
-- `key_phrases`: JSONB array of example phrases
-
-**Source:** `data/influencing_techniques.csv` → Imported via `npm run db:seed`
-
-### `negotiation_tactics`
-Tactical approaches (44 tactics).
-
-**Key Fields:**
-- `name`: Tactic name (e.g., "Win-Win", "Deadline Pressure")
-- `beschreibung`: Description
-- `anwendung`: Application guidance
-- `wichtige_aspekte`: JSONB array of considerations
-- `key_phrases`: JSONB array of tactical phrases
-
-**Source:** `data/negotiation_tactics.csv` → Imported via `npm run db:seed`
-
-### `personality_types`
-Big Five personality archetypes.
-
-**Key Fields:**
-- `name`: Archetype name (e.g., "Analytical", "Collaborative")
-- `beschreibung`: Description
-- `big_five_profile`: JSONB with openness, conscientiousness, extraversion, agreeableness, neuroticism
-
-**Source:** `data/personality_types.csv` → Imported via `npm run db:seed`
-
-### `agents`
-AI agent definitions with personality profiles.
-
-**Key Fields:**
-- `name`, `description`: Agent identification
-- `personality_profile`: JSONB with Big Five traits (0.0-1.0)
-- `power_level`: Negotiation strength (0-10)
-- `preferred_tactics`: UUID array of favored tactics
-
-**Purpose:** Configurable AI negotiators for simulations.
-
-### `negotiation_contexts`
-Reusable business scenarios.
-
-**Key Fields:**
-- `name`, `description`: Context identification
-- `product_info`: JSONB with product details
-- `market_conditions`: JSONB with market context
-- `baseline_values`: JSONB with reference values
-
-**Purpose:** Template scenarios for consistent testing.
-
-## Key Relationships
-
-```
-negotiations (1)
-├── products (N) ──────────┐
-├── negotiation_dimensions (N)
-├── simulation_queue (1)
-│   └── simulation_runs (N×M)
-│       ├── product_results (N) ─┘
-│       └── negotiation_rounds (N)
-├── negotiation_contexts (1)
-├── buyer_agent (1)
-└── seller_agent (1)
-```
-
-**Cascade Deletes:**
-- Delete negotiation → Deletes all related runs, products, dimensions
-- Delete simulation_run → Deletes all product_results, rounds
-
-## Data Flow
-
-### Negotiation Setup
-1. User creates `negotiation` with business context
-2. System creates `products` (1 or more, if Phase2)
-3. Optional: `negotiation_dimensions` for non-price terms (or legacy `user_zopa` JSONB)
-4. When negotiation is started (`POST /api/negotiations/:id/start`):
-   - System creates `simulation_queue`
-   - System generates `simulation_runs` (N×M combinations via queue)
-5. **Note:** Legacy route (`POST /api/negotiations`) no longer creates runs directly to avoid duplicates
-
-### Simulation Execution
-1. Queue processor picks pending `simulation_run`
-2. Python service executes negotiation
-3. Results stored in `simulation_run`:
-   - `deal_value`, `outcome`, `conversation_log`
-4. Per-product results stored in `product_results`
-5. Optional: `negotiation_rounds` for detailed transcript
-6. **AI Evaluation** (automatic):
-   - `tactical_summary` generated
-   - `technique_effectiveness_score` calculated
-   - `tactic_effectiveness_score` calculated
-
-### Analysis & Display
-1. Frontend queries `simulation_runs` with joins
-2. Aggregates by technique/tactic for matrix view
-3. Displays `product_results` for price breakdown
-4. Shows AI evaluation scores and summaries
-
-## Schema Evolution
-
-### Phase 1 (September 2024)
-- Initial schema with single `deal_value` field
-- Basic ZOPA tracking
-
-### Phase 2 (October 2024)
-- **Multi-Product Support:** Added `products` and `product_results` tables
-- **Flexible Dimensions:** Added `negotiation_dimensions` for non-price terms
-- **Enhanced Tracking:** Per-product ZOPA validation and performance scores
-
-### Phase 3 (Januar 2025)
-- **AI Evaluation:** Added 3 fields to `simulation_runs`
-  - `tactical_summary` (text)
-  - `technique_effectiveness_score` (decimal 5,2)
-  - `tactic_effectiveness_score` (decimal 5,2)
-- **Automatic Hook:** Evaluation triggers after DEAL_ACCEPTED/WALK_AWAY outcomes
-
-### Phase 4 (Januar 2025) - Schema Synchronization
-- **Phase2 Fields:** Added Phase2-specific fields to `negotiations` table
-  - `company_known` (boolean)
-  - `counterpart_known` (boolean)
-  - `negotiation_frequency` (text)
-  - `power_balance` (integer)
-  - `verhandlungs_modus` (text)
-- **Simulation Run Creation:** Fixed duplicate run creation issue
-  - Legacy route no longer creates runs directly
-  - All runs now created via `simulation_queue` for consistency
-- **DEPRECATED Fields:** Marked `user_zopa` and `counterpart_distance` as deprecated
-  - Migration path: Use `negotiation_dimensions` table instead
-  - Fields retained for backward compatibility during migration period
-
-## Derived Metrics
-
-### Success Rate
-```
-Success Rate = (zopaAchieved runs) ÷ (completed runs) × 100
-```
-
-### Average Deal Value
-```
-Avg Deal Value = MEAN(deal_value) for completed runs
-```
-
-### Total Cost
-```
-Total Cost = SUM(actual_cost) across all simulation_runs
-```
-
-### ZOPA Utilization
-Per product:
-```
-ZOPA Utilization = |agreed_price - min_max_price| ÷ |target_price - min_max_price| × 100
-```
-
-### Technique/Tactic Effectiveness
-AI-generated scores (1-10):
-- Based on conversation flow analysis
-- Considers outcome, ZOPA achievement, round efficiency
-- Stored per simulation run
-
-## Schema Changes Process
-
-1. **Modify Schema:** Update `shared/schema.ts` with new structure
-2. **Push to Database:** Run `npm run db:push` (dev) or create migration (production)
-3. **Update Documentation:** 
-   - Update this file (DATA_MODEL_SPECIFICATION.md)
-   - Update AGENTS.md if affects architecture
-   - Document in CHANGELOG.md
-4. **Update Dependent Code:**
-   - Update `SIMULATION_QUEUE.md` if affects execution
-   - Update `TESTING_GUIDE.md` for new test cases
-   - Update TypeScript types (auto-generated by Drizzle)
-
-## Data Integrity
-
-### Constraints
-- `negotiation_dimensions`: `UNIQUE (negotiation_id, name)`
-- `negotiation_dimensions`: `CHECK (min_value <= target_value <= max_value)`
-- Foreign keys with cascade deletes ensure referential integrity
-
-### Indexes
-Drizzle automatically creates indexes on:
-- Primary keys
-- Foreign keys
-- Unique constraints
-
-For performance-critical queries, consider adding indexes on:
-- `simulation_runs.status` (frequent filtering)
-- `simulation_runs.outcome` (evaluation eligibility)
-- `product_results.within_zopa` (analytics)
+This document reflects the normalized schema introduced with the **registrations / markets / counterparts** refactor and the enhanced simulation pipeline. Any reference to the legacy tables (`negotiation_contexts`, `negotiation_dimensions`, etc.) has been removed—those objects no longer exist in the database or runtime code.
 
 ---
 
-**Document Version:** 2.1 (Updated Januar 2025)  
-**Last Schema Change:** Phase2 Fields & Simulation Run Fix (Januar 2025)  
-**Maintainer:** Christian Au
+## 1. Master Data & Setup
 
-For execution semantics, see `SIMULATION_QUEUE.md`.  
-For service boundaries, see `ARCHITECTURE.md`.
+| Table | Purpose | Key columns |
+| --- | --- | --- |
+| `registrations` | Tenant-level configuration (organization, cadence, goals) | `organization`, `company`, `negotiation_type`, `negotiation_frequency`, `goals` (JSONB) |
+| `markets` | Market definition per registration | `registration_id` FK, `name`, `region`, `country_code`, `currency_code`, `meta` (JSONB – e.g., intelligence) |
+| `counterparts` | Buyer/seller counterpart profiles | `registration_id` FK, `name`, `kind`, `power_balance`, `dominance`, `affiliation`, `style`, `constraints_meta` |
+| `dimensions` | Catalog of reusable dimensions per registration | `registration_id` FK, `code`, `name`, `value_type`, `unit`, `spec` (JSONB) |
+| `products` | Product catalog scoped to a registration | `registration_id` FK, `name`, `gtin`, `brand`, `attrs` (JSONB) |
+| `product_dimension_values` | Historical product metrics | Composite PK `(product_id, dimension_id, measured_at)`, `value` (JSONB), `is_current` flag |
+
+**Notes**
+- Negotiation-specific dimension targets live inside the `negotiations.scenario` JSON (see section 2). We dropped the separate `negotiation_dimensions` table; all runtime code reads the scenario JSON instead.
+- `product_dimension_values` replaces the old ZOPA configuration tables—each product can track rolling measurements for price, volume, etc.
+
+---
+
+## 2. Negotiations & Scenarios
+
+| Table | Key columns / JSON fields |
+| --- | --- |
+| `negotiations` | `registration_id`, optional `market_id`/`counterpart_id`, `title`, `description`, `status`, `scenario` (JSONB), `metadata` |
+| `negotiation_products` | `(negotiation_id, product_id)` junction |
+| `negotiation_rounds` | `negotiation_id`, `round_number`, `state` (JSONB), timestamps |
+| `round_states` | `round_id`, BDI state JSON (beliefs / intentions / thresholds) |
+
+### Scenario JSON (stored in `negotiations.scenario`)
+```jsonc
+{
+  "userRole": "seller",
+  "negotiationType": "annual-review",
+  "relationshipType": "strategic",
+  "negotiationFrequency": "quarterly",
+  "maxRounds": 6,
+  "selectedTechniques": ["technique-id"],
+  "selectedTactics": ["tactic-id"],
+  "counterpartDistance": { "gesamt": 50 },
+  "dimensions": [
+    {
+      "id": "uuid",
+      "name": "Preis pro Einheit",
+      "minValue": 0.95,
+      "maxValue": 1.30,
+      "targetValue": 1.10,
+      "priority": 1,
+      "unit": "EUR"
+    }
+  ],
+  "metadata": {
+    "companyKnown": true,
+    "counterpartKnown": true
+  }
+}
+```
+
+**Additional Context Fields:**
+- `negotiations.description` → General remarks/hints for the negotiation
+- `markets.meta.intelligence` → Market-specific insights for prompt context
+- `counterparts.dominance` → Interpersonal Circumplex dominance axis (-100 to +100)
+- `counterparts.affiliation` → Interpersonal Circumplex affiliation axis (-100 to +100)
+
+All prompt variables are derived from this JSON plus the joined registration/market/counterpart records.
+
+---
+
+## 3. Simulation Queue & Runs
+
+| Table | Purpose |
+| --- | --- |
+| `simulation_queue` | Tracks aggregate progress for a negotiation run (status, counts, estimated vs. actual API cost, crash recovery checkpoints). |
+| `simulation_runs` | One record per technique × tactic × personality × distance combination. Stores status, conversation log, other dimensions, evaluation scores, etc. |
+| `dimension_results` | Final dimension-level outcomes per run (`final_value`, `target_value`, `achieved_target`, `priority_score`). |
+| `product_results` | Per-product outcomes (`agreed_price`, `subtotal`, `within_zopa`, `performance_score`, etc.). |
+
+### AI Evaluation fields (on `simulation_runs`)
+- `technique_effectiveness_score` (DECIMAL)
+- `tactic_effectiveness_score`
+- `tactical_summary` (TEXT, German summary)
+
+### Result storage
+- `conversation_log` (JSONB array) replaces the legacy `negotiation_rounds` text logs.
+  - Each entry includes: `round`, `agent`, `message`, `offer`, `action`, `internal_analysis`, `batna_assessment`, `walk_away_threshold`
+  - **NEW**: Also includes `bdi_state` with `beliefs` and `intentions` for state continuity
+- `other_dimensions` stores non-product terms (payment, delivery, etc.). Product pricing stays in `product_results`.
+
+### BDI State Flow (Belief-Desire-Intention Architecture)
+Each agent maintains internal state across rounds:
+
+**Output per round** (in `conversation_log`):
+```jsonb
+{
+  "round": 1,
+  "agent": "SELLER",
+  "message": "...",
+  "offer": {...},
+  "action": "continue",
+  "bdi_state": {
+    "beliefs": {
+      "opponent_priorities_inferred": {"Price": "high"},
+      "opponent_emotional_state": "cooperative",
+      "opponent_urgency": "medium",
+      "market_signals": {},
+      "risk_flags": []
+    },
+    "intentions": "Next round strategy..."
+  },
+  "internal_analysis": "Private reasoning",
+  "batna_assessment": 0.75,
+  "walk_away_threshold": 0.25
+}
+```
+
+**Feedback mechanism**:
+1. Agent A produces `bdi_state` in round N
+2. Round N+1: Python service extracts Agent A's previous `bdi_state.beliefs` and `bdi_state.intentions`
+3. These are injected into Agent A's system prompt as `{{last_round_beliefs_json}}` and `{{last_round_intentions}}`
+4. Agent A can reference its own previous beliefs to maintain strategic continuity
+5. Opponent's actions are analyzed to update `opponent_priorities_inferred` and `observed_behaviour`
+
+This enables:
+- **Memory continuity**: Agent remembers what it believed/intended previously
+- **Opponent modeling**: Agent builds understanding of opponent's priorities over time
+- **Strategic adaptation**: Agent adjusts strategy based on observed concessions
+
+---
+
+## 4. Events, Offers, Metrics
+
+| Table | Purpose |
+| --- | --- |
+| `offers` | Structured offer payloads per round (`price`, `quantity`, `terms` JSON). |
+| `events` | Unified log (messages, tool calls, actions) linked to rounds. |
+| `agent_metrics` | Performance metrics (latency, API cost, etc.) per agent. |
+| `interactions` | Optional RL-style step/reward logs. |
+| `performance_metrics` / `analytics_sessions` | High-level dashboard metrics. |
+
+The new Langfuse prompt system writes BDI state into `round_states` after each round, and the frontend fetches those JSON blobs to display “beliefs / desires / intentions” in the analysis view.
+
+---
+
+## 5. Reference Data (unchanged)
+
+- `influencing_techniques` (seeded from CSV)
+- `negotiation_tactics` (seeded from CSV)
+- `personality_types`, `agents`, `policies`
+
+---
+
+## 6. Relationships Overview
+
+```
+registrations
+├── markets
+├── counterparts
+├── products ─┬─ product_dimension_values
+│             └─ negotiation_products ──┐
+└── negotiations ───────────────────────┼─ simulation_queue ── simulation_runs
+                                        │    ├─ dimension_results
+                                        │    └─ product_results
+                                        ├─ negotiation_rounds ─ round_states
+                                        ├─ offers
+                                        └─ events / agent_metrics / interactions
+```
+
+---
+
+## 7. Verification Script
+
+`server/scripts/verify-schema.ts` now checks for the normalized table set (registrations, markets, counterparts, etc.) and validates the `product_results` column definitions. Run it after each migration to confirm the target database matches this specification.
+
+```
+npm run verify:schema      # custom script, or tsx server/scripts/verify-schema.ts
+```
+
+---
+
+## 8. Migration Notes
+
+- The legacy tables (`negotiation_contexts`, `negotiation_dimensions`, `zopa_configurations`, etc.) were dropped in migration `0000_redundant_menace.sql`. Do not reference them in new code.
+- Scenario dimensions are stored inline in `negotiations.scenario`. When editing via the API/UI, always read/modify the JSON (storage helpers already normalize IDs).
+- Product-level ZOPA and historical metrics should flow through `product_dimension_values` (historical) and `product_results` (simulation outcome).
+
+---
+
+Questions or schema changes? Update this document and re-run the verification script so tooling stays in sync with the database.***

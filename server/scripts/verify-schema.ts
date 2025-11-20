@@ -29,15 +29,35 @@ async function verifySchema() {
 
     const expectedTables = [
       'agents',
+      'agent_metrics',
+      'analytics_sessions',
+      'benchmarks',
+      'concessions',
+      'counterparts',
+      'dimension_results',
+      'dimensions',
+      'events',
+      'experiment_runs',
+      'experiments',
       'influencing_techniques',
-      'negotiation_contexts',
+      'interactions',
+      'markets',
+      'negotiation_products',
       'negotiation_rounds',
       'negotiation_tactics',
       'negotiations',
+      'offers',
+      'performance_metrics',
+      'personality_types',
+      'policies',
+      'product_dimension_values',
       'product_results',
       'products',
+      'registrations',
+      'round_states',
       'simulation_queue',
-      'simulation_runs'
+      'simulation_runs',
+      'simulations',
     ];
 
     log.info('\n📊 Verification:\n');

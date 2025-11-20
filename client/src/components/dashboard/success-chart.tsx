@@ -1,7 +1,9 @@
+import React, { useMemo, useState } from "react";
+import { format, parseISO } from "date-fns";
+import { de } from "date-fns/locale";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { useState } from "react";
 
 interface SuccessChartProps {
   data: Array<{
@@ -13,25 +15,29 @@ interface SuccessChartProps {
 export default function SuccessChart({ data }: SuccessChartProps) {
   const [selectedPeriod, setSelectedPeriod] = useState("30D");
 
-  // Transform data for the chart
-  const chartData = data.map((item, index) => ({
-    name: `Week ${index + 1}`,
-    rate: item.successRate,
-    date: item.date,
-  }));
+  const chartData = useMemo(
+    () =>
+      data.map((item) => ({
+        name: format(parseISO(item.date), "dd.MM.", { locale: de }),
+        rate: Number(item.successRate.toFixed(1)),
+        date: item.date,
+      })),
+    [data],
+  );
 
-  const formatTooltip = (value: any, name: any, props: any) => {
-    if (name === "rate") {
-      return [`${value.toFixed(1)}%`, "Success Rate"];
-    }
-    return [value, name];
-  };
+  const filteredData = useMemo(() => {
+    const periodLength =
+      selectedPeriod === "7D" ? 7 : selectedPeriod === "90D" ? 90 : 30;
+    return chartData.slice(-periodLength);
+  }, [chartData, selectedPeriod]);
+
+  const formatTooltip = (value: number) => [`${value.toFixed(1)}%`, "Erfolgsquote"];
 
   return (
     <Card>
       <CardHeader className="border-b border-gray-200">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-lg font-semibold text-gray-900">Success Rate Trends</CardTitle>
+          <CardTitle className="text-lg font-semibold text-gray-900">Erfolgsquote (Trend)</CardTitle>
           <div className="flex items-center space-x-2">
             {["7D", "30D", "90D"].map((period) => (
               <Button
@@ -48,9 +54,9 @@ export default function SuccessChart({ data }: SuccessChartProps) {
         </div>
       </CardHeader>
       <CardContent className="p-6">
-        {chartData.length > 0 ? (
+        {filteredData.length > 0 ? (
           <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={chartData}>
+            <LineChart data={filteredData}>
               <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
               <XAxis 
                 dataKey="name" 
@@ -59,7 +65,7 @@ export default function SuccessChart({ data }: SuccessChartProps) {
                 className="text-xs"
               />
               <YAxis 
-                domain={[80, 100]}
+                domain={[0, 100]}
                 axisLine={false}
                 tickLine={false}
                 className="text-xs"
@@ -77,7 +83,7 @@ export default function SuccessChart({ data }: SuccessChartProps) {
               />
               <Line 
                 type="monotone" 
-                dataKey="rate" 
+                dataKey="rate"
                 stroke="hsl(207, 90%, 54%)" 
                 strokeWidth={3}
                 dot={{ fill: "hsl(207, 90%, 54%)", strokeWidth: 0, r: 4 }}
@@ -88,8 +94,8 @@ export default function SuccessChart({ data }: SuccessChartProps) {
         ) : (
           <div className="flex items-center justify-center h-48 text-gray-500">
             <div className="text-center">
-              <p>No trend data available</p>
-              <p className="text-sm">Complete some negotiations to see trends</p>
+              <p>Keine Trenddaten vorhanden</p>
+              <p className="text-sm">Schließe Simulationen ab, um Verlaufskurven zu sehen.</p>
             </div>
           </div>
         )}

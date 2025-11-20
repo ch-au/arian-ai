@@ -38,11 +38,14 @@ export function createAnalyticsExportRouter(): Router {
       }
 
       // Create lookup maps
-      const techniqueMap = new Map(techniques.map(t => [t.id, t.name]));
-      const tacticMap = new Map(tactics.map(t => [t.id, t.name]));
+      const techniqueMap = new Map<string, string>();
+      techniques.forEach((tech) => techniqueMap.set(tech.id, tech.name));
+
+      const tacticMap = new Map<string, string>();
+      tactics.forEach((tactic) => tacticMap.set(tactic.id, tactic.name));
 
       // Enrich results with names
-      const enrichedResults = results.map(r => ({
+      const enrichedResults = (results as Array<Record<string, any>>).map((r) => ({
         ...r,
         techniqueName: techniqueMap.get(r.techniqueId || '') || 'Unknown',
         tacticName: tacticMap.get(r.tacticId || '') || 'Unknown'
@@ -63,7 +66,7 @@ export function createAnalyticsExportRouter(): Router {
             negotiation: {
               id: negotiation.id,
               title: negotiation.title,
-              createdAt: negotiation.createdAt,
+              startedAt: negotiation.startedAt,
               status: negotiation.status
             },
             results: enrichedResults,
@@ -71,7 +74,7 @@ export function createAnalyticsExportRouter(): Router {
               totalRuns: results.length,
               completedRuns: results.filter(r => r.status === 'completed').length,
               successRate: calculateSuccessRate(results),
-              totalCost: results.reduce((sum, r) =>
+              totalCost: results.reduce((sum: number, r) =>
                 sum + parseFloat(r.actualCost?.toString() || '0'), 0
               )
             }
@@ -116,7 +119,7 @@ function exportAsCSV(
   ];
 
   // CSV Rows
-  const rows = results.map(r => [
+  const rows = (results as Array<Record<string, any>>).map((r) => [
     r.runNumber,
     r.techniqueName,
     r.tacticName,

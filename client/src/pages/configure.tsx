@@ -258,8 +258,8 @@ export default function Configure() {
         description: `"${config.grundeinstellungen.title}" wurde erfolgreich erstellt.`,
       });
 
-      // Redirect to negotiations list
-      setLocation("/negotiations");
+      // Redirect to dashboard
+      setLocation("/");
     } catch (error) {
       console.error("Error creating negotiation:", error);
       toast({

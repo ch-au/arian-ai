@@ -131,14 +131,18 @@ For complete development guide, see [AGENTS.md](AGENTS.md).
 - **[HANDOVER_SUMMARY.md](HANDOVER_SUMMARY.md)** - Developer onboarding guide
 - **[CHANGELOG.md](CHANGELOG.md)** - Version history and recent changes
 
-### Technical Documentation
+### Core References
+- **[FINAL_SCHEMA_DOCUMENTATION.md](FINAL_SCHEMA_DOCUMENTATION.md)** - Canonical schema overview (mirrors `shared/schema.ts`)
+- **[DATA_FLOW_OVERVIEW.md](DATA_FLOW_OVERVIEW.md)** - End-to-end data flow (frontend config → AI runtime → analytics)
+- **[docs/DATA_MODEL_SPECIFICATION.md](docs/DATA_MODEL_SPECIFICATION.md)** - In-depth schema spec & migrations
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Platform architecture
-- **[docs/DATA_MODEL_SPECIFICATION.md](docs/DATA_MODEL_SPECIFICATION.md)** - Database schema
 - **[docs/TESTING_GUIDE.md](docs/TESTING_GUIDE.md)** - Testing strategy
-- **[docs/](docs/)** - All technical docs with navigation index
 
 ### Deployment
 - **[AZURE_DEPLOYMENT.md](AZURE_DEPLOYMENT.md)** - Azure App Service deployment guide
+
+### Legacy Analyses
+Historical investigation docs now live under [`docs/archive/legacy-analyses/`](docs/archive/legacy-analyses/). Reference them for context, but prefer the up-to-date guides above.
 
 ## Testing
 

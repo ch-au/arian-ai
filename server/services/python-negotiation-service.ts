@@ -3,10 +3,11 @@
  * Executes negotiations using the Python OpenAI Agents implementation
  */
 
-import { spawn } from 'child_process';
+import { spawn, ChildProcess } from 'child_process';
 import { existsSync } from 'fs';
-import { db, storage } from '../storage';
-import { simulationRuns, negotiations, negotiationDimensions, influencingTechniques, negotiationTactics, negotiationContexts, products, productResults } from '../../shared/schema';
+import { db } from '../db';
+import { storage } from '../storage';
+import { simulationRuns, influencingTechniques, negotiationTactics, registrations, markets, counterparts } from '../../shared/schema';
 import { eq } from 'drizzle-orm';
 import { createRequestLogger } from './logger';
 
@@ -17,6 +18,8 @@ export interface PythonNegotiationRequest {
   tacticId?: string;
   maxRounds?: number;
   queueId?: string;
+  selfAgentPromptName?: string;
+  opponentAgentPromptName?: string;
 }
 
 export interface RoundUpdateCallback {
@@ -50,6 +53,8 @@ export interface PythonNegotiationResult {
 
 export class PythonNegotiationService {
   private static log = createRequestLogger('service:python-negotiation');
+  private static activeProcesses = new Map<string, { process: ChildProcess; negotiationId?: string }>();
+  private static cancelledRuns = new Set<string>();
 
   /**
    * Run a single negotiation using the Python microservice
@@ -98,12 +103,15 @@ export class PythonNegotiationService {
         scriptArgs.push('--tactic-id', request.tacticId);
       }
 
+      scriptArgs.push('--self-agent-prompt', request.selfAgentPromptName ?? 'agents/self_agent');
+      scriptArgs.push('--opponent-agent-prompt', request.opponentAgentPromptName ?? 'agents/opponent_agent');
+
       // Execute Python script
-      const result = await this.executePythonScript(scriptArgs, onRoundUpdate, request);
-      
-      // Update simulation run with results
-      await this.updateSimulationRun(request.simulationRunId, result);
-      
+      const result = await this.executePythonScript(scriptArgs, request.simulationRunId, onRoundUpdate, request);
+
+      // NOTE: Do NOT update simulation run here - let simulation-queue.ts handle all updates
+      // This prevents race conditions where status changes before deal value calculation
+
       return result;
       
     } catch (error) {
@@ -117,6 +125,7 @@ export class PythonNegotiationService {
    */
   private static executePythonScript(
     args: string[],
+    simulationRunId: string,
     onRoundUpdate?: RoundUpdateCallback,
     request?: PythonNegotiationRequest
   ): Promise<PythonNegotiationResult> {
@@ -135,6 +144,7 @@ export class PythonNegotiationService {
           PYTHONPATH: process.cwd()
         }
       });
+      this.activeProcesses.set(simulationRunId, { process: pythonProcess, negotiationId: request?.negotiationId });
 
       let stdout = '';
       let stderr = '';
@@ -147,6 +157,7 @@ export class PythonNegotiationService {
           resolved = true;
           this.log.error('[PYTHON-EXEC] ❌ Python script timeout after 5 minutes');
           pythonProcess.kill('SIGTERM');
+          this.activeProcesses.delete(simulationRunId);
           reject(new Error('Python script execution timeout (5 minutes)'));
         }
       }, 5 * 60 * 1000); // 5 minute timeout
@@ -172,6 +183,7 @@ export class PythonNegotiationService {
         if (!resolved) {
           resolved = true;
           clearTimeout(timeout);
+          this.activeProcesses.delete(simulationRunId);
           this.log.error({ err: error }, '[PYTHON-EXEC] ❌ Process error');
           reject(new Error(`Failed to spawn Python process: ${error.message}`));
         }
@@ -181,10 +193,16 @@ export class PythonNegotiationService {
         if (resolved) return; // Already handled by timeout or error
         resolved = true;
         clearTimeout(timeout);
+        this.activeProcesses.delete(simulationRunId);
 
         this.log.info(`[PYTHON-EXEC] Process closed with code ${code}`);
 
         if (code !== 0) {
+          if (this.cancelledRuns.has(simulationRunId)) {
+            this.cancelledRuns.delete(simulationRunId);
+            reject(new Error('SIMULATION_ABORTED'));
+            return;
+          }
           this.log.error(`[PYTHON-EXEC] ❌ Non-zero exit code: ${code}`);
           this.log.error(`[PYTHON-EXEC] stderr: ${stderr}`);
           reject(new Error(`Python script failed with code ${code}: ${stderr}`));
@@ -241,6 +259,44 @@ export class PythonNegotiationService {
   }
 
   /**
+   * Cancel all currently running simulations for the negotiation.
+   */
+  static async cancelNegotiation(negotiationId: string) {
+    const matchingProcesses = Array.from(this.activeProcesses.entries()).filter(
+      ([, entry]) => entry.negotiationId === negotiationId,
+    );
+
+    if (matchingProcesses.length === 0) {
+      return;
+    }
+
+    for (const [runId, entry] of matchingProcesses) {
+      try {
+        this.log.warn(`[PYTHON-EXEC] Cancelling simulation run ${runId} for negotiation ${negotiationId}`);
+        this.cancelledRuns.add(runId);
+        entry.process.kill("SIGTERM");
+        this.activeProcesses.delete(runId);
+        await this.markRunAsAborted(runId, "Abgebrochen durch Benutzer");
+      } catch (error) {
+        this.log.error({ err: error, runId, negotiationId }, "Failed to cancel simulation run");
+      }
+    }
+  }
+
+  private static async markRunAsAborted(runId: string, reason: string) {
+    try {
+      await storage.updateSimulationRun(runId, {
+        status: "aborted",
+        outcome: "ABORTED",
+        outcomeReason: reason,
+        completedAt: new Date(),
+      });
+    } catch (error) {
+      this.log.error({ err: error, runId }, "Failed to mark simulation run as aborted");
+    }
+  }
+
+  /**
    * Parse real-time round updates from Python script output
    */
   private static parseRoundUpdates(
@@ -279,41 +335,46 @@ export class PythonNegotiationService {
    * Fetch comprehensive negotiation data from database
    */
   private static async fetchNegotiationData(negotiationId: string) {
-    const [negotiation] = await db
-      .select()
-      .from(negotiations)
-      .where(eq(negotiations.id, negotiationId))
-      .limit(1);
-
+    const negotiation = await storage.getNegotiation(negotiationId);
     if (!negotiation) {
       throw new Error(`Negotiation not found: ${negotiationId}`);
     }
 
-    // Get dimensions
-    const dimensions = await db
-      .select()
-      .from(negotiationDimensions)
-      .where(eq(negotiationDimensions.negotiationId, negotiationId));
-
-    // Get products (for price ranges and volume information)
     const products = await storage.getProductsByNegotiation(negotiationId);
+    const dimensions = negotiation.scenario.dimensions ?? [];
 
-    // Get context if available
-    let context = null;
-    if (negotiation.contextId) {
-      const [contextData] = await db
-        .select()
-        .from(negotiationContexts)
-        .where(eq(negotiationContexts.id, negotiation.contextId))
-        .limit(1);
-      context = contextData;
-    }
+    const [registration] = negotiation.registrationId
+      ? await db
+          .select()
+          .from(registrations)
+          .where(eq(registrations.id, negotiation.registrationId))
+          .limit(1)
+      : [null];
+
+    const [market] = negotiation.marketId
+      ? await db
+          .select()
+          .from(markets)
+          .where(eq(markets.id, negotiation.marketId))
+          .limit(1)
+      : [null];
+
+    const [counterpart] = negotiation.counterpartId
+      ? await db
+          .select()
+          .from(counterparts)
+          .where(eq(counterparts.id, negotiation.counterpartId))
+          .limit(1)
+      : [null];
 
     return {
       negotiation,
+      registration,
+      market,
+      counterpart,
       dimensions,
       products,
-      context
+      context: negotiation.scenario,
     };
   }
 
@@ -453,11 +514,14 @@ export class PythonNegotiationService {
         scriptArgs.push('--existing-conversation', existingConversationLog);
       }
 
+      scriptArgs.push('--self-agent-prompt', request.selfAgentPromptName ?? 'agents/self_agent');
+      scriptArgs.push('--opponent-agent-prompt', request.opponentAgentPromptName ?? 'agents/opponent_agent');
+
       // Execute Python script
-      const result = await this.executePythonScript(scriptArgs, onRoundUpdate, request);
-      
-      // Update simulation run with results
-      await this.updateSimulationRun(request.simulationRunId, result);
+      const result = await this.executePythonScript(scriptArgs, request.simulationRunId, onRoundUpdate, request);
+
+      // NOTE: Do NOT update simulation run here - let simulation-queue.ts handle all updates
+      // This prevents race conditions where status changes before deal value calculation
 
       return result;
 
@@ -498,137 +562,13 @@ export class PythonNegotiationService {
       throw new Error(`Simulation run not found: ${simulationRunId}`);
     }
 
-    // Get products for this negotiation to split dimension values
-    if (!simulationRun.negotiationId) {
-      throw new Error(`Simulation run ${simulationRunId} has no negotiationId`);
-    }
-
-    const negotiationProducts = await db
-      .select()
-      .from(products)
-      .where(eq(products.negotiationId, simulationRun.negotiationId));
-
-    // Split dimension values into product prices and other dimensions
-    const productPrices: Record<string, number> = {};
-    const otherDimensions: Record<string, any> = {};
-
-    // Create normalized lookup for product names (remove spaces/underscores for matching)
-    const productNameMap = new Map<string, string>();
-    for (const product of negotiationProducts) {
-      const normalized = product.produktName.toLowerCase().replace(/[_\s]/g, '');
-      productNameMap.set(normalized, product.produktName);
-    }
-
-    for (const [key, value] of Object.entries(dimensionValues)) {
-      const keyLower = key.toLowerCase();
-      const keyNormalized = keyLower.replace(/[_\s]/g, '');
-      let isProductPrice = false;
-
-      // Check if this dimension is a product price
-      for (const [productNormalized, productName] of productNameMap.entries()) {
-        if ((keyNormalized.includes('preis') || keyNormalized.includes('price')) &&
-            keyNormalized.includes(productNormalized)) {
-          productPrices[productName] = Number(value);
-          isProductPrice = true;
-          this.log.debug({ key, productName, value }, `[python-negotiation] Matched dimension to product`);
-          break;
-        }
-      }
-
-      if (!isProductPrice) {
-        otherDimensions[key] = value;
-      }
-    }
-
-    // Track total deal value across all products
-    let totalDealValue = 0;
-
-    // Create productResults records for each product
-    for (const product of negotiationProducts) {
-      const agreedPrice = productPrices[product.produktName];
-
-      if (agreedPrice !== undefined) {
-        // Calculate distance metrics
-        const targetPrice = Number(product.zielPreis) || 0;
-        const minMaxPrice = Number(product.minMaxPreis) || 0;
-
-        const priceVsTarget = targetPrice > 0
-          ? ((agreedPrice - targetPrice) / targetPrice * 100).toFixed(2)
-          : null;
-
-        const absoluteDeltaFromTarget = (agreedPrice - targetPrice).toFixed(4);
-
-        const priceVsMinMax = minMaxPrice > 0
-          ? ((agreedPrice - minMaxPrice) / minMaxPrice * 100).toFixed(2)
-          : null;
-
-        const absoluteDeltaFromMinMax = (agreedPrice - minMaxPrice).toFixed(4);
-
-        // Check if within ZOPA (between minMaxPrice and targetPrice)
-        const withinZopa = agreedPrice >= Math.min(minMaxPrice, targetPrice) &&
-                          agreedPrice <= Math.max(minMaxPrice, targetPrice);
-
-        // Calculate ZOPA utilization (how close to target vs minMax)
-        const zopaRange = Math.abs(targetPrice - minMaxPrice);
-        const zopaUtilization = zopaRange > 0
-          ? ((Math.abs(agreedPrice - minMaxPrice) / zopaRange) * 100).toFixed(2)
-          : null;
-
-        // Calculate subtotals
-        const estimatedVolume = product.geschätztesVolumen || 0;
-        const subtotal = (agreedPrice * estimatedVolume).toFixed(2);
-        const targetSubtotal = (targetPrice * estimatedVolume).toFixed(2);
-        const deltaFromTargetSubtotal = (Number(subtotal) - Number(targetSubtotal)).toFixed(2);
-
-        // Add to total deal value
-        totalDealValue += Number(subtotal);
-
-        // Calculate performance score (100% if at target, lower if further away)
-        const performanceScore = targetPrice > 0
-          ? Math.max(0, Math.min(100, 100 - Math.abs(Number(priceVsTarget)))).toFixed(2)
-          : null;
-
-        await db
-          .insert(productResults)
-          .values({
-            simulationRunId: simulationRunId,
-            productId: product.id,
-
-            // Denormalized product config
-            productName: product.produktName,
-            targetPrice: product.zielPreis,
-            minMaxPrice: product.minMaxPreis,
-            estimatedVolume: product.geschätztesVolumen,
-
-            // Results
-            agreedPrice: agreedPrice.toString(),
-
-            // Distance metrics
-            priceVsTarget: priceVsTarget,
-            absoluteDeltaFromTarget: absoluteDeltaFromTarget,
-            priceVsMinMax: priceVsMinMax,
-            absoluteDeltaFromMinMax: absoluteDeltaFromMinMax,
-            withinZopa: withinZopa,
-            zopaUtilization: zopaUtilization,
-
-            // Deal value
-            subtotal: subtotal,
-            targetSubtotal: targetSubtotal,
-            deltaFromTargetSubtotal: deltaFromTargetSubtotal,
-
-            performanceScore: performanceScore,
-          });
-      }
-    }
-
     const updateData: any = {
       status: statusMapping[result.outcome] || 'failed',
       conversationLog: normalizedConversationLog,
       totalRounds: result.totalRounds,
       langfuseTraceId: result.langfuseTraceId || null,
       outcome: result.outcome, // Store the detailed outcome
-      otherDimensions: otherDimensions, // Use otherDimensions instead of dimensionResults
-      dealValue: totalDealValue > 0 ? totalDealValue.toString() : null // Store total deal value
+      otherDimensions: dimensionValues,
     };
 
     // Only set completedAt for truly completed negotiations (not paused ones)

@@ -1,7 +1,9 @@
+import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ArrowRight, Crown, Medal, Award } from "lucide-react";
+import { useLocation } from "wouter";
 
 interface AgentPerformanceProps {
   agents: Array<{
@@ -18,6 +20,8 @@ interface AgentPerformanceProps {
 }
 
 export default function AgentPerformance({ agents }: AgentPerformanceProps) {
+  const [, setLocation] = useLocation();
+
   const getRankIcon = (index: number) => {
     switch (index) {
       case 0:
@@ -27,25 +31,29 @@ export default function AgentPerformance({ agents }: AgentPerformanceProps) {
       case 2:
         return <Award className="w-4 h-4 text-orange-600" />;
       default:
-        return <span className="w-4 h-4 flex items-center justify-center text-xs font-medium text-gray-600">{index + 1}</span>;
+        return (
+          <span className="w-4 h-4 flex items-center justify-center text-xs font-medium text-gray-600">
+            {index + 1}
+          </span>
+        );
     }
   };
 
   const getPersonalityType = (personalityProfile: any) => {
-    if (!personalityProfile) return "Balanced";
-    
+    if (!personalityProfile) return "Neutral";
+
     const traits = personalityProfile;
-    if (traits.agreeableness > 0.7) return "Collaborative";
-    if (traits.conscientiousness > 0.7) return "Analytical";
-    if (traits.extraversion > 0.7) return "Assertive";
-    if (traits.openness > 0.7) return "Creative";
-    return "Balanced";
+    if (traits.agreeableness > 0.7) return "Kooperativ";
+    if (traits.conscientiousness > 0.7) return "Analytisch";
+    if (traits.extraversion > 0.7) return "Durchsetzungsstark";
+    if (traits.openness > 0.7) return "Kreativ";
+    return "Neutral";
   };
 
   return (
     <Card>
       <CardHeader className="border-b border-gray-200">
-        <CardTitle className="text-lg font-semibold text-gray-900">Top Performing Agents</CardTitle>
+        <CardTitle className="text-lg font-semibold text-gray-900">Agentenleistung</CardTitle>
       </CardHeader>
       <CardContent className="p-6">
         {agents.length > 0 ? (
@@ -63,7 +71,7 @@ export default function AgentPerformance({ agents }: AgentPerformanceProps) {
                         {getPersonalityType(agentData.agent.personalityProfile)}
                       </Badge>
                       <span className="text-xs text-gray-500">
-                        {agentData.totalNegotiations} negotiations
+                        {agentData.totalNegotiations} Verhandlungen
                       </span>
                     </div>
                   </div>
@@ -73,22 +81,26 @@ export default function AgentPerformance({ agents }: AgentPerformanceProps) {
                     {agentData.successRate.toFixed(1)}%
                   </span>
                   <div className="text-xs text-gray-500">
-                    {agentData.avgResponseTime > 0 && `${(agentData.avgResponseTime / 1000).toFixed(1)}s avg`}
+                    {agentData.avgResponseTime > 0 && `${(agentData.avgResponseTime / 1000).toFixed(1)} s`}
                   </div>
                 </div>
               </div>
             ))}
-            
-            <Button variant="ghost" className="w-full mt-4 justify-center">
-              View Detailed Analysis
+
+            <Button
+              variant="ghost"
+              className="w-full mt-4 justify-center"
+              onClick={() => setLocation("/reports")}
+            >
+              Detailanalyse öffnen
               <ArrowRight className="w-4 h-4 ml-2" />
             </Button>
           </div>
         ) : (
           <div className="text-center py-8 text-gray-500">
             <Award className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-            <p>No performance data available</p>
-            <p className="text-sm">Complete some negotiations to see agent rankings</p>
+            <p>Keine Leistungsdaten vorhanden</p>
+            <p className="text-sm">Schließe Simulationen ab, um Agentenrankings zu sehen.</p>
           </div>
         )}
       </CardContent>

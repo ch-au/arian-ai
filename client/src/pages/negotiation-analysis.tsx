@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
-import { useRoute } from "wouter";
+import { useRoute, useLocation } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, TrendingUp, Zap, DollarSign, Target, Info } from "lucide-react";
+import { ArrowLeft, TrendingUp, Zap, DollarSign, Target, Info, Calendar, FileText, Building2, BookOpen } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 import { useQuery } from "@tanstack/react-query";
 import {
   Dialog,
@@ -16,6 +18,9 @@ interface NegotiationAnalysis {
   negotiation: {
     id: string;
     title: string;
+    description?: string;
+    status?: string;
+    scenario?: any;
     userRole: string;
     productCount: number;
   };
@@ -32,7 +37,17 @@ interface NegotiationAnalysis {
     outcome: string;
     status: string;
     otherDimensions: Record<string, any>;
-    conversationLog?: Array<{agent: string; round: number; message: string}>;
+    conversationLog?: Array<{
+      agent: string; 
+      round: number; 
+      message: string;
+      offer?: {
+        products?: Array<{
+          name: string;
+          price?: number | string;
+        }>
+      };
+    }>;
     efficiency: number;
     rank: number;
     // AI Evaluation fields
@@ -81,10 +96,19 @@ interface NegotiationAnalysis {
 }
 
 export default function NegotiationAnalysisPage() {
-  const [, params] = useRoute("/negotiations/:id/analysis");
-  const negotiationId = params?.id;
+  const [matchWithId, paramsWithId] = useRoute("/analysis/:id");
+  const [matchWithoutId] = useRoute("/analysis");
+  const [, setLocation] = useLocation();
+  const negotiationId = paramsWithId?.id;
   const [isEvaluating, setIsEvaluating] = useState(false);
+  const [isGeneratingPlaybook, setIsGeneratingPlaybook] = useState(false);
   const [selectedCell, setSelectedCell] = useState<string | null>(null);
+
+  // If we're on /analysis without an ID, redirect to dashboard
+  if (matchWithoutId && !negotiationId) {
+    setLocation("/");
+    return null;
+  }
 
   const { data: analysis, isLoading, error, refetch } = useQuery<NegotiationAnalysis>({
     queryKey: [`/api/negotiations/${negotiationId}/analysis`],
@@ -111,6 +135,35 @@ export default function NegotiationAnalysisPage() {
       alert("Fehler beim Generieren der KI-Bewertung");
     } finally {
       setIsEvaluating(false);
+    }
+  };
+
+  const handleGeneratePlaybook = async () => {
+    if (!negotiationId) return;
+
+    setIsGeneratingPlaybook(true);
+    try {
+      const response = await fetch(`/api/negotiations/${negotiationId}/playbook`, {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to generate playbook");
+      }
+
+      const result = await response.json();
+
+      if (result.success) {
+        // Navigate to playbook page
+        setLocation(`/playbook/${negotiationId}`);
+      } else {
+        alert(`Fehler beim Generieren des Playbooks: ${result.error || 'Unbekannter Fehler'}`);
+      }
+    } catch (error) {
+      console.error("Playbook generation failed:", error);
+      alert("Fehler beim Generieren des Playbooks");
+    } finally {
+      setIsGeneratingPlaybook(false);
     }
   };
 
@@ -168,119 +221,129 @@ export default function NegotiationAnalysisPage() {
   // Check if we have meaningful deal values
   const hasDeals = sortedRuns.some(r => r.dealValue > 0);
 
+  const getStatusBadge = (status?: string) => {
+    switch (status) {
+      case "completed":
+        return <Badge className="bg-green-500 hover:bg-green-600">Abgeschlossen</Badge>;
+      case "running":
+        return <Badge className="bg-blue-500 hover:bg-blue-600 animate-pulse">Läuft</Badge>;
+      case "planned":
+        return <Badge variant="secondary">Geplant</Badge>;
+      case "aborted":
+        return <Badge variant="destructive">Abgebrochen</Badge>;
+      default:
+        return <Badge variant="outline">{status}</Badge>;
+    }
+  };
+
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-2 mb-2">
+    <div className="container mx-auto p-6 space-y-8">
+      {/* Improved Header */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
             <Button
               variant="ghost"
               size="sm"
+              className="pl-0 hover:bg-transparent hover:text-primary"
               onClick={() => window.history.back()}
             >
               <ArrowLeft className="h-4 w-4 mr-2" />
-              Zurück
+              Zurück zur Übersicht
             </Button>
           </div>
-          <h1 className="text-3xl font-bold">📊 Ergebnisanalyse</h1>
-          <p className="text-muted-foreground mt-1">
-            {analysis.negotiation.title} · {analysis.negotiation.userRole === "buyer" ? "Käufer" : "Verkäufer"} · {analysis.negotiation.productCount} Produkte · {analysis.summary.completedRuns} von {analysis.summary.totalRuns} Runs abgeschlossen
-          </p>
+          
+          <div className="flex gap-2">
+            {hasDeals && completedRuns.some(r => !r.tacticalSummary) && (
+              <Button
+                onClick={handleGenerateEvaluation}
+                disabled={isEvaluating}
+                className="bg-purple-600 hover:bg-purple-700 shadow-sm"
+              >
+                {isEvaluating ? "Generiere KI-Bewertung..." : "🤖 KI-Bewertung generieren"}
+              </Button>
+            )}
+            {hasDeals && completedRuns.length > 0 && (
+              <Button
+                onClick={handleGeneratePlaybook}
+                disabled={isGeneratingPlaybook}
+                className="bg-blue-600 hover:bg-blue-700 shadow-sm"
+              >
+                <BookOpen className="h-4 w-4 mr-2" />
+                {isGeneratingPlaybook ? "Generiere Playbook..." : "Playbook generieren"}
+              </Button>
+            )}
+          </div>
         </div>
-        {hasDeals && completedRuns.some(r => !r.tacticalSummary) && (
-          <Button
-            onClick={handleGenerateEvaluation}
-            disabled={isEvaluating}
-            className="bg-purple-600 hover:bg-purple-700"
-          >
-            {isEvaluating ? "Generiere KI-Bewertung..." : "🤖 KI-Bewertung generieren"}
-          </Button>
-        )}
-      </div>
 
-      {/* Legacy Data Warning */}
-      {!hasDeals && completedRuns.length > 0 && (
-        <Card className="border-2 border-amber-500 bg-amber-50">
-          <CardHeader>
-            <CardTitle className="text-amber-800">⚠️ Legacy Data</CardTitle>
-            <CardDescription>
-              Diese Simulation Runs wurden vor der Deal Value Implementierung erstellt.
-              Für vollständige Analyse bitte neue Simulation starten.
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      )}
+        <div className="flex flex-col md:flex-row justify-between items-start gap-6 bg-card border rounded-xl p-6 shadow-sm">
+          <div className="space-y-3 flex-1">
+            <div className="flex items-center gap-3">
+              <h1 className="text-3xl font-bold tracking-tight">{analysis.negotiation.title}</h1>
+              {getStatusBadge(analysis.negotiation.status)}
+            </div>
+            
+            {analysis.negotiation.description && (
+              <p className="text-muted-foreground max-w-2xl leading-relaxed">
+                {analysis.negotiation.description}
+              </p>
+            )}
 
-      {/* KPI Winner Cards */}
-      {hasDeals && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {analysis.summary.bestDealValue && (
-            <Card className="border-2 border-green-500">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                <TrendingUp className="h-4 w-4" />
-                🥇 Bester Deal Value
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-green-600">
-                {formatCurrency(analysis.summary.bestDealValue.value)}
+            <div className="flex flex-wrap gap-4 pt-2 text-sm text-muted-foreground">
+              <div className="flex items-center gap-1.5 bg-secondary/50 px-2.5 py-1 rounded-md">
+                <Building2 className="h-3.5 w-3.5" />
+                <span>
+                  {analysis.negotiation.userRole === "buyer" ? "Einkäufer" : "Verkäufer"}
+                </span>
               </div>
-              <div className="text-sm text-muted-foreground mt-2">
-                <div className="font-medium">{analysis.summary.bestDealValue.technique}</div>
-                <div>+ {analysis.summary.bestDealValue.tactic}</div>
-                <div className="text-xs mt-1">{analysis.summary.bestDealValue.rounds} Runden</div>
+              
+              <Separator orientation="vertical" className="h-6" />
+              
+              <div className="flex items-center gap-1.5 bg-secondary/50 px-2.5 py-1 rounded-md">
+                <Target className="h-3.5 w-3.5" />
+                <span>{analysis.negotiation.productCount} Produkte</span>
               </div>
-            </CardContent>
-          </Card>
-        )}
+              
+              <Separator orientation="vertical" className="h-6" />
+              
+              <div className="flex items-center gap-1.5 bg-secondary/50 px-2.5 py-1 rounded-md">
+                <FileText className="h-3.5 w-3.5" />
+                <span>
+                  {analysis.summary.completedRuns} / {analysis.summary.totalRuns} Simulationen
+                </span>
+              </div>
 
-        {analysis.summary.fastestCompletion && (
-          <Card className="border-2 border-blue-500">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                <Zap className="h-4 w-4" />
-                ⚡ Schnellster Abschluss
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-blue-600">
-                {analysis.summary.fastestCompletion.rounds} Runden
-              </div>
-              <div className="text-sm text-muted-foreground mt-2">
-                <div className="font-medium">{analysis.summary.fastestCompletion.technique}</div>
-                <div>+ {analysis.summary.fastestCompletion.tactic}</div>
-                <div className="text-xs mt-1">{formatCurrency(analysis.summary.fastestCompletion.dealValue)}</div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+              {analysis.negotiation.scenario?.counterpartProfile?.name && (
+                <>
+                  <Separator orientation="vertical" className="h-6" />
+                  <div className="flex items-center gap-1.5 bg-secondary/50 px-2.5 py-1 rounded-md">
+                    <Building2 className="h-3.5 w-3.5" />
+                    <span>Gegenpart: {analysis.negotiation.scenario.counterpartProfile.name}</span>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
 
-        {analysis.summary.mostEfficient && (
-          <Card className="border-2 border-purple-500">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                <Target className="h-4 w-4" />
-                💰 Beste Effizienz
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-purple-600">
-                {formatCurrency(analysis.summary.mostEfficient.efficiency)}/Runde
-              </div>
-              <div className="text-sm text-muted-foreground mt-2">
-                <div className="font-medium">{analysis.summary.mostEfficient.technique}</div>
-                <div>+ {analysis.summary.mostEfficient.tactic}</div>
-                <div className="text-xs mt-1">
-                  {formatCurrency(analysis.summary.mostEfficient.dealValue)} in {analysis.summary.mostEfficient.rounds} Runden
+          {/* Quick Stats on the right */}
+          {hasDeals && (
+            <div className="grid grid-cols-2 gap-4 min-w-[300px]">
+              <div className="bg-secondary/20 p-3 rounded-lg border">
+                <div className="text-xs text-muted-foreground mb-1">Durchschnittswert</div>
+                <div className="text-xl font-bold text-primary">
+                  {formatCurrency(analysis.summary.avgDealValue)}
                 </div>
               </div>
-            </CardContent>
-          </Card>
-        )}
+              <div className="bg-secondary/20 p-3 rounded-lg border">
+                <div className="text-xs text-muted-foreground mb-1">Ø Runden</div>
+                <div className="text-xl font-bold text-primary">
+                  {Math.round(analysis.summary.avgRounds * 10) / 10}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
-      )}
 
       {/* Performance Matrix */}
       <Card>
@@ -310,11 +373,12 @@ export default function NegotiationAnalysisPage() {
                   <tr key={technique}>
                     <td className="border p-2 font-medium bg-gray-50">{technique}</td>
                     {[...new Set(analysis.matrix.map(m => m.tacticName))].map(tactic => {
-                      const cell = analysis.matrix.find(
-                        m => m.techniqueName === technique && m.tacticName === tactic
+                      // Get all completed runs for this technique/tactic combination
+                      const cellRuns = analysis.runs.filter(
+                        r => r.techniqueName === technique && r.tacticName === tactic && r.status === 'completed'
                       );
 
-                      if (!cell) {
+                      if (cellRuns.length === 0) {
                         return (
                           <td key={tactic} className="border p-2 bg-gray-100 text-center text-gray-400">
                             -
@@ -322,34 +386,31 @@ export default function NegotiationAnalysisPage() {
                         );
                       }
 
-                      const rank = sortedRuns.findIndex(r => r.id === cell.runId) + 1;
+                      // Calculate averages, excluding zero deal values
+                      const cellRunsWithDeals = cellRuns.filter(r => r.dealValue > 0);
+                      const avgDealValue = cellRunsWithDeals.length > 0
+                        ? cellRunsWithDeals.reduce((sum, r) => sum + r.dealValue, 0) / cellRunsWithDeals.length
+                        : 0;
+                      const avgRounds = cellRuns.reduce((sum, r) => sum + r.totalRounds, 0) / cellRuns.length;
+
+                      // Calculate rank based on average deal value
+                      const rank = sortedRuns.filter(r => r.dealValue > avgDealValue).length + 1;
                       const colorClass = getPerformanceColor(rank, sortedRuns.length);
-                      const runData = analysis.runs.find(r => r.id === cell.runId);
-                      const hasEvaluation = runData?.tacticalSummary;
+                      const hasEvaluation = cellRuns.some(r => r.tacticalSummary);
 
                       return (
                         <td
                           key={tactic}
                           className={`border p-3 ${colorClass} cursor-pointer hover:opacity-80 transition-opacity relative`}
-                          onClick={() => setSelectedCell(cell.runId)}
+                          onClick={() => setSelectedCell(cellRuns[0].id)}
                         >
                           <div className="text-center">
                             <div className="text-2xl mb-1">{getRankBadge(rank)}</div>
-                            <div className="font-bold text-lg">{formatCurrency(cell.dealValue)}</div>
-                            <div className="text-xs mt-1">{cell.rounds} Runden</div>
+                            <div className="font-bold text-lg">{formatCurrency(avgDealValue)}</div>
+                            <div className="text-xs mt-1">{Math.round(avgRounds)} Runden (Ø)</div>
                             {hasEvaluation && (
                               <div className="absolute top-1 right-1">
                                 <Info className="h-4 w-4 text-purple-600" />
-                              </div>
-                            )}
-                            {runData && (runData.techniqueEffectivenessScore || runData.tacticEffectivenessScore) && (
-                              <div className="text-xs mt-1 flex justify-center gap-2">
-                                {runData.techniqueEffectivenessScore && (
-                                  <span className="bg-white/50 px-1 rounded">📊 {runData.techniqueEffectivenessScore}/10</span>
-                                )}
-                                {runData.tacticEffectivenessScore && (
-                                  <span className="bg-white/50 px-1 rounded">🎯 {runData.tacticEffectivenessScore}/10</span>
-                                )}
                               </div>
                             )}
                           </div>
@@ -418,6 +479,7 @@ export default function NegotiationAnalysisPage() {
       {/* AI Insights Panel */}
       {hasDeals && analysis.summary.bestDealValue && (() => {
         const bestRun = analysis.runs.find(r => r.id === analysis.summary.bestDealValue?.runId);
+        if (!bestRun) return null;
         const hasEvaluation = bestRun?.tacticalSummary;
 
         return (
@@ -427,7 +489,7 @@ export default function NegotiationAnalysisPage() {
                 🤖 KI-Analyse: Beste Strategie
               </CardTitle>
               <CardDescription>
-                Basierend auf Langfuse Prompt "simulation_eval" für: "{analysis.summary.bestDealValue.technique}" + "{analysis.summary.bestDealValue.tactic}"
+                Basierend auf Langfuse Prompt "simulation_eval" für: "{analysis.summary.bestDealValue!.technique}" + "{analysis.summary.bestDealValue!.tactic}"
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -448,7 +510,7 @@ export default function NegotiationAnalysisPage() {
                           {bestRun.techniqueEffectivenessScore}/10
                         </div>
                         <div className="text-sm text-muted-foreground">
-                          {analysis.summary.bestDealValue.technique}
+                          {analysis.summary.bestDealValue!.technique}
                         </div>
                       </div>
                     </div>
@@ -460,7 +522,7 @@ export default function NegotiationAnalysisPage() {
                           {bestRun.tacticEffectivenessScore}/10
                         </div>
                         <div className="text-sm text-muted-foreground">
-                          {analysis.summary.bestDealValue.tactic}
+                          {analysis.summary.bestDealValue!.tactic}
                         </div>
                       </div>
                     </div>
@@ -470,9 +532,9 @@ export default function NegotiationAnalysisPage() {
                   <div className="bg-white p-4 rounded-lg border border-purple-200">
                     <h4 className="font-semibold mb-2">💰 Verhandlungsergebnis</h4>
                     <ul className="space-y-1 text-sm">
-                      <li><strong>Deal Value:</strong> {formatCurrency(analysis.summary.bestDealValue.value)}</li>
-                      <li><strong>Runden:</strong> {analysis.summary.bestDealValue.rounds}</li>
-                      <li><strong>Effizienz:</strong> {formatCurrency(analysis.summary.bestDealValue.value / analysis.summary.bestDealValue.rounds)}/Runde</li>
+                      <li><strong>Deal Value:</strong> {formatCurrency(analysis.summary.bestDealValue!.value)}</li>
+                      <li><strong>Runden:</strong> {analysis.summary.bestDealValue!.rounds}</li>
+                      <li><strong>Effizienz:</strong> {formatCurrency(analysis.summary.bestDealValue!.value / analysis.summary.bestDealValue!.rounds)}/Runde</li>
                     </ul>
                   </div>
                 </>
@@ -480,7 +542,7 @@ export default function NegotiationAnalysisPage() {
                 <>
                   <div>
                     <h3 className="font-bold text-lg mb-2">
-                      Empfehlung: "{analysis.summary.bestDealValue.technique}" + "{analysis.summary.bestDealValue.tactic}"
+                      Empfehlung: "{analysis.summary.bestDealValue!.technique}" + "{analysis.summary.bestDealValue!.tactic}"
                     </h3>
                     <p className="text-sm text-muted-foreground">
                       Klicke auf "KI-Bewertung generieren" um eine detaillierte Analyse zu erhalten.
@@ -491,16 +553,16 @@ export default function NegotiationAnalysisPage() {
                     <h4 className="font-semibold mb-2">✅ Warum diese Kombination?</h4>
                     <ul className="space-y-2 ml-4 text-sm">
                       <li>
-                        <strong>Höchster Deal Value:</strong> {formatCurrency(analysis.summary.bestDealValue.value)}
+                        <strong>Höchster Deal Value:</strong> {formatCurrency(analysis.summary.bestDealValue!.value)}
                         {analysis.summary.avgDealValue > 0 && (
                           <span className="text-sm text-muted-foreground ml-2">
-                            (+{Math.round(((analysis.summary.bestDealValue.value - analysis.summary.avgDealValue) / analysis.summary.avgDealValue) * 100)}% vs. Durchschnitt)
+                            (+{Math.round(((analysis.summary.bestDealValue!.value - analysis.summary.avgDealValue) / analysis.summary.avgDealValue) * 100)}% vs. Durchschnitt)
                           </span>
                         )}
                       </li>
                       <li>
-                        <strong>Verhandlungsdauer:</strong> {analysis.summary.bestDealValue.rounds} Runden
-                        {analysis.summary.avgRounds > 0 && analysis.summary.bestDealValue.rounds <= analysis.summary.avgRounds && (
+                        <strong>Verhandlungsdauer:</strong> {analysis.summary.bestDealValue!.rounds} Runden
+                        {analysis.summary.avgRounds > 0 && analysis.summary.bestDealValue!.rounds <= analysis.summary.avgRounds && (
                           <span className="text-sm text-green-600 ml-2">
                             (Schneller als Durchschnitt)
                           </span>
@@ -610,7 +672,7 @@ export default function NegotiationAnalysisPage() {
                   // Extract product prices from conversation log
                   const priceEvolution: Record<string, Array<{round: number, price: number | null}>> = {};
 
-                  selectedRun.conversationLog.forEach((round) => {
+                  selectedRun.conversationLog?.forEach((round) => {
                     if (round.offer?.products) {
                       round.offer.products.forEach((product: any) => {
                         if (!priceEvolution[product.name]) {
@@ -646,7 +708,7 @@ export default function NegotiationAnalysisPage() {
                                   {rounds.map((r, idx) => {
                                     if (r.price === null) return null;
                                     const position = ((r.price - minPrice) / range) * 100;
-                                    const isBuyer = selectedRun.conversationLog[idx]?.agent === 'BUYER';
+                                    const isBuyer = selectedRun?.conversationLog?.[idx]?.agent === 'BUYER';
 
                                     return (
                                       <div

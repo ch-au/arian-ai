@@ -1,233 +1,123 @@
 import "dotenv/config";
 import { db } from "./db";
-import { agents, negotiationContexts, negotiationDimensions, negotiations, influencingTechniques } from "@shared/schema";
+import { storage } from "./storage";
 import { importAllCSVData } from "./csv-import";
 import { createRequestLogger } from "./services/logger";
+import { influencingTechniques, negotiations, negotiationProducts } from "@shared/schema";
+import { count } from "drizzle-orm";
 
 const log = createRequestLogger("script:seed");
 
 async function main() {
-  log.info("🌱 Seeding database with enhanced schema...");
+  log.info("🌱 Seeding database with normalized schema...");
 
   try {
-    // Step 1: Import CSV data (techniques, tactics, personality types) - only if not already imported
-    const techniquesCount = await db.$count(influencingTechniques);
-    if (techniquesCount === 0) {
-      log.info("📊 Importing CSV data...");
+    const [techniquesResult] = await db.select({ count: count() }).from(influencingTechniques);
+    if (techniquesResult.count === 0) {
+      log.info("📊 Importing CSV data (techniques, tactics, personalities)...");
       await importAllCSVData();
-    } else {
-      log.info("📊 CSV data already imported, skipping...");
     }
 
-    // Step 2: Clear existing test data (preserve CSV imports)
-    log.info("🧹 Clearing existing test data...");
-    await db.delete(negotiationDimensions);
-    await db.delete(agents);
-    await db.delete(negotiationContexts);
+    log.info("🧹 Clearing demo negotiations...");
+    await db.delete(negotiationProducts);
+    await db.delete(negotiations);
 
-    // Step 3: Seed test agents with enhanced data
-    log.info("👥 Creating test agents...");
-    const createdAgents = await db.insert(agents).values([
-      {
-        name: "Analytical Alex",
-        description: "A highly analytical negotiator focused on data-driven decisions with high conscientiousness.",
-        personalityProfile: { 
-          openness: 0.7, 
-          conscientiousness: 0.9, 
-          extraversion: 0.4, 
-          agreeableness: 0.6, 
-          neuroticism: 0.2 
-        },
-        powerLevel: "8.5",
-        preferredTactics: [], // Will be populated with actual tactic IDs later
-      },
-      {
-        name: "Collaborative Casey",
-        description: "A relationship-focused negotiator with high agreeableness who seeks win-win solutions.",
-        personalityProfile: { 
-          openness: 0.6, 
-          conscientiousness: 0.7, 
-          extraversion: 0.8, 
-          agreeableness: 0.9, 
-          neuroticism: 0.3 
-        },
-        powerLevel: "7.0",
-        preferredTactics: [],
-      },
-      {
-        name: "Assertive Aaron",
-        description: "A dominant negotiator with high extraversion who prefers direct approaches.",
-        personalityProfile: { 
-          openness: 0.5, 
-          conscientiousness: 0.6, 
-          extraversion: 0.9, 
-          agreeableness: 0.4, 
-          neuroticism: 0.3 
-        },
-        powerLevel: "8.0",
-        preferredTactics: [],
-      },
-      {
-        name: "Creative Chris", 
-        description: "An innovative negotiator with high openness who brings creative solutions to complex deals.",
-        personalityProfile: { 
-          openness: 0.9, 
-          conscientiousness: 0.5, 
-          extraversion: 0.7, 
-          agreeableness: 0.7, 
-          neuroticism: 0.4 
-        },
-        powerLevel: "7.5",
-        preferredTactics: [],
-      }
-    ]).returning();
-
-    // Step 4: Seed negotiation contexts with realistic scenarios
-    log.info("🏢 Creating negotiation contexts...");
-    const createdContexts = await db.insert(negotiationContexts).values([
-      {
-        name: "Enterprise Software License",
-        description: "Negotiating a multi-year enterprise software license agreement for a Fortune 500 company.",
-        productInfo: { 
-          productName: "Enterprise Analytics Platform", 
-          features: ["Real-time dashboards", "Advanced reporting", "API access", "24/7 support", "Custom integrations"],
-          industry: "Technology",
-          complexity: "High"
-        },
-        marketConditions: {
-          competitorCount: 3,
-          marketMaturity: "Growing",
-          urgency: "Medium",
-          budgetConstraints: "Moderate"
-        },
-        baselineValues: { 
-          annualValue: 250000, 
-          contractDuration: 36, 
-          implementationTime: 6,
-          supportLevel: "Premium"
-        },
-      },
-      {
-        name: "Manufacturing Equipment Purchase",
-        description: "Bulk purchase negotiation for manufacturing equipment including delivery and installation.",
-        productInfo: { 
-          productName: "Industrial Assembly Line Equipment", 
-          features: ["Automated assembly", "Quality control sensors", "Remote monitoring", "Maintenance packages"],
-          industry: "Manufacturing",
-          complexity: "High"
-        },
-        marketConditions: {
-          competitorCount: 2,
-          marketMaturity: "Mature",
-          urgency: "High",
-          budgetConstraints: "Strict"
-        },
-        baselineValues: { 
-          totalValue: 1200000, 
-          deliveryWeeks: 16, 
-          warrantyMonths: 24,
-          paymentTerms: 60
-        },
-      },
-      {
-        name: "Consulting Services Agreement",
-        description: "Professional consulting services for digital transformation project.",
-        productInfo: { 
-          productName: "Digital Transformation Consulting", 
-          features: ["Strategy development", "Implementation support", "Change management", "Training"],
-          industry: "Consulting",
-          complexity: "Medium"
-        },
-        marketConditions: {
-          competitorCount: 5,
-          marketMaturity: "Competitive",
-          urgency: "Low",
-          budgetConstraints: "Flexible"
-        },
-        baselineValues: { 
-          monthlyRate: 75000, 
-          projectDuration: 12, 
-          resourceCount: 4,
-          deliverableCount: 8
-        },
-      }
-    ]).returning();
-
-    // Step 5: Create sample negotiation with dimensions (demo purposes)
-    log.info("📐 Creating sample negotiation with dimensions...");
-    const [sampleNegotiation] = await db.insert(negotiations).values({
-      title: "Sample Enterprise Software License",
-      negotiationType: "multi-year",
-      relationshipType: "first", 
-      contextId: createdContexts[0].id,
-      buyerAgentId: createdAgents[0].id,
-      sellerAgentId: createdAgents[1].id,
-      userRole: "buyer",
-      productMarketDescription: "Sample negotiation for testing dimensions",
-      additionalComments: "This is a sample negotiation created during seeding"
-    }).returning();
-
-    await db.insert(negotiationDimensions).values([
-      {
-        negotiationId: sampleNegotiation.id, // Use the actual negotiation ID
-        name: "annual_price",
-        minValue: "200000",
-        maxValue: "300000", 
-        targetValue: "250000",
-        priority: 1, // Must have
-        unit: "USD"
-      },
-      {
-        negotiationId: sampleNegotiation.id,
-        name: "contract_duration",
-        minValue: "24",
-        maxValue: "48",
-        targetValue: "36", 
-        priority: 1, // Must have
-        unit: "months"
-      },
-      {
-        negotiationId: sampleNegotiation.id,
-        name: "implementation_time",
-        minValue: "3",
-        maxValue: "9",
-        targetValue: "6",
-        priority: 2, // Important
-        unit: "months"
-      },
-      {
-        negotiationId: sampleNegotiation.id,
-        name: "training_hours",
-        minValue: "40",
-        maxValue: "120",
-        targetValue: "80",
-        priority: 3, // Flexible
-        unit: "hours"
-      }
-    ]);
-
-    log.info("✅ Database seeded successfully with enhanced schema!");
-    log.info("🔑 Created test data:");
-    log.info("   📊 CSV Data: 11 techniques, 45 tactics, 5 personality types");
-    log.info(`   👥 Agents: ${createdAgents.length}`);
-    log.info(`   🏢 Contexts: ${createdContexts.length}`);
-    log.info("   📐 Sample dimensions: 4 for Enterprise Software License");
-    log.info("");
-    log.info("🔗 Key IDs for testing:");
-    createdAgents.forEach((agent) => {
-      log.info(`   ${agent.name}: ${agent.id}`);
-    });
-    createdContexts.forEach((context) => {
-      log.info(`   ${context.name}: ${context.id}`);
+    log.info("🏢 Creating sample registration + market + counterpart...");
+    const registration = await storage.createRegistration({
+      organization: "Demo Foods GmbH",
+      company: "Demo Foods",
+      country: "DE",
+      negotiationType: "strategic",
+      negotiationFrequency: "quarterly",
+      goals: { margin: "12%" },
     });
 
+    const market = await storage.createMarket({
+      registrationId: registration.id,
+      name: "DACH Grocery Retail",
+      currencyCode: "EUR",
+      region: "EMEA",
+      meta: { category: "CPG" },
+    });
+
+    const counterpart = await storage.createCounterpart({
+      registrationId: registration.id,
+      name: "Retailer AG",
+      kind: "retailer",
+      powerBalance: "55.00",
+      style: "partnership",
+    });
+
+    log.info("📦 Creating sample products...");
+    const productA = await storage.createProduct({
+      registrationId: registration.id,
+      name: "Chocolate Bar 50g",
+      brand: "SweetCo",
+      attrs: { segment: "Impulse" },
+    });
+
+    const productB = await storage.createProduct({
+      registrationId: registration.id,
+      name: "Protein Biscuit 80g",
+      brand: "PowerBite",
+      attrs: { segment: "Better-for-you" },
+    });
+
+    log.info("🤝 Creating demonstration negotiation...");
+    const negotiation = await storage.createNegotiation({
+      registrationId: registration.id,
+      marketId: market.id,
+      counterpartId: counterpart.id,
+      title: "Q2 Listing Review",
+      description: "Demo negotiation seeded for development/testing",
+      scenario: {
+        userRole: "seller",
+        negotiationType: "multi-year",
+        relationshipType: "long-standing",
+        negotiationFrequency: "quarterly",
+        productMarketDescription: "Seasonal confectionary assortment review",
+        maxRounds: 6,
+        selectedTechniques: [],
+        selectedTactics: [],
+        dimensions: [
+          {
+            id: undefined,
+            name: "Price per unit",
+            minValue: 0.85,
+            maxValue: 1.40,
+            targetValue: 1.10,
+            priority: 1,
+            unit: "EUR",
+          },
+          {
+            id: undefined,
+            name: "Volume per month",
+            minValue: 800,
+            maxValue: 1500,
+            targetValue: 1100,
+            priority: 2,
+            unit: "cases",
+          },
+          {
+            id: undefined,
+            name: "Payment terms",
+            minValue: 30,
+            maxValue: 60,
+            targetValue: 45,
+            priority: 2,
+            unit: "days",
+          },
+        ],
+      },
+      productIds: [productA.id, productB.id],
+      status: "planned",
+    });
+
+    log.info({ negotiationId: negotiation.id }, "✅ Seed completed");
   } catch (error) {
-    log.error({ err: error }, "❌ Error during database seeding");
-    throw error;
+    log.error({ err: error }, "Seed failed");
+    process.exit(1);
   }
 }
 
-main().catch((error) => {
-  log.error({ err: error }, "❌ Error seeding database");
-  process.exit(1);
-});
+main().then(() => process.exit(0));

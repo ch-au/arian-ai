@@ -68,8 +68,12 @@ export async function generateMarketIntelligence(
 
     log.debug({ stdout }, '[gemini-intelligence] Python stdout');
 
-    // Parse JSON Response
-    const result: MarketIntelligenceResult = JSON.parse(stdout);
+    const trimmedStdout = stdout.trim();
+    if (!trimmedStdout) {
+      throw new Error('Market Intelligence Script returned empty response');
+    }
+
+    const result: MarketIntelligenceResult = JSON.parse(trimmedStdout);
 
     return result.intelligence || [];
   } catch (error: any) {

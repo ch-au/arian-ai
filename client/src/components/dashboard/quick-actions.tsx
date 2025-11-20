@@ -1,6 +1,7 @@
+import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Bot, Play, Download, List, Settings, FileText } from "lucide-react";
+import { Bot, Play, Download, FileText } from "lucide-react";
 import { useLocation } from "wouter";
 
 export default function QuickActions() {
@@ -8,39 +9,39 @@ export default function QuickActions() {
 
   const actions = [
     {
-      title: "Configure Agent",
-      description: "Set personality & tactics",
+      title: "Neue Verhandlung",
+      description: "Assistent öffnen und Szenario erfassen",
       icon: Bot,
       color: "bg-blue-100 text-blue-600",
-      onClick: () => setLocation("/agents"),
+      onClick: () => setLocation("/configure"),
     },
     {
-      title: "Run Test Suite",
-      description: "Multi-scenario testing",
+      title: "Simulation überwachen",
+      description: "Live-Runs und Warteschlangen",
       icon: Play,
       color: "bg-green-100 text-green-600",
-      onClick: () => setLocation("/testing"),
+      onClick: () => setLocation("/monitor"),
     },
     {
-      title: "Export Reports",
-      description: "Download analytics",
+      title: "Berichte exportieren",
+      description: "CSV/Excel mit Ergebnissen",
       icon: Download,
       color: "bg-purple-100 text-purple-600",
       onClick: () => setLocation("/reports"),
     },
     {
-      title: "View Analytics",
-      description: "Performance insights",
+      title: "Analyse öffnen",
+      description: "Dimensionen und Produkte auswerten",
       icon: FileText,
       color: "bg-orange-100 text-orange-600",
-      onClick: () => setLocation("/analytics"),
+      onClick: () => setLocation("/analysis"),
     },
   ];
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-lg font-semibold text-gray-900">Quick Actions</CardTitle>
+        <CardTitle className="text-lg font-semibold text-gray-900">Schnellaktionen</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
