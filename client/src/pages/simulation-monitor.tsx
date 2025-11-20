@@ -9,6 +9,7 @@ import { useWebSocket } from "@/hooks/use-websocket";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ArrowLeft, AlertCircle } from "lucide-react";
+import { fetchWithAuth } from "@/lib/fetch-with-auth";
 
 // Import new components
 import { NegotiationConfig, NegotiationConfigSkeleton } from "@/components/monitor/NegotiationConfig";
@@ -41,6 +42,9 @@ interface SimulationResult {
   conversationLog?: any[];
   otherDimensions?: any;
   dealValue?: number | string;
+  errorMessage?: string | null;
+  outcome?: string;
+  metadata?: any;
 }
 
 export default function OptimizedSimulationMonitor() {
@@ -125,7 +129,7 @@ export default function OptimizedSimulationMonitor() {
   // Fetch functions
   const fetchQueueStatus = async (queueId: string) => {
     try {
-      const response = await fetch(`/api/simulations/queue/${queueId}/status`);
+      const response = await fetchWithAuth(`/api/simulations/queue/${queueId}/status`);
       const data = await response.json();
       if (data.success) {
         setQueueStatus(data.data);
@@ -141,7 +145,7 @@ export default function OptimizedSimulationMonitor() {
 
   const fetchResults = async (queueId: string) => {
     try {
-      const response = await fetch(`/api/simulations/queue/${queueId}/results`);
+      const response = await fetchWithAuth(`/api/simulations/queue/${queueId}/results`);
       const data = await response.json();
       if (data.success) {
         setSimulationResults(data.data);
@@ -156,9 +160,9 @@ export default function OptimizedSimulationMonitor() {
     const loadReferenceData = async () => {
       try {
         const [techniquesRes, tacticsRes, negotiationRes] = await Promise.all([
-          fetch("/api/techniques"),
-          fetch("/api/tactics"),
-          negotiationId ? fetch(`/api/negotiations/${negotiationId}`) : Promise.resolve(null),
+          fetchWithAuth("/api/techniques"),
+          fetchWithAuth("/api/tactics"),
+          negotiationId ? fetchWithAuth(`/api/negotiations/${negotiationId}`) : Promise.resolve(null),
         ]);
 
         if (techniquesRes.ok) {
@@ -191,7 +195,7 @@ export default function OptimizedSimulationMonitor() {
       setLoading(true);
 
       try {
-        const queueResponse = await fetch(`/api/simulations/queue/by-negotiation/${negotiationId}`);
+        const queueResponse = await fetchWithAuth(`/api/simulations/queue/by-negotiation/${negotiationId}`);
 
         if (queueResponse.ok) {
           const queueData = await queueResponse.json();
@@ -232,7 +236,7 @@ export default function OptimizedSimulationMonitor() {
     const timeoutId = setTimeout(() => controller.abort(), 15000);
 
     try {
-      const response = await fetch(url, {
+      const response = await fetchWithAuth(url, {
         ...options,
         signal: controller.signal,
       });

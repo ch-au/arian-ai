@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
+import { fetchWithAuth } from "@/lib/fetch-with-auth";
 import {
   Download,
   Calendar as CalendarIcon,
@@ -92,7 +93,7 @@ export default function ReportsPage() {
     const key = `${negotiationId}:${format}`;
     setExportingKey(key);
     try {
-      const response = await fetch(`/api/analytics/export/${negotiationId}?format=${format}`);
+      const response = await fetchWithAuth(`/api/analytics/export/${negotiationId}?format=${format}`);
       if (!response.ok) {
         throw new Error("Export fehlgeschlagen");
       }

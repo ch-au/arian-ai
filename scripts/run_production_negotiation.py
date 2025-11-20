@@ -1469,6 +1469,17 @@ class NegotiationService:
                 logger.debug(f"Parsing string response (type: {type(result.final_output).__name__})")
                 response_str = str(result.final_output)
 
+                # Handle case where response is a list with content field (some LLMs return this format)
+                try:
+                    import json
+                    parsed = json.loads(response_str)
+                    if isinstance(parsed, list) and len(parsed) > 0 and isinstance(parsed[0], dict):
+                        if 'content' in parsed[0]:
+                            response_str = parsed[0]['content']
+                            logger.debug("Extracted content from array response format")
+                except Exception:
+                    pass  # Not a JSON array, continue with original string
+
                 # Clean up markdown code blocks (common issue with LLMs)
                 # Remove ```json\n ... \n``` wrappers
                 response_str = response_str.strip()
@@ -1484,9 +1495,9 @@ class NegotiationService:
                     logger.debug("Cleaned markdown from response")
 
                 try:
-                    import json
                     response_data = json.loads(response_str)
                 except Exception as e:
+                    logger.error(f"Failed to parse response. Raw output (first 500 chars): {response_str[:500]}")
                     raise ValueError(f"Could not parse response: {response_str[:200]} - Error: {e}")
 
             # Normalize dimension values to ensure they're numeric and fix product key mismatches

@@ -342,13 +342,13 @@ export default function CreateNegotiationForm({ techniques, tactics, onSuccess }
     }
 
     const contextPayload = buildMarketContext();
-    if (!contextPayload) {
-      toast({
-        title: "Kontext erforderlich",
-        description: "Bitte beschreiben Sie den Markt oder fügen Sie Notizen hinzu, damit Gemini die Recherche starten kann.",
-        variant: "destructive",
-      });
-      return;
+      if (!contextPayload) {
+        toast({
+          title: "Kontext erforderlich",
+          description: "Bitte beschreiben Sie den Markt oder fügen Sie Notizen hinzu, damit die KI die Recherche starten kann.",
+          variant: "destructive",
+        });
+        return;
     }
 
     try {
@@ -378,7 +378,7 @@ export default function CreateNegotiationForm({ techniques, tactics, onSuccess }
       const message = error instanceof Error ? error.message : "Marktanalyse konnte nicht geladen werden.";
       setMarketInsightsError(message);
       setMarketInsights([]);
-      toast({ title: "Gemini-Analyse fehlgeschlagen", description: message, variant: "destructive" });
+      toast({ title: "KI-Analyse fehlgeschlagen", description: message, variant: "destructive" });
     } finally {
       setIsLoadingInsights(false);
     }
@@ -1070,16 +1070,16 @@ function MarketInsightsPanel({
         <div>
           <p className="flex items-center gap-2 text-sm font-semibold">
             <Sparkles className="h-4 w-4 text-primary" />
-            Google Markt-Insights
+            KI Markt-Insights
           </p>
-          <p className="text-xs text-muted-foreground">Gemini 2.0 Flash + Google Search (Grounded)</p>
+          <p className="text-xs text-muted-foreground">KI Web Recherche</p>
         </div>
         <Button type="button" variant="secondary" onClick={onGenerate} disabled={isLoading}>
           {isLoading ? "Analyse läuft …" : "Marktanalyse abrufen"}
         </Button>
       </div>
       {error && <p className="text-sm text-destructive">{error}</p>}
-      {isLoading && <p className="text-sm text-muted-foreground">Gemini durchsucht gerade aktuelle Quellen …</p>}
+      {isLoading && <p className="text-sm text-muted-foreground">Die KI durchsucht gerade aktuelle Quellen …</p>}
       {!isLoading && insights.length > 0 && (
         <>
           <div className="grid gap-3 md:grid-cols-2">

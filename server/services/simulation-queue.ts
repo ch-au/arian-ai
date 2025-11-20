@@ -337,6 +337,10 @@ export class SimulationQueueService {
       await db.update(simulationQueue)
         .set({ status: 'pending' })
         .where(eq(simulationQueue.id, queueId));
+
+      // Start the queue to ensure the background processor picks it up
+      this.log.info(`Starting queue ${queueId.slice(0, 8)} after restarting ${updatedRows.length} failed runs`);
+      await this.startQueue(queueId);
     }
 
     this.log.info(`Restarted ${updatedRows.length} failed simulations`);
@@ -374,6 +378,10 @@ export class SimulationQueueService {
       await db.update(simulationQueue)
         .set({ status: 'pending' })
         .where(eq(simulationQueue.id, run.queueId));
+
+      // Start the queue to ensure the background processor picks it up
+      this.log.info(`Starting queue ${run.queueId.slice(0, 8)} after restarting run`);
+      await this.startQueue(run.queueId);
     }
 
     if (!updatedRun) {
@@ -600,7 +608,15 @@ export class SimulationQueueService {
     
     // Update queue status to running
     await this.updateQueueStatus(queueId, 'running');
-    
+
+    this.log.info({
+      simulationId: nextSimulation.id,
+      runNumber: nextSimulation.runNumber,
+      techniqueId: nextSimulation.techniqueId,
+      tacticId: nextSimulation.tacticId,
+      retryCount: nextSimulation.retryCount || 0
+    }, `🚀 Starting Run #${nextSimulation.runNumber}${nextSimulation.retryCount ? ` (Retry ${nextSimulation.retryCount})` : ''}`);
+
     // Broadcast simulation started event
     this.broadcastEvent({
       type: 'simulation_started',
@@ -658,19 +674,59 @@ export class SimulationQueueService {
         queueId: queueId
       }, onRoundUpdate);
 
-      this.log.info(`[PYTHON] Negotiation completed! Outcome: ${result.outcome}, Rounds: ${result.totalRounds}`);
+      this.log.info({
+        simulationId: nextSimulation.id,
+        runNumber: nextSimulation.runNumber,
+        outcome: result.outcome,
+        rounds: result.totalRounds
+      }, `✅ [PYTHON] Negotiation completed! Outcome: ${result.outcome}, Rounds: ${result.totalRounds}`);
 
       // Guard against stop: if this run was marked non-running meanwhile, skip updating results
       const [latest] = await db.select({ status: simulationRuns.status })
         .from(simulationRuns)
         .where(eq(simulationRuns.id, nextSimulation.id));
 
-      if (!latest || latest.status !== 'running') {
+      this.log.debug({
+        simulationId: nextSimulation.id,
+        runNumber: nextSimulation.runNumber,
+        statusBeforeExecution: 'running',
+        statusAfterExecution: latest?.status,
+        outcome: result.outcome
+      }, `Status check after Python execution`);
+
+      // Guard against missing run
+      if (!latest) {
+        this.log.error({ simulationId: nextSimulation.id }, '⚠️ Simulation run disappeared from database!');
+        return false;
+      }
+
+      // IMPORTANT: Only skip if explicitly aborted by user
+      // If status is 'failed' but we got a successful result from Python, proceed anyway
+      // This handles race conditions where retry logic marks run as 'failed' while Python is still completing
+      if (latest.status === 'aborted') {
         this.log.warn(
-          { simulationId: nextSimulation.id, status: latest?.status, outcome: result.outcome },
-          'Skipping result write; run was stopped externally'
+          { simulationId: nextSimulation.id, status: latest.status, outcome: result.outcome },
+          'Skipping result write; run was aborted by user'
         );
         return true; // Continue processing other simulations
+      }
+
+      // If status is 'failed' but Python succeeded with valid outcome, log warning but proceed
+      if (latest.status === 'failed' && ['DEAL_ACCEPTED', 'WALK_AWAY', 'TERMINATED', 'MAX_ROUNDS_REACHED'].includes(result.outcome)) {
+        this.log.warn(
+          { simulationId: nextSimulation.id, status: latest.status, outcome: result.outcome },
+          '⚠️ Run marked as failed but Python succeeded - likely retry race condition, proceeding with result write'
+        );
+      }
+
+      // For any other status (including 'running', 'pending', 'completed', 'timeout', 'paused'),
+      // proceed with writing results - the status will be updated correctly below
+      if (latest.status !== 'running') {
+        this.log.info({
+          simulationId: nextSimulation.id,
+          currentStatus: latest.status,
+          outcome: result.outcome
+        }, `Run status changed during execution (${latest.status}), but proceeding with result write`);
       }
       
       // Calculate actual cost based on rounds (more accurate than fixed estimate)
@@ -781,6 +837,15 @@ export class SimulationQueueService {
         })
         .where(eq(simulationQueue.id, queueId));
       
+      this.log.info({
+        simulationId: nextSimulation.id,
+        runNumber: nextSimulation.runNumber,
+        outcome: result.outcome,
+        totalRounds: result.totalRounds,
+        dealValue: artifacts.dealValue,
+        actualCost
+      }, `✅ Completed Run #${nextSimulation.runNumber}: ${result.outcome}, ${result.totalRounds} rounds, Deal: €${artifacts.dealValue || 0}`);
+
       // Broadcast simulation completed event
       this.broadcastEvent({
         type: 'simulation_completed',
@@ -888,22 +953,43 @@ export class SimulationQueueService {
       return true;
       
     } catch (error) {
-      this.log.error({ err: error, simulationId: nextSimulation.id }, `Simulation ${nextSimulation.id} failed`);
-      
+      // Extract detailed error information
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : undefined;
+
+      this.log.error({
+        err: error,
+        simulationId: nextSimulation.id,
+        runNumber: nextSimulation.runNumber,
+        techniqueId: nextSimulation.techniqueId,
+        tacticId: nextSimulation.tacticId,
+        errorMessage,
+        errorStack
+      }, `❌ Simulation Run #${nextSimulation.runNumber} failed: ${errorMessage}`);
+
       // Increment retry count
       const newRetryCount = (nextSimulation.retryCount || 0) + 1;
-      
+
       if (newRetryCount >= (nextSimulation.maxRetries || 3)) {
+        this.log.warn({
+          simulationId: nextSimulation.id,
+          runNumber: nextSimulation.runNumber,
+          retryCount: newRetryCount,
+          maxRetries: nextSimulation.maxRetries || 3
+        }, `🔴 Max retries reached for Run #${nextSimulation.runNumber}, marking as failed`);
+
         // Max retries reached, mark as failed
         await db.update(simulationRuns)
-          .set({ 
+          .set({
             status: 'failed',
             retryCount: newRetryCount,
             conversationLog: JSON.stringify([]), // Ensure conversationLog is not null
             metadata: {
               ...(nextSimulation.metadata ?? {}),
-              lastError: error instanceof Error ? error.message : 'Unknown error',
+              lastError: errorMessage,
+              errorStack: errorStack?.substring(0, 500), // Truncate stack trace
               finalRetry: true,
+              failedAt: new Date().toISOString(),
             },
           })
           .where(eq(simulationRuns.id, nextSimulation.id));
@@ -936,16 +1022,25 @@ export class SimulationQueueService {
         });
         
       } else {
+        this.log.info({
+          simulationId: nextSimulation.id,
+          runNumber: nextSimulation.runNumber,
+          retryCount: newRetryCount,
+          maxRetries: nextSimulation.maxRetries || 3
+        }, `🔄 Retrying Run #${nextSimulation.runNumber} (Attempt ${newRetryCount}/${nextSimulation.maxRetries || 3})`);
+
         // Reset to pending for retry
         await db.update(simulationRuns)
-          .set({ 
+          .set({
             status: 'pending',
             retryCount: newRetryCount,
             startedAt: null,
             metadata: {
               ...(nextSimulation.metadata ?? {}),
-              lastError: error instanceof Error ? error.message : 'Unknown error',
+              lastError: errorMessage,
+              errorStack: errorStack?.substring(0, 500),
               retryAttempt: newRetryCount,
+              lastRetryAt: new Date().toISOString(),
             },
           })
           .where(eq(simulationRuns.id, nextSimulation.id));
@@ -1151,7 +1246,9 @@ export class SimulationQueueService {
       dealValue: simulationRuns.dealValue,
       actualCost: simulationRuns.actualCost,
       startedAt: simulationRuns.startedAt,
-      completedAt: simulationRuns.completedAt
+      completedAt: simulationRuns.completedAt,
+      metadata: simulationRuns.metadata,
+      outcome: simulationRuns.outcome
     })
     .from(simulationRuns)
     .where(eq(simulationRuns.queueId, queueId))
@@ -1182,12 +1279,20 @@ export class SimulationQueueService {
         }
       }
 
+      // Extract error message from metadata
+      let errorMessage = null;
+      if (result.metadata && typeof result.metadata === 'object') {
+        const metadata = result.metadata as any;
+        errorMessage = metadata.lastError || null;
+      }
+
       return {
         ...result,
         conversationLog: parsedConversationLog || [],
         otherDimensions: parsedOtherDimensions || {},
         dealValue: result.dealValue ? parseFloat(result.dealValue) : null,
-        actualCost: result.actualCost ? parseFloat(result.actualCost) : 0
+        actualCost: result.actualCost ? parseFloat(result.actualCost) : 0,
+        errorMessage
       };
     });
   }
@@ -1255,6 +1360,7 @@ export class SimulationQueueService {
         actualCost: simulationRuns.actualCost,
         startedAt: simulationRuns.startedAt,
         completedAt: simulationRuns.completedAt,
+        metadata: simulationRuns.metadata,
         // AI Evaluation fields
         tacticalSummary: simulationRuns.tacticalSummary,
         techniqueEffectivenessScore: simulationRuns.techniqueEffectivenessScore,
@@ -1325,12 +1431,20 @@ export class SimulationQueueService {
           }
         }
 
+        // Extract error message from metadata
+        let errorMessage = null;
+        if (result.metadata && typeof result.metadata === 'object') {
+          const metadata = result.metadata as any;
+          errorMessage = metadata.lastError || null;
+        }
+
         return {
           ...result,
           conversationLog: parsedConversationLog || [],
           otherDimensions: parsedOtherDimensions || {},
           dimensionResults: dimensionMap.get(result.id) ?? [],
           productResults: productMap.get(result.id) ?? [],
+          errorMessage
         };
       });
     } catch (error) {
@@ -1589,27 +1703,30 @@ export class SimulationQueueService {
         "[EVALUATION] Found technique and tactic data"
       );
 
-      // Determine counterpart attitude
-      const negotiationRole = (negotiation.scenario.userRole ?? 'buyer').toUpperCase() === 'SELLER' ? 'SELLER' : 'BUYER';
+      // Determine the role being evaluated
+      // scenario.userRole = the role explicitly set by user in UI ("Ihre Rolle")
+      // This is the SELF/USER agent role that we want to evaluate
+      // Example: If user selects "Verkäufer:in" → userRole = "seller" → evaluate SELLER
+      const selfAgentRole = (negotiation.scenario.userRole ?? 'buyer').toUpperCase() === 'SELLER' ? 'SELLER' : 'BUYER';
       const counterpartAttitude = personality?.archetype || 'Standard';
 
       this.log.info(
         {
           simulationId: simulationRunId.slice(0, 8),
-          role: negotiationRole,
+          selfAgentRole,
           technique: technique.name,
           tactic: tactic.name,
           counterpartAttitude,
           outcome: finalOutcome
         },
-        "[EVALUATION] Calling evaluateAndSave with all parameters"
+        "[EVALUATION] Calling evaluateAndSave - evaluating SELF agent (scenario.userRole)"
       );
 
       // Run evaluation asynchronously (don't block)
       await SimulationEvaluationService.evaluateAndSave(
         simulationRunId,
         simulationRun.conversationLog as any[],
-        negotiationRole,
+        selfAgentRole, // Evaluate the SELF agent (the role set in "Ihre Rolle")
         technique.name,
         technique.beschreibung, // Pass description
         tactic.name,

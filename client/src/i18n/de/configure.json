@@ -179,7 +179,7 @@
       "description": "Generieren Sie aktuelle Markteinschätzungen für Ihre Verhandlung",
       "generate": "Marktanalyse generieren",
       "generating": "Generiere...",
-      "analyzing": "Analysiere aktuelle Marktdaten mit Gemini Flash...",
+      "analyzing": "Analysiere aktuelle Marktdaten...",
       "noResults": "Keine Ergebnisse verfügbar",
       "relevanz": {
         "hoch": "Hoch",

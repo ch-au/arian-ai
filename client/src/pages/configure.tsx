@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { WizardForm, WizardStep } from "@/components/wizard-form";
 import { useToast } from "@/hooks/use-toast";
 import { useTranslation } from "react-i18next";
+import { fetchWithAuth } from "@/lib/fetch-with-auth";
 
 // Phase 2 Components
 import { GrundeinstellungenStep, GrundeinstellungenData } from "@/components/configure/GrundeinstellungenStep";
@@ -118,7 +119,7 @@ export default function Configure() {
     
     setIsLoadingIntelligence(true);
     try {
-      const response = await fetch('/api/market-intelligence', {
+      const response = await fetchWithAuth('/api/market-intelligence', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -230,7 +231,7 @@ export default function Configure() {
 
       console.log("Creating Phase 2 negotiation:", apiPayload);
 
-      const response = await fetch("/api/negotiations/phase2", {
+      const response = await fetchWithAuth("/api/negotiations/phase2", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

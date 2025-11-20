@@ -9,6 +9,7 @@ import { AlertCircle, Play, Check, Clock, X } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import type { NegotiationScenario } from "@/hooks/use-negotiations";
 import { translateNegotiationStatus } from "@/hooks/use-negotiations";
+import { fetchWithAuth } from "@/lib/fetch-with-auth";
 
 type NegotiationDetailResponse = {
   negotiation: {
@@ -62,7 +63,7 @@ export default function SimulationConfirmation() {
     if (!negotiationId) return;
     setIsStarting(true);
     try {
-      const response = await fetch(`/api/negotiations/${negotiationId}/start`, {
+      const response = await fetchWithAuth(`/api/negotiations/${negotiationId}/start`, {
         method: "POST",
       });
       if (response.ok) {

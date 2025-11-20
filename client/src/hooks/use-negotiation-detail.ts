@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import type { NegotiationScenario } from "./use-negotiations";
+import { fetchWithAuth } from "@/lib/fetch-with-auth";
 
 export interface NegotiationDetailPayload {
   negotiation: {
@@ -31,7 +32,7 @@ export function useNegotiationDetail(negotiationId?: string | null) {
     queryKey: negotiationId ? ["/api/negotiations/", negotiationId] : [],
     queryFn: async ({ queryKey }) => {
       const [, id] = queryKey;
-      const res = await fetch(`/api/negotiations/${id}`);
+      const res = await fetchWithAuth(`/api/negotiations/${id}`);
       if (!res.ok) {
         throw new Error("Failed to load negotiation");
       }

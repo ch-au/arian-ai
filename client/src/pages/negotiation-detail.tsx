@@ -6,6 +6,7 @@ import { Progress } from "@/components/ui/progress";
 import { ArrowLeft, BarChart2, Monitor, Play } from "lucide-react";
 import { useNegotiationDetail } from "@/hooks/use-negotiation-detail";
 import { translateNegotiationStatus } from "@/hooks/use-negotiations";
+import { fetchWithAuth } from "@/lib/fetch-with-auth";
 
 export default function NegotiationDetailPage() {
   const [, params] = useRoute("/negotiations/:id");
@@ -17,7 +18,7 @@ export default function NegotiationDetailPage() {
 
   const handleStart = async () => {
     if (!negotiationId) return;
-    await fetch(`/api/negotiations/${negotiationId}/start`, { method: "POST" });
+    await fetchWithAuth(`/api/negotiations/${negotiationId}/start`, { method: "POST" });
     setLocation(`/negotiations/${negotiationId}`);
   };
 

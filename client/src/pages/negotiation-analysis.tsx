@@ -6,6 +6,7 @@ import { ArrowLeft, TrendingUp, Zap, DollarSign, Target, Info, Calendar, FileTex
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useQuery } from "@tanstack/react-query";
+import { OutcomeBadgeMini } from "@/components/ui/outcome-badge";
 import {
   Dialog,
   DialogContent,
@@ -444,6 +445,7 @@ export default function NegotiationAnalysisPage() {
                   <th className="text-right p-2 font-medium">Deal Value</th>
                   <th className="text-right p-2 font-medium">Runden</th>
                   <th className="text-right p-2 font-medium">Effizienz</th>
+                  <th className="text-left p-2 font-medium">Ergebnis</th>
                   <th className="text-left p-2 font-medium">Status</th>
                 </tr>
               </thead>
@@ -465,8 +467,11 @@ export default function NegotiationAnalysisPage() {
                         {formatCurrency(run.efficiency)}/Runde
                       </td>
                       <td className="p-2">
+                        <OutcomeBadgeMini outcome={run.outcome} />
+                      </td>
+                      <td className="p-2">
                         <span className="px-2 py-1 rounded text-xs bg-green-100 text-green-800">
-                          {run.outcome}
+                          Abgeschlossen
                         </span>
                       </td>
                     </tr>

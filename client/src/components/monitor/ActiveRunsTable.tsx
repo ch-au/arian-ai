@@ -14,6 +14,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { ChevronDown, ChevronRight, MessageSquare, CheckCircle2, XCircle, Loader2, Clock } from "lucide-react";
+import { OutcomeBadgeMini } from "@/components/ui/outcome-badge";
 
 interface SimulationRun {
   id: string;
@@ -32,6 +33,7 @@ interface SimulationRun {
   errorMessage?: string;
   startedAt?: string | Date;
   completedAt?: string | Date;
+  outcome?: string;
 }
 
 interface ConversationMessage {
@@ -204,6 +206,7 @@ function SimulationRunCard({ run }: { run: SimulationRun }) {
                 {run.techniqueName || run.techniqueId}
               </span>
               {getStatusBadge(run.status)}
+              {run.outcome && <OutcomeBadgeMini outcome={run.outcome} />}
             </div>
             <div className="text-sm text-muted-foreground flex items-center gap-2">
               <span className="font-medium">{run.tacticName || run.tacticId}</span>

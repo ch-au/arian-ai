@@ -13,6 +13,7 @@ import { ArrowRight, BarChart2, LineChart, Play } from "lucide-react";
 import { useNegotiations } from "@/hooks/use-negotiations";
 import { useNegotiationDetail } from "@/hooks/use-negotiation-detail";
 import { buildRadarMetrics, buildActualValuesRadar, buildComparisonSummary } from "@/lib/run-comparison";
+import { fetchWithAuth } from "@/lib/fetch-with-auth";
 import {
   RadarChart,
   Radar,
@@ -91,7 +92,7 @@ export default function TestingSuite() {
     staleTime: 0,
     queryFn: async ({ queryKey }) => {
       const [, negotiationId] = queryKey;
-      const response = await fetch(`/api/negotiations/${negotiationId}/analysis`);
+      const response = await fetchWithAuth(`/api/negotiations/${negotiationId}/analysis`);
       if (!response.ok) {
         throw new Error("Analyse konnte nicht geladen werden");
       }

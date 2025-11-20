@@ -26,6 +26,7 @@ import {
   Timer,
   MessageSquare,
 } from "lucide-react";
+import { OutcomeBadgeMini } from "@/components/ui/outcome-badge";
 
 interface SimulationResult {
   id: string;
@@ -40,6 +41,7 @@ interface SimulationResult {
   conversationLog?: any[];
   otherDimensions?: any;
   dealValue?: number | string;
+  outcome?: string;
 }
 
 interface ResultsTableProps {
@@ -191,6 +193,7 @@ export function ResultsTable({
                   <TableHead>Technique</TableHead>
                   <TableHead>Tactic</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Ergebnis</TableHead>
                   <TableHead className="text-center">Rounds</TableHead>
                   <TableHead className="text-right">Deal Value</TableHead>
                   <TableHead>Other Dimensions</TableHead>
@@ -217,6 +220,9 @@ export function ResultsTable({
                       {getTacticName(result.tacticId)}
                     </TableCell>
                     <TableCell>{getStatusBadge(result.status)}</TableCell>
+                    <TableCell>
+                      <OutcomeBadgeMini outcome={result.outcome} />
+                    </TableCell>
                     <TableCell className="text-center">
                       {result.totalRounds || 0}
                     </TableCell>

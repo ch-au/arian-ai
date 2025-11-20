@@ -281,9 +281,15 @@ CREATE TABLE simulation_runs (
 
   -- TRACING
   langfuse_trace_id TEXT,
-  metadata JSONB DEFAULT '{}'
+  metadata JSONB DEFAULT '{}' -- Enthält lastError, retryAttempt, checkpoint, etc.
 );
 ```
+
+**Wichtige Hinweise:**
+- ❌ **KEIN `created_at` Feld** - Verwende `started_at` oder `executionOrder` zum Sortieren
+- ✅ `metadata.lastError` enthält Fehlermeldungen bei fehlgeschlagenen Runs
+- ✅ `outcome` enthält das detaillierte Ergebnis der Simulation
+- ✅ `status` zeigt den aktuellen Ausführungsstatus
 
 ### 5. Results & Analytics (2)
 
