@@ -22,6 +22,12 @@ async function main() {
     await db.delete(negotiationProducts);
     await db.delete(negotiations);
 
+    log.info("👤 Creating demo user...");
+    const user = await storage.createUser({
+      username: "demo",
+      password: "$2b$10$K7L1OJ45/4Y2nIvhRVpCe.FSmhDlVfQF4hQv8FcC4hQv8FcC4hQv", // hashed "demo123"
+    });
+
     log.info("🏢 Creating sample registration + market + counterpart...");
     const registration = await storage.createRegistration({
       organization: "Demo Foods GmbH",
@@ -68,6 +74,7 @@ async function main() {
       registrationId: registration.id,
       marketId: market.id,
       counterpartId: counterpart.id,
+      userId: user.id,
       title: "Q2 Listing Review",
       description: "Demo negotiation seeded for development/testing",
       scenario: {
