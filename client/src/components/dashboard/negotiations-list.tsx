@@ -82,31 +82,21 @@ export default function NegotiationsList() {
     },
   });
 
-  const stopNegotiationMutation = useMutation({
+  const pauseNegotiationMutation = useMutation({
     mutationFn: async (negotiationId: string) => {
-      const queuesResponse = await apiRequest("GET", `/api/simulations/queues?negotiationId=${negotiationId}`);
-      const queues = await queuesResponse.json();
-      const activeQueues = queues.filter((q: any) => q.status === "running" || q.status === "pending");
-
-      if (activeQueues.length > 0) {
-        await Promise.all(
-          activeQueues.map((queue: any) => apiRequest("POST", `/api/simulations/queue/${queue.id}/stop`)),
-        );
-      }
-
-      const response = await apiRequest("POST", `/api/negotiations/${negotiationId}/stop`);
+      const response = await apiRequest("POST", `/api/negotiations/${negotiationId}/pause`);
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/negotiations"] });
       toast({
-        title: "Simulation gestoppt",
-        description: "Alle Queues für diese Verhandlung wurden gestoppt.",
+        title: "Simulation pausiert",
+        description: "Die Verhandlung wurde pausiert.",
       });
     },
     onError: (error) => {
       toast({
-        title: "Stoppen fehlgeschlagen",
+        title: "Pausieren fehlgeschlagen",
         description: error instanceof Error ? error.message : "Unbekannter Fehler",
         variant: "destructive",
       });
@@ -253,7 +243,7 @@ export default function NegotiationsList() {
                           size="icon"
                           variant="outline"
                           title="Simulation pausieren"
-                          onClick={() => stopNegotiationMutation.mutate(negotiation.id)}
+                          onClick={() => pauseNegotiationMutation.mutate(negotiation.id)}
                         >
                           <Pause className="h-4 w-4" />
                         </Button>

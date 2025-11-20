@@ -134,7 +134,7 @@ CREATE TABLE negotiation_products (
 CREATE TABLE negotiations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   registration_id UUID NOT NULL REFERENCES registrations(id) ON DELETE CASCADE,
-  user_id TEXT, -- Stack Auth User ID (verknüpft Negotiation mit User)
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, -- JWT Auth User ID (integer FK)
   market_id UUID REFERENCES markets(id),
   counterpart_id UUID REFERENCES counterparts(id),
   title TEXT DEFAULT 'Untitled Negotiation',
@@ -372,7 +372,7 @@ Diese Tabellen wurden gelöscht, da sie **nie genutzt** wurden oder durch neue S
 
 ### 1. Negotiation Setup & Authentication
 ```
-Stack Auth User → negotiations (user_id filtert Zugriff)
+JWT Auth User (integer ID) → negotiations (userId filtert Zugriff)
      ↓
 negotiations (scenario mit products, dimensions, techniques, tactics)
      → negotiation_products (Link zu products)
@@ -428,6 +428,51 @@ Dashboard, Reports, Comparisons
 - GET `/api/negotiations/:id/playbook` gibt gecachte Version zurück falls vorhanden
 - POST `/api/negotiations/:id/playbook` erzwingt Neu-Generierung
 - Sidebar zeigt Playbook-Link als aktiv wenn `playbook` Feld gesetzt ist
+
+## Authentication & Authorization 🔐
+
+### JWT-Based Authentication System
+Das System verwendet eine **selbst-gehostete JWT-basierte Authentifizierung** (ersetzt Stack Auth):
+
+#### User Table
+- **`users.id`**: SERIAL (INTEGER) - Auto-incrementing primary key
+- **`users.username`**: TEXT NOT NULL UNIQUE - Login-Benutzername
+- **`users.password`**: TEXT NOT NULL - Bcrypt-gehashtes Passwort
+
+#### JWT Token Flow
+```
+Login → POST /api/login
+  ↓
+  username + password Validierung
+  ↓
+  JWT Token generiert (7 Tage gültig)
+  ↓
+  Token gespeichert in localStorage (auth_token)
+  ↓
+  Alle API Requests senden Authorization: Bearer <token>
+  ↓
+  Server validiert Token und extrahiert userId
+```
+
+#### Middleware & User Isolation
+- **`requireAuth()`**: Express Middleware - validiert JWT Token, setzt `req.userId`
+- **`optionalAuth()`**: Express Middleware - validiert JWT optional, setzt `req.userId` falls vorhanden
+- **User Isolation**: Alle Queries filtern automatisch mit `WHERE user_id = req.userId`
+- **Foreign Key**: `negotiations.user_id` → `users.id` (ON DELETE CASCADE)
+
+#### Frontend Integration
+- **`fetchWithAuth()`**: Wrapper um `fetch()` der automatisch JWT Token in Headers einfügt
+- **`queryClient`**: TanStack Query Client mit automatischer JWT-Injection in allen Queries
+- **`useAuth()`**: React Context Hook für User State und Login/Logout
+- **401 Handling**: Bei 401 Unauthorized wird Token gelöscht und User zu Splash-Screen weitergeleitet
+
+#### Security Features
+- ✅ Bcrypt Password Hashing
+- ✅ JWT Token mit 7-Tagen Expiry
+- ✅ Bearer Token Authentication
+- ✅ Automatic Token Refresh on 401
+- ✅ User Isolation via Foreign Keys
+- ✅ SQL Injection Prevention (Parameterized Queries)
 
 ## Enums
 

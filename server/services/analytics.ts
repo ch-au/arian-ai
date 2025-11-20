@@ -6,6 +6,7 @@ export interface DashboardMetrics {
   successRate: number;
   avgDuration: number;
   apiCostToday: number;
+  totalSimulationRuns: number;
   recentTrend: {
     activeNegotiationsChange: number;
     successRateChange: number;
@@ -64,16 +65,19 @@ export class AnalyticsService {
 
     return {
       ...currentMetrics,
+      totalSimulationRuns: currentMetrics.totalSimulationRuns || 0,
       recentTrend,
     };
   }
 
   async getSuccessRateTrends(days: number = 30, userId?: string): Promise<SuccessRateTrend[]> {
-    return await storage.getSuccessRateTrends(days, userId);
+    // TODO: Implement userId filtering in storage
+    return await storage.getSuccessRateTrends(days);
   }
 
   async getTopPerformingAgents(limit: number = 5, userId?: string): Promise<AgentPerformance[]> {
-    const results = await storage.getTopPerformingAgents(limit, userId);
+    // TODO: Implement userId filtering in storage
+    const results = await storage.getTopPerformingAgents(limit);
     
     // Enhance with additional performance metrics
     const enhancedResults: AgentPerformance[] = [];

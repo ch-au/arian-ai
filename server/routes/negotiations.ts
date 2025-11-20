@@ -223,13 +223,67 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
       }
 
       await storage.startNegotiation(negotiation.id);
+
+      // Check for existing queue to resume
+      const existingQueueId = await SimulationQueueService.findQueueByNegotiation(negotiation.id);
+      if (existingQueueId) {
+        const status = await SimulationQueueService.getQueueStatus(existingQueueId);
+        
+        // Resume if pending, paused, or running
+        if (["pending", "paused", "running"].includes(status.status)) {
+          if (status.status === "paused") {
+            await SimulationQueueService.resumeQueue(existingQueueId);
+          } else {
+            await SimulationQueueService.startQueue(existingQueueId);
+          }
+          return res.json({ negotiationId: negotiation.id, queueId: existingQueueId, action: "resumed" });
+        }
+
+        // If completed/failed with failures, restart failed runs
+        if (status.failedCount > 0) {
+          await SimulationQueueService.restartFailedSimulations(existingQueueId);
+          await SimulationQueueService.startQueue(existingQueueId);
+          return res.json({ negotiationId: negotiation.id, queueId: existingQueueId, action: "restarted_failed" });
+        }
+      }
+
+      // Create new queue if none exists or previous is fully successful
       const queueId = await SimulationQueueService.createQueue({ negotiationId: negotiation.id });
       await SimulationQueueService.startQueue(queueId);
 
-      res.json({ negotiationId: negotiation.id, queueId });
+      res.json({ negotiationId: negotiation.id, queueId, action: "created" });
     } catch (error) {
       log.error({ err: error, negotiationId: req.params.id }, "Failed to start negotiation");
       res.status(500).json({ error: error instanceof Error ? error.message : "Failed to start negotiation" });
+    }
+  });
+
+  router.post("/:id/pause", requireAuth, async (req, res) => {
+    try {
+      const negotiation = await storage.getNegotiation(req.params.id);
+      if (!negotiation) {
+        return res.status(404).json({ error: "Negotiation not found" });
+      }
+
+      if (negotiation.userId && negotiation.userId !== (req as any).user.id) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+
+      const queueId = await SimulationQueueService.findQueueByNegotiation(negotiation.id);
+      if (queueId) {
+        await SimulationQueueService.pauseQueue(queueId);
+        // Update negotiation status to reflect paused state
+        // Since 'paused' isn't a negotiation status in schema (only planned/running/completed/aborted),
+        // we keep it as 'running' or update schema. 
+        // SimulationQueueService.updateQueueStatus syncs negotiation status.
+        // But updateQueueStatus sets negotiation to 'running' for 'paused' queue status.
+        // So this is consistent.
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      log.error({ err: error, negotiationId: req.params.id }, "Failed to pause negotiation");
+      res.status(500).json({ error: "Failed to pause negotiation" });
     }
   });
 

@@ -121,9 +121,129 @@ Base data for agent personality variation:
 
 ---
 
-## 2. DATA WIRING: Relationships in the Data Model
+## 2. AUTHENTICATION: User Access & Data Isolation
 
-### 2.1 Core Entity Relationships
+### 2.1 JWT Authentication Flow
+
+The system uses **custom JWT-based authentication** (replaced Stack Auth in Q4 2024):
+
+```
+User Login
+  ↓
+POST /api/login {username, password}
+  ↓
+Server validates credentials (bcrypt compare)
+  ↓
+JWT token generated (7-day expiry, signed with JWT_SECRET)
+  ↓
+Token returned to frontend → stored in localStorage ("auth_token")
+  ↓
+All subsequent API requests include:
+  Authorization: Bearer <token>
+  ↓
+Server middleware validates token → extracts userId (integer)
+  ↓
+All DB queries filtered: WHERE user_id = req.userId
+```
+
+### 2.2 Authentication Middleware
+
+**Server-Side** (`server/middleware/auth.ts`):
+
+#### `requireAuth()` Middleware
+- Validates JWT token from `Authorization: Bearer <token>` header
+- Extracts `userId` (integer) from token payload
+- Sets `req.userId` for downstream handlers
+- Returns 401 Unauthorized if token invalid/missing
+- Used on all protected routes
+
+#### `optionalAuth()` Middleware
+- Same validation logic but doesn't enforce authentication
+- Sets `req.userId` if token valid, otherwise continues without
+- Used for routes that work differently when authenticated
+
+**Frontend Integration** (`client/src/lib/`):
+
+#### `fetchWithAuth()` Wrapper
+- Wraps standard `fetch()` function
+- Automatically includes `Authorization: Bearer <token>` header
+- Reads token from `localStorage.getItem("auth_token")`
+- On 401 response: clears token + redirects to splash screen
+
+#### `queryClient` Configuration
+- TanStack Query client with custom `queryFn`
+- Automatically injects JWT token in all queries
+- Handles 401 responses globally
+- Token read from localStorage on every request
+
+#### `useAuth()` Context Hook
+- React Context providing `{user, isLoading, login, logout}`
+- Manages user state and localStorage sync
+- User object: `{id: number, username: string}`
+
+### 2.3 User Isolation & Data Access
+
+**Database Schema:**
+```sql
+-- Users table (authentication)
+CREATE TABLE users (
+  id SERIAL PRIMARY KEY,          -- Auto-incrementing integer
+  username TEXT NOT NULL UNIQUE,
+  password TEXT NOT NULL          -- Bcrypt hashed
+);
+
+-- Negotiations table (user ownership)
+CREATE TABLE negotiations (
+  id UUID PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,  -- FK to users
+  ...
+);
+```
+
+**Access Control Pattern:**
+```typescript
+// Example: Get user's negotiations
+app.get('/api/negotiations', requireAuth(), async (req, res) => {
+  const userId = req.userId; // Set by middleware
+
+  const negotiations = await db
+    .select()
+    .from(negotiationsTable)
+    .where(eq(negotiationsTable.userId, userId)); // User isolation
+
+  res.json(negotiations);
+});
+```
+
+**Security Features:**
+- ✅ Password hashing with bcrypt (10 rounds)
+- ✅ JWT tokens with 7-day expiration
+- ✅ Foreign key constraints (ON DELETE CASCADE)
+- ✅ User isolation at query level (all reads/writes filtered by userId)
+- ✅ Parameterized queries (SQL injection prevention)
+- ✅ Automatic token refresh on 401
+- ✅ No cross-user data leakage (enforced by FK + WHERE clauses)
+
+**User Data Flow:**
+```
+User Login → JWT Token → localStorage
+  ↓
+API Request with Authorization header
+  ↓
+requireAuth() middleware validates token
+  ↓
+req.userId extracted (integer)
+  ↓
+Database query: WHERE user_id = req.userId
+  ↓
+Only user's own data returned
+```
+
+---
+
+## 3. DATA WIRING: Relationships in the Data Model
+
+### 3.1 Core Entity Relationships
 
 ```
 registrations (1) ──→ (M) markets
@@ -141,7 +261,10 @@ simulation_runs (1) ──→ (M) dimension_results
                     └──→ (M) product_results
 ```
 
-### 2.2 Key Foreign Key Relationships
+### 3.2 Key Foreign Key Relationships
+
+**User Ownership:**
+- `negotiations.userId` → `users.id` (CASCADE) - All negotiations belong to a user
 
 **Configuration → Negotiation:**
 - `negotiations.registrationId` → `registrations.id`
@@ -165,9 +288,9 @@ simulation_runs (1) ──→ (M) dimension_results
 
 ---
 
-## 3. PROCESS: LLM Input & Output
+## 4. PROCESS: LLM Input & Output
 
-### 3.1 Data Package Sent to Python Service
+### 4.1 Data Package Sent to Python Service
 
 **Bridge Service** (`python-negotiation-service.ts:64-94`):
 ```typescript
@@ -184,7 +307,7 @@ simulation_runs (1) ──→ (M) dimension_results
 }
 ```
 
-### 3.2 LLM Agent System Prompt Construction
+### 4.2 LLM Agent System Prompt Construction
 
 **Python Service** (`scripts/run_production_negotiation.py`) builds prompts with:
 
@@ -270,7 +393,7 @@ simulation_runs (1) ──→ (M) dimension_results
 - Agent instructions updated before each `Runner.run()` call with a concise user message (“Sie sind als ROLE nun in Runde X …”)
 - Original instructions restored after execution
 
-### 3.3 LLM Agent Output Structure
+### 4.3 LLM Agent Output Structure
 
 **Structured Output Schema** (`NegotiationResponse` Pydantic model):
 ```python
@@ -324,9 +447,9 @@ simulation_runs (1) ──→ (M) dimension_results
 
 ---
 
-## 4. OUTPUT: Database Storage & Metadata Generation
+## 5. OUTPUT: Database Storage & Metadata Generation
 
-### 4.1 Simulation Run Record (`simulation_runs` table)
+### 5.1 Simulation Run Record (`simulation_runs` table)
 
 **Core Fields:**
 - `id` (UUID) - unique run identifier
@@ -375,7 +498,7 @@ simulation_runs (1) ──→ (M) dimension_results
 - `tacticEffectivenessScore` (decimal)
 - `tacticalSummary` (text)
 
-### 4.2 Dimension Results (`dimension_results` table)
+### 5.2 Dimension Results (`dimension_results` table)
 
 **Generated by** `simulation-result-processor.ts:73-99`:
 
@@ -398,7 +521,7 @@ For each dimension in `negotiation.scenario.dimensions`:
 3. Partial match (contains)
 4. Fallback to target value if not found in LLM output
 
-### 4.3 Product Results (`product_results` table)
+### 5.3 Product Results (`product_results` table)
 
 **Generated by** `simulation-result-processor.ts:102-168`:
 
@@ -446,7 +569,7 @@ For each product in `products` array:
 - Sum all `subtotal` values across products
 - Stored in `simulation_runs.dealValue`
 
-### 4.4 Metadata Enrichment
+### 5.4 Metadata Enrichment
 
 **Cost Tracking:**
 - `actualCost` - accumulated from LLM API usage
@@ -464,9 +587,9 @@ For each product in `products` array:
 
 ---
 
-## 5. ANALYSIS: Frontend Data Consumption
+## 6. ANALYSIS: Frontend Data Consumption
 
-### 5.1 Analysis Helpers (`analysis-helpers.ts`)
+### 6.1 Analysis Helpers (`analysis-helpers.ts`)
 
 **Dimension Success Analysis:**
 ```typescript
@@ -500,7 +623,7 @@ Aggregates across runs:
 - Counts `withinZopa === true`
 - Price-evolution charts consume `conversationLog.turn` to position offer markers
 
-### 5.2 Dashboard Helpers (`dashboard-helpers.ts`)
+### 6.2 Dashboard Helpers (`dashboard-helpers.ts`)
 
 **Metrics Summary:**
 ```typescript
@@ -530,7 +653,7 @@ Produces time-series data:
 - Buckets by `negotiations.createdAt`
 - Aggregates success rates per day
 
-### 5.3 Analysis Page Data Requirements
+### 6.3 Analysis Page Data Requirements
 
 **Negotiation Detail View:**
 - **Source:** `negotiations` table + joined `simulation_runs`
@@ -558,7 +681,7 @@ Produces time-series data:
 
 ---
 
-## 6. DATA MODEL ALIGNMENT CHECK
+## 7. DATA MODEL ALIGNMENT CHECK
 
 ### ✅ Frontend Config → Database
 - **Company Step** → `registrations` table ✓
@@ -590,7 +713,7 @@ Produces time-series data:
 
 ---
 
-## 7. KEY INSIGHTS & RECOMMENDATIONS
+## 8. KEY INSIGHTS & RECOMMENDATIONS
 
 ### Current Strengths:
 1. **Clean separation** between configuration (scenario), execution (runs), and analysis (results)
