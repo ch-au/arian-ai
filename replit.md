@@ -26,7 +26,22 @@ This project is configured to run in the Replit environment with the following s
 - Frontend: Vite dev server on port 5000
 - Backend: Express server on port 3000
 - Database: PostgreSQL (Neon serverless) via DATABASE_URL
-- Python: Python 3.11 with pip-installed dependencies
+- Python: Python 3.11 with pip-installed dependencies (installed in `.pythonlibs/`)
+
+**Python Dependencies Installation:**
+Replit uses a Nix-managed Python environment which is read-only. To install Python packages:
+```bash
+PIP_BREAK_SYSTEM_PACKAGES=1 python3 -m pip install <package-name>
+```
+This installs packages to the user site-packages directory (`.pythonlibs/lib/python3.11/site-packages`).
+
+**Required Python packages** (from `scripts/requirements.txt`):
+- `openai-agents[litellm]==0.3.1` - Core negotiation engine
+- `langfuse>=2.47.0` - AI observability
+- `nest_asyncio>=1.6.0` - Async support
+- `python-dotenv>=1.0.1` - Environment variables
+- `openinference-instrumentation-openai-agents>=0.1.0` - Instrumentation
+- `google-genai` - Gemini API for market intelligence (installed separately)
 
 **Vite Configuration for Replit:**
 - Port 5000 with `strictPort: true`
@@ -75,7 +90,7 @@ This project is configured to run in the Replit environment with the following s
 - LiteLLM for multi-provider support (OpenAI, Anthropic, Gemini)
 - Langfuse for AI observability and prompt management
 - Pydantic models for structured outputs
-- Python 3.11+ with virtual environment
+- Python 3.11 (Nix-managed with user site-packages)
 
 ### Database Architecture
 
