@@ -7,13 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useQuery } from "@tanstack/react-query";
 import { OutcomeBadgeMini } from "@/components/ui/outcome-badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { SimulationRunSheet } from "@/components/SimulationRunSheet";
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
 
 interface NegotiationAnalysis {
@@ -104,7 +98,8 @@ export default function NegotiationAnalysisPage() {
   const negotiationId = paramsWithId?.id;
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [isGeneratingPlaybook, setIsGeneratingPlaybook] = useState(false);
-  const [selectedCell, setSelectedCell] = useState<string | null>(null);
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   // If we're on /analysis without an ID, redirect to dashboard
   if (matchWithoutId && !negotiationId) {
@@ -405,7 +400,10 @@ export default function NegotiationAnalysisPage() {
                         <td
                           key={tactic}
                           className={`border p-3 ${colorClass} cursor-pointer hover:opacity-80 transition-opacity relative`}
-                          onClick={() => setSelectedCell(cellRuns[0].id)}
+                          onClick={() => {
+                            setSelectedRunId(cellRuns[0].id);
+                            setSheetOpen(true);
+                          }}
                         >
                           <div className="text-center">
                             <div className="text-2xl mb-1">{getRankBadge(rank)}</div>
@@ -584,209 +582,12 @@ export default function NegotiationAnalysisPage() {
         );
       })()}
 
-      {/* Dialog for Cell Details */}
-      {selectedCell && (() => {
-        const selectedRun = analysis.runs.find(r => r.id === selectedCell);
-        if (!selectedRun) return null;
-
-        const technique = analysis.runs.find(r => r.techniqueId === selectedRun.techniqueId);
-        const tactic = analysis.runs.find(r => r.tacticId === selectedRun.tacticId);
-
-        return (
-          <Dialog open={!!selectedCell} onOpenChange={() => setSelectedCell(null)}>
-            <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle className="text-xl">
-                  Run #{selectedRun.runNumber}: {selectedRun.techniqueName} × {selectedRun.tacticName}
-                </DialogTitle>
-                <DialogDescription>
-                  Detaillierte KI-Bewertung dieser Kombination
-                </DialogDescription>
-              </DialogHeader>
-
-              <div className="space-y-4 mt-4">
-                {/* Performance Overview */}
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="bg-gray-50 p-3 rounded-lg">
-                    <div className="text-xs text-muted-foreground">Deal Value</div>
-                    <div className="text-lg font-bold">{formatCurrency(selectedRun.dealValue)}</div>
-                  </div>
-                  <div className="bg-gray-50 p-3 rounded-lg">
-                    <div className="text-xs text-muted-foreground">Runden</div>
-                    <div className="text-lg font-bold">{selectedRun.totalRounds}</div>
-                  </div>
-                  <div className="bg-gray-50 p-3 rounded-lg">
-                    <div className="text-xs text-muted-foreground">Effizienz</div>
-                    <div className="text-lg font-bold">{formatCurrency(selectedRun.efficiency)}/R</div>
-                  </div>
-                </div>
-
-                {/* AI Evaluation Scores */}
-                {(selectedRun.techniqueEffectivenessScore || selectedRun.tacticEffectivenessScore) && (
-                  <div className="border-t pt-4">
-                    <h4 className="font-semibold mb-3">🤖 KI-Bewertung</h4>
-                    <div className="grid grid-cols-2 gap-4">
-                      {selectedRun.techniqueEffectivenessScore && (
-                        <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
-                          <div className="text-sm text-muted-foreground mb-1">Influence Technique</div>
-                          <div className="text-3xl font-bold text-purple-600">
-                            {selectedRun.techniqueEffectivenessScore}/10
-                          </div>
-                          <div className="text-xs text-muted-foreground mt-1">{selectedRun.techniqueName}</div>
-                        </div>
-                      )}
-                      {selectedRun.tacticEffectivenessScore && (
-                        <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                          <div className="text-sm text-muted-foreground mb-1">Verhandlungstaktik</div>
-                          <div className="text-3xl font-bold text-blue-600">
-                            {selectedRun.tacticEffectivenessScore}/10
-                          </div>
-                          <div className="text-xs text-muted-foreground mt-1">{selectedRun.tacticName}</div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Tactical Summary */}
-                {selectedRun.tacticalSummary && (
-                  <div className="border-t pt-4">
-                    <h4 className="font-semibold mb-2">📝 Taktische Zusammenfassung</h4>
-                    <p className="text-sm leading-relaxed bg-gray-50 p-4 rounded-lg">
-                      {selectedRun.tacticalSummary}
-                    </p>
-                  </div>
-                )}
-
-                {/* No Evaluation Yet */}
-                {!selectedRun.tacticalSummary && (
-                  <div className="border-t pt-4">
-                    <div className="bg-amber-50 p-4 rounded-lg border border-amber-200">
-                      <p className="text-sm text-amber-800">
-                        ℹ️ Für diesen Run wurde noch keine KI-Bewertung generiert.
-                        {analysis.summary.bestDealValue?.runId === selectedRun.id && (
-                          <span className="block mt-2">
-                            Dies ist der beste Run - klicke auf "KI-Bewertung generieren" um eine Analyse zu erhalten.
-                          </span>
-                        )}
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Price Evolution Visualization */}
-                {selectedRun.conversationLog && selectedRun.conversationLog.length > 0 && (() => {
-                  // Extract product prices from conversation log
-                  const priceEvolution: Record<string, Array<{round: number, price: number | null}>> = {};
-
-                  selectedRun.conversationLog?.forEach((round) => {
-                    if (round.offer?.products) {
-                      round.offer.products.forEach((product: any) => {
-                        if (!priceEvolution[product.name]) {
-                          priceEvolution[product.name] = [];
-                        }
-                        priceEvolution[product.name].push({
-                          round: round.round,
-                          price: product.price !== null && product.price !== undefined ? parseFloat(product.price) : null
-                        });
-                      });
-                    }
-                  });
-
-                  const hasProductData = Object.keys(priceEvolution).length > 0;
-
-                  return hasProductData ? (
-                    <div className="border-t pt-4">
-                      <h4 className="font-semibold mb-3">📈 Preisverlauf über Verhandlungsrunden</h4>
-                      <div className="space-y-4">
-                        {Object.entries(priceEvolution).map(([productName, rounds]) => {
-                          const validPrices = rounds.filter(r => r.price !== null).map(r => r.price!);
-                          if (validPrices.length === 0) return null;
-
-                          const minPrice = Math.min(...validPrices);
-                          const maxPrice = Math.max(...validPrices);
-                          const range = maxPrice - minPrice || 1;
-
-                          return (
-                            <div key={productName} className="space-y-1">
-                              <div className="text-sm font-medium text-gray-700">{productName}</div>
-                              <div className="flex items-center gap-2">
-                                <div className="flex-1 h-8 bg-gray-100 rounded relative">
-                                  {rounds.map((r, idx) => {
-                                    if (r.price === null) return null;
-                                    const position = ((r.price - minPrice) / range) * 100;
-                                    const isBuyer = selectedRun?.conversationLog?.[idx]?.agent === 'BUYER';
-
-                                    return (
-                                      <div
-                                        key={idx}
-                                        className={`absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border-2 border-white ${
-                                          isBuyer ? 'bg-blue-500' : 'bg-green-500'
-                                        }`}
-                                        style={{ left: `${position}%` }}
-                                        title={`Runde ${r.round}: €${r.price.toFixed(2)}`}
-                                      />
-                                    );
-                                  })}
-                                </div>
-                                <div className="text-xs text-gray-500 w-20 text-right">
-                                  €{minPrice.toFixed(2)} - €{maxPrice.toFixed(2)}
-                                </div>
-                              </div>
-                              <div className="flex gap-3 text-xs text-gray-600">
-                                <span className="flex items-center gap-1">
-                                  <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                                  Käufer
-                                </span>
-                                <span className="flex items-center gap-1">
-                                  <span className="w-2 h-2 rounded-full bg-green-500"></span>
-                                  Verkäufer
-                                </span>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ) : null;
-                })()}
-
-                {/* Conversation Log */}
-                {selectedRun.conversationLog && selectedRun.conversationLog.length > 0 && (
-                  <div className="border-t pt-4">
-                    <h4 className="font-semibold mb-2">💬 Gesprächsprotokoll ({selectedRun.conversationLog.length} Nachrichten)</h4>
-                    <div className="max-h-96 overflow-y-auto space-y-3">
-                      {selectedRun.conversationLog.map((round, idx) => (
-                        <div key={idx} className="bg-gray-50 p-3 rounded-lg">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                              round.agent === 'BUYER' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'
-                            }`}>
-                              {round.agent === 'BUYER' ? 'Käufer' : 'Verkäufer'}
-                            </span>
-                            <span className="text-xs text-muted-foreground">Runde {round.round}</span>
-                          </div>
-                          <p className="text-sm leading-relaxed">{round.message}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Outcome & Other Info */}
-                <div className="border-t pt-4">
-                  <h4 className="font-semibold mb-2">ℹ️ Weitere Details</h4>
-                  <div className="text-sm space-y-1">
-                    <div><strong>Outcome:</strong> {selectedRun.outcome || 'N/A'}</div>
-                    <div><strong>Status:</strong> {selectedRun.status}</div>
-                    <div><strong>Kosten:</strong> €{selectedRun.actualCost.toFixed(4)}</div>
-                  </div>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
-        );
-      })()}
+      {/* Simulation Run Details Sheet */}
+      <SimulationRunSheet
+        simulationRunId={selectedRunId}
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+      />
     </div>
   );
 }

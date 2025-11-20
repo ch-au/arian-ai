@@ -21,7 +21,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 interface SimulationRunSheetProps {
   simulationRunId: string | null;
@@ -580,27 +580,82 @@ export function SimulationRunSheet({
               <CollapsibleContent className="space-y-3 px-2">
                 {data.data.run.conversationLog && data.data.run.conversationLog.length > 0 ? (
                   <div className="space-y-3">
-                    {data.data.run.conversationLog.map((message: any, index: number) => (
-                      <Card key={index} className={message.role === 'assistant' ? 'bg-muted/50' : ''}>
-                        <CardHeader className="pb-3">
-                          <div className="flex items-center justify-between">
-                            <CardTitle className="text-sm font-medium capitalize">
-                              {message.role || 'Unknown'}
-                            </CardTitle>
-                            {message.timestamp && (
-                              <span className="text-xs text-muted-foreground">
-                                {new Date(message.timestamp).toLocaleTimeString()}
-                              </span>
+                    {data.data.run.conversationLog.map((message: any, index: number) => {
+                      // Parse the conversation log message format
+                      const agent = message.agent || 'Unknown';
+                      const turn = message.turn || index + 1;
+                      const reasoning = message.offer?.reasoning || '';
+                      const confidence = message.confidence;
+                      const offer = message.offer;
+
+                      // Format dimension values if available
+                      const dimensionValues = offer?.dimension_values;
+                      const dimensionText = dimensionValues
+                        ? Object.entries(dimensionValues)
+                            .map(([key, value]) => `${key}: ${typeof value === 'number' ? value.toFixed(2) : value}`)
+                            .join(', ')
+                        : '';
+
+                      return (
+                        <Card key={index} className={agent === 'BUYER' ? 'bg-blue-50/50 border-blue-200' : 'bg-green-50/50 border-green-200'}>
+                          <CardHeader className="pb-3">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <Badge variant={agent === 'BUYER' ? 'default' : 'secondary'} className="text-xs">
+                                  {agent === 'BUYER' ? 'Käufer' : agent === 'SELLER' ? 'Verkäufer' : agent}
+                                </Badge>
+                                <span className="text-xs text-muted-foreground">Turn {turn}</span>
+                                {confidence && (
+                                  <Badge variant="outline" className="text-xs">
+                                    Confidence: {(confidence * 100).toFixed(0)}%
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+                          </CardHeader>
+                          <CardContent className="space-y-3">
+                            {reasoning && (
+                              <div>
+                                <p className="text-sm font-medium mb-1">Reasoning:</p>
+                                <p className="text-sm text-muted-foreground leading-relaxed">
+                                  {reasoning}
+                                </p>
+                              </div>
                             )}
-                          </div>
-                        </CardHeader>
-                        <CardContent>
-                          <p className="text-sm whitespace-pre-wrap">
-                            {message.content || JSON.stringify(message)}
-                          </p>
-                        </CardContent>
-                      </Card>
-                    ))}
+
+                            {dimensionText && (
+                              <div className="bg-white/50 p-2 rounded border">
+                                <p className="text-xs font-medium mb-1">Offer Dimensions:</p>
+                                <p className="text-xs text-muted-foreground font-mono">
+                                  {dimensionText}
+                                </p>
+                              </div>
+                            )}
+
+                            {message.batna_assessment && (
+                              <div className="text-xs text-muted-foreground">
+                                <span className="font-medium">BATNA Assessment:</span> {(message.batna_assessment * 100).toFixed(0)}%
+                              </div>
+                            )}
+
+                            {message.internal_analysis && (
+                              <div className="bg-white/50 p-2 rounded border">
+                                <p className="text-xs font-medium mb-1">Internal Analysis:</p>
+                                <p className="text-xs text-muted-foreground italic">
+                                  {message.internal_analysis}
+                                </p>
+                              </div>
+                            )}
+
+                            {message.walk_away_threshold !== undefined && (
+                              <div className="text-xs text-muted-foreground">
+                                <span className="font-medium">Walk Away Threshold:</span> {(message.walk_away_threshold * 100).toFixed(0)}%
+                              </div>
+                            )}
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
                   </div>
                 ) : (
                   <Card>
