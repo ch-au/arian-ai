@@ -42,8 +42,8 @@ export interface MarketIntelligenceResult {
 export async function generateMarketIntelligence(
   context: MarketIntelligenceContext
 ): Promise<MarketIntelligenceItem[]> {
-  // Python Script Path
-  const scriptPath = path.join(__dirname, '../../scripts/gemini_market_intelligence.py');
+  // Python Script Path - use process.cwd() for reliable path resolution
+  const scriptPath = path.join(process.cwd(), 'scripts/gemini_market_intelligence.py');
 
   // Context als JSON
   const contextJson = JSON.stringify(context);
