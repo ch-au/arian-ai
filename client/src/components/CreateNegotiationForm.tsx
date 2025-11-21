@@ -23,8 +23,8 @@ const productSchema = z.object({
   name: z.string().min(1, "Pflichtfeld"),
   brand: z.string().optional(),
   targetPrice: z.number().min(0, "≥ 0"),
-  minPrice: z.number().min(0, "≥ 0"),
-  maxPrice: z.number().min(0, "≥ 0"),
+  minPrice: z.number().min(0, "≥ 0").optional(),
+  maxPrice: z.number().min(0, "≥ 0").optional(),
   estimatedVolume: z.number().min(0, "≥ 0"),
 });
 
@@ -37,46 +37,68 @@ const dimensionSchema = z.object({
   priority: z.number().int().min(1).max(3),
 });
 
-const formSchema = z.object({
-  title: z.string().min(1),
-  description: z.string().optional(),
-  company: z.object({
-    organization: z.string().min(1),
-    company: z.string().optional(),
-    country: z.string().min(1),
-    negotiationType: z.string().min(1),
-    relationshipType: z.string().min(1),
-    negotiationFrequency: z.string().min(1),
-  }),
-  market: z.object({
-    name: z.string().min(1),
-    region: z.string().optional(),
-    countryCode: z.string().min(1),
-    currencyCode: z.string().min(1),
-    intelligence: z.string().optional(),
-    notes: z.string().optional(),
-  }),
-  counterpart: z.object({
-    name: z.string().min(1),
-    kind: z.enum(["retailer", "manufacturer", "distributor", "other"]),
-    powerBalance: z.number().min(0).max(100),
-    dominance: z.number().min(-100).max(100).default(0),
-    affiliation: z.number().min(-100).max(100).default(0),
-    style: z.string().optional(),
-    notes: z.string().optional(),
-  }),
-  products: z.array(productSchema).min(1, "Mindestens ein Produkt erfassen"),
-  dimensions: z.array(dimensionSchema).min(1, "Mindestens eine Dimension erfassen"),
-  strategy: z.object({
-    userRole: z.enum(["buyer", "seller"]),
-    maxRounds: z.number().min(1).max(50),
-    selectedTechniques: z.array(z.string()).min(1, "Mindestens eine Technik auswählen"),
-    selectedTactics: z.array(z.string()).min(1, "Mindestens eine Taktik auswählen"),
-    companyKnown: z.boolean().default(false),
-    counterpartKnown: z.boolean().default(false),
-    counterpartDistance: z.number().min(0).max(100).optional(),
-  }),
-});
+const formSchema = z
+  .object({
+    title: z.string().min(1),
+    description: z.string().optional(),
+    company: z.object({
+      organization: z.string().min(1),
+      company: z.string().optional(),
+      country: z.string().min(1),
+      negotiationType: z.string().min(1),
+      relationshipType: z.string().min(1),
+      negotiationFrequency: z.string().min(1),
+    }),
+    market: z.object({
+      name: z.string().min(1),
+      region: z.string().optional(),
+      countryCode: z.string().min(1),
+      currencyCode: z.string().min(1),
+      intelligence: z.string().optional(),
+      notes: z.string().optional(),
+    }),
+    counterpart: z.object({
+      name: z.string().min(1),
+      kind: z.enum(["retailer", "manufacturer", "distributor", "other"]),
+      powerBalance: z.number().min(0).max(100),
+      dominance: z.number().min(-100).max(100).default(0),
+      affiliation: z.number().min(-100).max(100).default(0),
+      style: z.string().optional(),
+      notes: z.string().optional(),
+    }),
+    products: z.array(productSchema).min(1, "Mindestens ein Produkt erfassen"),
+    dimensions: z.array(dimensionSchema).min(1, "Mindestens eine Dimension erfassen"),
+    strategy: z.object({
+      userRole: z.enum(["buyer", "seller"]),
+      maxRounds: z.number().min(1).max(50),
+      selectedTechniques: z.array(z.string()).min(1, "Mindestens eine Technik auswählen"),
+      selectedTactics: z.array(z.string()).min(1, "Mindestens eine Taktik auswählen"),
+      companyKnown: z.boolean().default(false),
+      counterpartKnown: z.boolean().default(false),
+      counterpartDistance: z.number().min(0).max(100).optional(),
+    }),
+  })
+  .superRefine((values, ctx) => {
+    values.products.forEach((product, index) => {
+      if (values.strategy.userRole === "seller") {
+        if (typeof product.minPrice !== "number") {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["products", index, "minPrice"],
+            message: "Bitte Preisuntergrenze angeben.",
+          });
+        }
+      } else {
+        if (typeof product.maxPrice !== "number") {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["products", index, "maxPrice"],
+            message: "Bitte Preisobergrenze angeben.",
+          });
+        }
+      }
+    });
+  });
 
 type FormSchema = z.infer<typeof formSchema>;
 
@@ -520,7 +542,7 @@ function GeneralSetupStep({ form }: { form: UseFormReturn<FormSchema> }) {
             />
             <FormField control={form.control} name="company.organization" render={({ field }) => (
               <FormItem>
-                <FormLabel>Ihr Unternehmen</FormLabel>
+                <FormLabel>Organisation</FormLabel>
                 <FormControl>
                   <Input className="h-11" placeholder="Demo Foods GmbH" {...field} />
                 </FormControl>
@@ -1278,6 +1300,14 @@ function ProductsContent({
   array: UseFieldArrayReturn<FormSchema, "products", "id">;
 }) {
   const errorMessage = form.formState.errors.products?.root?.message || form.formState.errors.products?.message;
+  const userRole = form.watch("strategy.userRole");
+  const isBuyer = userRole === "buyer";
+  const boundaryLabel = isBuyer ? "Obergrenze" : "Untergrenze";
+  const boundaryAriaLabel = isBuyer ? "Maximaler Preis" : "Minimaler Preis";
+  const boundaryHint = isBuyer
+    ? "Als Einkäufer:in definieren Sie Ihre maximale Preisgrenze."
+    : "Als Verkäufer:in definieren Sie Ihre minimale Preisgrenze.";
+  const gridLayout = "grid grid-cols-[2fr_1fr_1fr_1fr_1fr_auto] gap-4";
 
   const duplicateProduct = (index: number) => {
     const values = form.getValues(`products.${index}`);
@@ -1291,19 +1321,19 @@ function ProductsContent({
     <div className="space-y-4">
       <Card>
         <CardContent className="space-y-4 pt-6">
-          <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr_auto] gap-4 border-b pb-2 text-sm font-semibold text-muted-foreground">
+          <div className={`${gridLayout} border-b pb-2 text-sm font-semibold text-muted-foreground`}>
             <span>Produktname</span>
             <span>Zielpreis</span>
-            <span>Min</span>
-            <span>Max</span>
+            <span>{boundaryLabel}</span>
             <span>Volumen</span>
             <span>Marke</span>
             <span>Aktion</span>
           </div>
+          <p className="text-xs text-muted-foreground">{boundaryHint}</p>
 
           {array.fields.length > 0 ? (
             array.fields.map((field, index) => (
-              <div key={field.id} className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr_auto] gap-4 items-center">
+              <div key={field.id} className={`${gridLayout} items-center`}>
                 <FormField control={form.control} name={`products.${index}.name`} render={({ field }) => (
                   <FormItem>
                     <FormControl>
@@ -1326,34 +1356,37 @@ function ProductsContent({
                     <FormMessage />
                   </FormItem>
                 )} />
-                <FormField control={form.control} name={`products.${index}.minPrice`} render={({ field }) => (
-                  <FormItem>
-                    <FormControl>
-                      <Input
-                        aria-label="Minimaler Preis"
-                        type="number"
-                        step="0.01"
-                        value={field.value ?? ""}
-                        onChange={(event) => field.onChange(event.target.value === "" ? undefined : Number(event.target.value))}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )} />
-                <FormField control={form.control} name={`products.${index}.maxPrice`} render={({ field }) => (
-                  <FormItem>
-                    <FormControl>
-                      <Input
-                        aria-label="Maximaler Preis"
-                        type="number"
-                        step="0.01"
-                        value={field.value ?? ""}
-                        onChange={(event) => field.onChange(event.target.value === "" ? undefined : Number(event.target.value))}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )} />
+                {isBuyer ? (
+                  <FormField control={form.control} name={`products.${index}.maxPrice`} render={({ field }) => (
+                    <FormItem>
+                      <FormControl>
+                        <Input
+                          aria-label={boundaryAriaLabel}
+                          type="number"
+                          step="0.01"
+                          value={field.value ?? ""}
+                          onChange={(event) => field.onChange(event.target.value === "" ? undefined : Number(event.target.value))}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                ) : (
+                  <FormField control={form.control} name={`products.${index}.minPrice`} render={({ field }) => (
+                    <FormItem>
+                      <FormControl>
+                        <Input
+                          aria-label={boundaryAriaLabel}
+                          type="number"
+                          step="0.01"
+                          value={field.value ?? ""}
+                          onChange={(event) => field.onChange(event.target.value === "" ? undefined : Number(event.target.value))}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                )}
                 <FormField control={form.control} name={`products.${index}.estimatedVolume`} render={({ field }) => (
                   <FormItem>
                     <FormControl>
@@ -1559,148 +1592,9 @@ function ProductsStep({
   form: UseFormReturn<FormSchema>;
   array: UseFieldArrayReturn<FormSchema, "products", "id">;
 }) {
-  const errorMessage = form.formState.errors.products?.root?.message || form.formState.errors.products?.message;
-
-  const duplicateProduct = (index: number) => {
-    const values = form.getValues(`products.${index}`);
-    array.insert(index + 1, {
-      ...values,
-      name: `${values?.name ?? ""} (Kopie)`,
-    });
-  };
-
   return (
     <Section title="Produkte" description="Welche Artikel verhandeln Sie?">
-      <div className="space-y-4">
-        <Card>
-          <CardContent className="space-y-4 pt-6">
-            <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr_auto] gap-4 border-b pb-2 text-sm font-semibold text-muted-foreground">
-              <span>Produktname</span>
-              <span>Zielpreis</span>
-              <span>Min</span>
-              <span>Max</span>
-              <span>Volumen</span>
-              <span>Marke</span>
-              <span>Aktion</span>
-            </div>
-
-            {array.fields.length > 0 ? (
-              array.fields.map((field, index) => (
-                <div key={field.id} className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr_auto] gap-4 items-center">
-                  <FormField control={form.control} name={`products.${index}.name`} render={({ field }) => (
-                    <FormItem>
-                      <FormControl>
-                        <Input placeholder="Chocolate Bar 50g" aria-label="Produktname" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
-                  <FormField control={form.control} name={`products.${index}.targetPrice`} render={({ field }) => (
-                    <FormItem>
-                      <FormControl>
-                        <Input
-                          aria-label="Zielpreis"
-                          type="number"
-                          step="0.01"
-                          value={field.value ?? ""}
-                          onChange={(event) => field.onChange(event.target.value === "" ? undefined : Number(event.target.value))}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
-                  <FormField control={form.control} name={`products.${index}.minPrice`} render={({ field }) => (
-                    <FormItem>
-                      <FormControl>
-                        <Input
-                          aria-label="Minimaler Preis"
-                          type="number"
-                          step="0.01"
-                          value={field.value ?? ""}
-                          onChange={(event) => field.onChange(event.target.value === "" ? undefined : Number(event.target.value))}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
-                  <FormField control={form.control} name={`products.${index}.maxPrice`} render={({ field }) => (
-                    <FormItem>
-                      <FormControl>
-                        <Input
-                          aria-label="Maximaler Preis"
-                          type="number"
-                          step="0.01"
-                          value={field.value ?? ""}
-                          onChange={(event) => field.onChange(event.target.value === "" ? undefined : Number(event.target.value))}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
-                  <FormField control={form.control} name={`products.${index}.estimatedVolume`} render={({ field }) => (
-                    <FormItem>
-                      <FormControl>
-                        <Input
-                          aria-label="Geschätztes Volumen"
-                          type="number"
-                          value={field.value ?? ""}
-                          onChange={(event) => field.onChange(event.target.value === "" ? undefined : Number(event.target.value))}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
-                  <FormField control={form.control} name={`products.${index}.brand`} render={({ field }) => (
-                    <FormItem>
-                      <FormControl>
-                        <Input placeholder="Marke (optional)" aria-label="Marke" {...field} />
-                      </FormControl>
-                    </FormItem>
-                  )} />
-                  <div className="flex gap-2 justify-end">
-                    <Button type="button" variant="ghost" size="icon" onClick={() => duplicateProduct(index)} title="Zeile duplizieren">
-                      <Copy className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => array.remove(index)}
-                      disabled={array.fields.length === 1}
-                      title="Entfernen"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="text-center py-8 text-muted-foreground border-2 border-dashed rounded-lg">
-                <p className="text-sm mb-4">Keine Produkte hinzugefügt</p>
-                <p className="text-xs">Klicken Sie auf "Produkt hinzufügen" um zu beginnen</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {errorMessage && <p className="text-sm text-destructive">{errorMessage}</p>}
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() =>
-            array.append({
-              name: "",
-              brand: "",
-              targetPrice: 1,
-              minPrice: 0.9,
-              maxPrice: 1.4,
-              estimatedVolume: 50000,
-            })
-          }
-        >
-          <Plus className="mr-2 h-4 w-4" /> Produkt hinzufügen
-        </Button>
-      </div>
+      <ProductsContent form={form} array={array} />
     </Section>
   );
 }

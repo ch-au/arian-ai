@@ -1,11 +1,11 @@
 # Arian AI Platform - Final Schema Documentation
 
-**Version**: 2.1 (Clean Schema)
-**Datum**: 2025-11-19
+**Version**: 2.2 (Production Schema)
+**Datum**: 2025-11-21
 **Status**: ✅ Production Ready
 
-> 🧭 **Quelle der Wahrheit**  
-> Der produktive Datenbankzustand wird durch das Drizzle-Schema in `shared/schema.ts` plus die Migrationsdateien im Ordner `drizzle/` definiert. Diese Dokumentation spiegelt exakt den aktuellen Stand wider und verweist bei Detailfragen direkt auf die TypeScript-Definitionen.
+> 🧭 **Quelle der Wahrheit**
+> Der produktive Datenbankzustand wird durch das Drizzle-Schema in `shared/schema.ts` plus die Migrationsdateien im Ordner `migrations/` definiert. Diese Dokumentation spiegelt exakt den aktuellen Stand wider und verweist bei Detailfragen direkt auf die TypeScript-Definitionen.
 
 ## Übersicht
 
@@ -505,15 +505,24 @@ Anpassung der Decimal-Scale für product_results.
 ### 0003_add-counterpart-personality.sql
 - Hinzufügung von `dominance` und `affiliation` Spalten zu `counterparts`
 
-### 0004_add-playbook-to-negotiations.sql ✅ AKTUELL
+### 0004_add-playbook-to-negotiations.sql
 - Hinzufügung von `playbook` (TEXT) zu `negotiations` - speichert generiertes Playbook Markdown
 - Hinzufügung von `playbook_generated_at` (TIMESTAMPTZ) zu `negotiations` - Zeitstempel der Generierung
 
-## Nächste Schritte
+### 0005_update-userid-to-integer.sql ✅ AKTUELL
+- Migration von `user_id` in `negotiations` Tabelle von TEXT zu INTEGER
+- Hinzufügung von Foreign Key Constraint zu `users(id)`
+- Sicherstellung der referentiellen Integrität für User-Isolation
+- ON DELETE CASCADE für automatisches Cleanup
 
-1. ✅ Schema bereinigt
-2. ✅ Migration ausgeführt
+## Status & Verifizierung
+
+1. ✅ Schema bereinigt und optimiert
+2. ✅ Alle Migrationen ausgeführt
 3. ✅ Alte Daten gelöscht
-4. ⏳ TypeScript-Typen synchronisieren (falls neue Felder ergänzt werden)
-5. ⏳ Neue Test-Simulation durchführen
-6. ⏳ Verifizieren, dass Monitoring/Analyse (inkl. Preisverlauf & Evaluations) funktioniert
+4. ✅ TypeScript-Typen synchronisiert (`shared/schema.ts`)
+5. ✅ JWT Authentication implementiert
+6. ✅ User Isolation über Foreign Keys
+7. ✅ Monitoring/Analyse vollständig funktional
+8. ✅ AI Evaluation System integriert
+9. ✅ Production Deployment auf Azure

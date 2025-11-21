@@ -9,6 +9,7 @@ import { useQuery } from "@tanstack/react-query";
 import { OutcomeBadgeMini } from "@/components/ui/outcome-badge";
 import { SimulationRunSheet } from "@/components/SimulationRunSheet";
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
+import { AnalysisVisualizations } from "@/components/analytics/AnalysisVisualizations";
 
 interface NegotiationAnalysis {
   negotiation: {
@@ -199,10 +200,34 @@ export default function NegotiationAnalysisPage() {
   };
 
   const getRankBadge = (rank: number) => {
-    if (rank === 1) return "🥇";
-    if (rank === 2) return "🥈";
-    if (rank === 3) return "🥉";
-    return `${rank}️⃣`;
+    const baseClasses = "inline-flex items-center justify-center font-bold rounded-lg shadow-sm";
+    
+    if (rank === 1) {
+      return (
+        <div className={`${baseClasses} bg-yellow-100 text-yellow-700 border border-yellow-200 w-8 h-8 text-lg`}>
+          1
+        </div>
+      );
+    }
+    if (rank === 2) {
+      return (
+        <div className={`${baseClasses} bg-gray-100 text-gray-700 border border-gray-200 w-8 h-8 text-lg`}>
+          2
+        </div>
+      );
+    }
+    if (rank === 3) {
+      return (
+        <div className={`${baseClasses} bg-orange-100 text-orange-800 border border-orange-200 w-8 h-8 text-lg`}>
+          3
+        </div>
+      );
+    }
+    return (
+      <div className={`${baseClasses} bg-slate-100 text-slate-600 border border-slate-200 w-8 h-8 text-sm`}>
+        {rank}
+      </div>
+    );
   };
 
   const getPerformanceColor = (rank: number, total: number) => {
@@ -214,7 +239,17 @@ export default function NegotiationAnalysisPage() {
 
   // Filter completed runs - show all completed, even if dealValue is 0 (legacy data)
   const completedRuns = analysis.runs.filter(r => r.status === "completed");
-  const sortedRuns = [...completedRuns].sort((a, b) => b.dealValue - a.dealValue);
+  const sortedRuns = [...completedRuns].sort((a, b) => {
+    if (analysis.negotiation.userRole === 'buyer') {
+      // Buyer: Lower price is better. Treat 0/invalid as max value (worst)
+      const valA = a.dealValue > 0 ? a.dealValue : Number.MAX_VALUE;
+      const valB = b.dealValue > 0 ? b.dealValue : Number.MAX_VALUE;
+      return valA - valB;
+    } else {
+      // Seller: Higher price is better.
+      return b.dealValue - a.dealValue;
+    }
+  });
 
   // Check if we have meaningful deal values
   const hasDeals = sortedRuns.some(r => r.dealValue > 0);
@@ -252,15 +287,6 @@ export default function NegotiationAnalysisPage() {
           </div>
           
           <div className="flex gap-2">
-            {hasDeals && completedRuns.some(r => !r.tacticalSummary) && (
-              <Button
-                onClick={handleGenerateEvaluation}
-                disabled={isEvaluating}
-                className="bg-purple-600 hover:bg-purple-700 shadow-sm"
-              >
-                {isEvaluating ? "Generiere KI-Bewertung..." : "🤖 KI-Bewertung generieren"}
-              </Button>
-            )}
             {hasDeals && completedRuns.length > 0 && (
               <Button
                 onClick={handleGeneratePlaybook}
@@ -343,6 +369,9 @@ export default function NegotiationAnalysisPage() {
         </div>
       </div>
 
+      {/* Visualizations */}
+      <AnalysisVisualizations runs={analysis.runs} />
+
       {/* Performance Matrix */}
       <Card>
         <CardHeader>
@@ -392,7 +421,15 @@ export default function NegotiationAnalysisPage() {
                       const avgRounds = cellRuns.reduce((sum, r) => sum + r.totalRounds, 0) / cellRuns.length;
 
                       // Calculate rank based on average deal value
-                      const rank = sortedRuns.filter(r => r.dealValue > avgDealValue).length + 1;
+                      let rank;
+                      if (analysis.negotiation.userRole === 'buyer') {
+                        // Buyer: Count runs with LOWER (better) deal value
+                        rank = sortedRuns.filter(r => r.dealValue < avgDealValue && r.dealValue > 0).length + 1;
+                      } else {
+                        // Seller: Count runs with HIGHER (better) deal value
+                        rank = sortedRuns.filter(r => r.dealValue > avgDealValue).length + 1;
+                      }
+                      
                       const colorClass = getPerformanceColor(rank, sortedRuns.length);
                       const hasEvaluation = cellRuns.some(r => r.tacticalSummary);
 
@@ -406,7 +443,7 @@ export default function NegotiationAnalysisPage() {
                           }}
                         >
                           <div className="text-center">
-                            <div className="text-2xl mb-1">{getRankBadge(rank)}</div>
+                            <div className="mb-2 flex justify-center">{getRankBadge(rank)}</div>
                             <div className="font-bold text-lg">{formatCurrency(avgDealValue)}</div>
                             <div className="text-xs mt-1">{Math.round(avgRounds)} Runden (Ø)</div>
                             {hasEvaluation && (
@@ -455,7 +492,7 @@ export default function NegotiationAnalysisPage() {
                   return (
                     <tr key={run.id} className={`border-b hover:bg-gray-50 ${colorClass}`}>
                       <td className="p-2">
-                        <span className="text-2xl">{getRankBadge(rank)}</span>
+                        {getRankBadge(rank)}
                       </td>
                       <td className="p-2 font-medium">{run.techniqueName}</td>
                       <td className="p-2">{run.tacticName}</td>
@@ -558,10 +595,14 @@ export default function NegotiationAnalysisPage() {
                     <h4 className="font-semibold mb-2">✅ Warum diese Kombination?</h4>
                     <ul className="space-y-2 ml-4 text-sm">
                       <li>
-                        <strong>Höchster Deal Value:</strong> {formatCurrency(analysis.summary.bestDealValue!.value)}
+                        <strong>Bester Deal Value:</strong> {formatCurrency(analysis.summary.bestDealValue!.value)}
                         {analysis.summary.avgDealValue > 0 && (
                           <span className="text-sm text-muted-foreground ml-2">
-                            (+{Math.round(((analysis.summary.bestDealValue!.value - analysis.summary.avgDealValue) / analysis.summary.avgDealValue) * 100)}% vs. Durchschnitt)
+                            ({
+                              analysis.negotiation.userRole === 'buyer' 
+                                ? Math.round(((analysis.summary.avgDealValue - analysis.summary.bestDealValue!.value) / analysis.summary.avgDealValue) * 100)
+                                : Math.round(((analysis.summary.bestDealValue!.value - analysis.summary.avgDealValue) / analysis.summary.avgDealValue) * 100)
+                            }% vs. Durchschnitt)
                           </span>
                         )}
                       </li>

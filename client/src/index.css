@@ -123,3 +123,39 @@
     box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
   }
 }
+
+/* Print Styles - Ensure only content is printed */
+@media print {
+  /* Hide sidebar, header, buttons, and other non-content elements */
+  aside, header, nav, .sidebar, .header, .no-print {
+    display: none !important;
+  }
+
+  /* Ensure container takes full width and has no margin/padding */
+  .container {
+    max-width: none !important;
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Reset layout constraints that prevent full page printing */
+  /* This overrides the h-screen and overflow-hidden/auto on AppLayout */
+  html, body, #root, main, div[class*="h-screen"], div[class*="overflow-"] {
+    height: auto !important;
+    overflow: visible !important;
+    display: block !important;
+  }
+
+  /* Reset background and text colors for print */
+  body {
+    background: white !important;
+    color: black !important;
+  }
+
+  /* Ensure card content doesn't have shadows or borders in print */
+  .card, .shadow-card, .shadow-elevated {
+    box-shadow: none !important;
+    border: none !important;
+  }
+}

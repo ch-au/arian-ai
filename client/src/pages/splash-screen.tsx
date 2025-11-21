@@ -24,9 +24,14 @@ export default function SplashScreen() {
       {/* Content */}
       <div className="relative z-20 flex flex-col items-center space-y-8 animate-in fade-in duration-1000">
         <div className="text-center space-y-4">
-          <h1 className="text-5xl md:text-7xl font-bold text-white tracking-tight">
-            ARIAN-N
-          </h1>
+          <div className="relative inline-block">
+            <h1 className="text-5xl md:text-7xl font-bold text-white tracking-tight">
+              ARIA-N
+            </h1>
+            <span className="absolute -top-3 -right-16 bg-white/10 backdrop-blur-md border border-white/20 text-white/90 text-[0.6rem] font-medium px-2 py-0.5 rounded-full tracking-widest uppercase shadow-sm">
+              Alpha
+            </span>
+          </div>
           <p className="text-xl text-gray-200 max-w-md mx-auto font-light">
             AI Negotiation Platform
           </p>

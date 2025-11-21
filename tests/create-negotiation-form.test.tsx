@@ -1,6 +1,6 @@
 /* @vitest-environment jsdom */
 import React from "react";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { vi, afterEach, describe, it, expect } from "vitest";
 import CreateNegotiationForm from "@/components/CreateNegotiationForm";
@@ -71,21 +71,22 @@ describe("CreateNegotiationForm", () => {
 
     fireEvent.change(screen.getByLabelText("Verhandlungstitel"), { target: { value: "Testfall" } });
     fireEvent.change(screen.getByLabelText("Organisation"), { target: { value: "Demo GmbH" } });
-    fireEvent.click(screen.getByRole("button", { name: "Weiter" }));
-
-    fireEvent.change(screen.getByLabelText("Marktname"), { target: { value: "DACH" } });
-    fireEvent.click(screen.getByRole("button", { name: "Weiter" }));
-
     fireEvent.change(screen.getByLabelText(/^Name$/), { target: { value: "Retailer AG" } });
     fireEvent.click(screen.getByRole("button", { name: "Weiter" }));
 
     fireEvent.change(screen.getByLabelText("Produktname"), { target: { value: "Produkt A" } });
     fireEvent.click(screen.getByRole("button", { name: "Weiter" }));
 
+    fireEvent.change(screen.getByLabelText("Marktname"), { target: { value: "DACH" } });
     fireEvent.click(screen.getByRole("button", { name: "Weiter" }));
 
-    fireEvent.click(screen.getByText("Technik A"));
-    fireEvent.click(screen.getByText("Taktik A"));
+    const techniqueRow = screen.getByText("Technik A").closest("tr");
+    expect(techniqueRow).not.toBeNull();
+    fireEvent.click(within(techniqueRow as HTMLElement).getByRole("checkbox"));
+
+    const tacticRow = screen.getByText("Taktik A").closest("tr");
+    expect(tacticRow).not.toBeNull();
+    fireEvent.click(within(tacticRow as HTMLElement).getByRole("checkbox"));
     fireEvent.click(screen.getByRole("button", { name: "Weiter" }));
 
     fireEvent.click(screen.getByRole("button", { name: /Verhandlung anlegen/i }));

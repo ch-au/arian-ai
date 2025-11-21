@@ -4,8 +4,67 @@ import { storage, type NegotiationDimensionConfig, type NegotiationScenarioConfi
 import { createRequestLogger } from "../services/logger";
 import type { NegotiationEngine } from "../services/negotiation-engine";
 import { SimulationQueueService } from "../services/simulation-queue";
-import type { Negotiation } from "@shared/schema";
+import { type Negotiation, registrations, counterparts } from "@shared/schema";
 import { requireAuth } from "../middleware/auth";
+import { db } from "../db";
+import { eq } from "drizzle-orm";
+
+// Helper to fetch enriched metadata
+async function getEnrichedMetadata(negotiationId: string, currentMetadata: any = {}) {
+  const negotiation = await storage.getNegotiation(negotiationId);
+  if (!negotiation) return currentMetadata;
+
+  const simulationStats = await SimulationQueueService.getSimulationStats(negotiationId);
+  
+  // Default names
+  let companyName = currentMetadata.company_name || "Ihr Unternehmen";
+  let opponentName = currentMetadata.opponent_name || "Verhandlungspartner";
+  
+  // Fetch Registration (Company Name)
+  if (negotiation.registrationId) {
+    const [registration] = await db
+      .select()
+      .from(registrations)
+      .where(eq(registrations.id, negotiation.registrationId));
+      
+    if (registration) {
+      companyName = registration.company || registration.organization || companyName;
+    }
+  }
+  
+  // Fetch Counterpart (Opponent Name)
+  if (negotiation.counterpartId) {
+    const [counterpart] = await db
+      .select()
+      .from(counterparts)
+      .where(eq(counterparts.id, negotiation.counterpartId));
+      
+    if (counterpart) {
+      opponentName = counterpart.name || opponentName;
+    }
+  }
+  
+  // Fallback to scenario if relational data is missing
+  if ((companyName === "Ihr Unternehmen" || opponentName === "Verhandlungspartner") && negotiation.scenario) {
+    const scenario = negotiation.scenario as any;
+    if (companyName === "Ihr Unternehmen" && scenario.companyProfile) {
+      companyName = scenario.companyProfile.company || scenario.companyProfile.organization || companyName;
+    }
+    if (opponentName === "Verhandlungspartner" && scenario.counterpartProfile) {
+      opponentName = scenario.counterpartProfile.name || opponentName;
+    }
+  }
+
+  return {
+    ...currentMetadata,
+    negotiation_id: negotiationId,
+    negotiation_title: negotiation.title,
+    company_name: companyName,
+    opponent_name: opponentName,
+    total_runs: simulationStats.totalRuns,
+    generated_at: currentMetadata.generated_at || negotiation.playbookGeneratedAt || new Date(),
+  };
+}
 
 const scenarioSchema: z.ZodType<NegotiationScenarioConfig> = z.object({
   title: z.string().optional(),
@@ -228,7 +287,7 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
       const existingQueueId = await SimulationQueueService.findQueueByNegotiation(negotiation.id);
       if (existingQueueId) {
         const status = await SimulationQueueService.getQueueStatus(existingQueueId);
-        
+
         // Resume if pending, paused, or running
         if (["pending", "paused", "running"].includes(status.status)) {
           if (status.status === "paused") {
@@ -239,15 +298,20 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
           return res.json({ negotiationId: negotiation.id, queueId: existingQueueId, action: "resumed" });
         }
 
-        // If completed/failed with failures, restart failed runs
-        if (status.failedCount > 0) {
-          await SimulationQueueService.restartFailedSimulations(existingQueueId);
+        // If completed/failed with outstanding work (pending, failed, or timeout runs), resume
+        const outstandingCount = status.totalSimulations - status.completedCount;
+        if (outstandingCount > 0) {
+          // If there are failed runs, restart them
+          if (status.failedCount > 0) {
+            await SimulationQueueService.restartFailedSimulations(existingQueueId);
+          }
+          // Start the queue to process pending/restarted runs
           await SimulationQueueService.startQueue(existingQueueId);
-          return res.json({ negotiationId: negotiation.id, queueId: existingQueueId, action: "restarted_failed" });
+          return res.json({ negotiationId: negotiation.id, queueId: existingQueueId, action: "resumed_pending" });
         }
       }
 
-      // Create new queue if none exists or previous is fully successful
+      // Create new queue ONLY if none exists OR previous is fully complete (all runs finished)
       const queueId = await SimulationQueueService.createQueue({ negotiationId: negotiation.id });
       await SimulationQueueService.startQueue(queueId);
 
@@ -381,6 +445,8 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
       const techniqueMap = new Map((techniques ?? []).map((tech) => [tech.id, tech.name]));
       const tacticMap = new Map((tactics ?? []).map((tactic) => [tactic.id, tactic.name]));
 
+      const userRole = negotiation.scenario?.userRole?.toLowerCase() === "buyer" ? "buyer" : "seller";
+
       const runs = results.map((run) => {
         const dealValue = run.dealValue ? Number(run.dealValue) : 0;
         const totalRounds = typeof run.totalRounds === "number" ? run.totalRounds : Number(run.totalRounds ?? 0);
@@ -414,7 +480,27 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
         };
       });
 
-      const rankedRuns = [...runs].sort((a, b) => b.dealValue - a.dealValue);
+      const rankedRuns = [...runs].sort((a, b) => {
+        if (userRole === "buyer") {
+          // Buyer: Lower price is better (ascending)
+          // Handle 0 deal values (failed/incomplete) by pushing them to end?
+          // Or assume filtered? This is all runs.
+          // If dealValue is 0, treat as worst? 
+          // But here we sort all runs.
+          // Let's stick to numeric sort, but handle 0 properly if needed.
+          // Actually dealValue 0 usually means failed/no agreement.
+          // If a,b both > 0: a - b
+          // If a=0, b>0: b is better? No, 0 is usually invalid.
+          // Let's treat 0 as infinity for buyer?
+          const valA = a.dealValue > 0 ? a.dealValue : Number.MAX_VALUE;
+          const valB = b.dealValue > 0 ? b.dealValue : Number.MAX_VALUE;
+          return valA - valB;
+        } else {
+          // Seller: Higher price is better (descending)
+          return b.dealValue - a.dealValue;
+        }
+      });
+
       const rankMap = new Map(rankedRuns.map((run, index) => [run.id, index + 1]));
       const runsWithRank = runs.map((run) => ({ ...run, rank: rankMap.get(run.id) ?? 0 }));
 
@@ -434,8 +520,14 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
           : 0;
 
       const bestRun = completedWithDeals.reduce<typeof completedWithDeals[number] | null>((best, current) => {
-        if (!best || current.dealValue > best.dealValue) {
-          return current;
+        if (!best) return current;
+        
+        if (userRole === "buyer") {
+           // Buyer: Lower is better
+           if (current.dealValue < best.dealValue) return current;
+        } else {
+           // Seller: Higher is better
+           if (current.dealValue > best.dealValue) return current;
         }
         return best;
       }, null);
@@ -465,16 +557,16 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
         runId: run.id,
       }));
 
-      res.json({
-        negotiation: {
-          id: negotiation.id,
-          title: negotiation.title,
-          description: negotiation.description,
-          status: negotiation.status,
-          scenario: negotiation.scenario,
-          userRole: negotiation.scenario?.userRole ?? "seller",
-          productCount: products.length,
-        },
+        res.json({
+          negotiation: {
+            id: negotiation.id,
+            title: negotiation.title,
+            description: negotiation.description,
+            status: negotiation.status,
+            scenario: negotiation.scenario,
+            userRole: userRole,
+            productCount: products.length,
+          },
         runs: runsWithRank,
         summary: {
           bestDealValue: bestRun
@@ -594,6 +686,14 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
           // Continue anyway - we can still return the result
         }
 
+        // Enrich metadata with reliable DB data
+        try {
+          result.metadata = await getEnrichedMetadata(negotiationId, result.metadata);
+        } catch (enrichError) {
+          log.error({ negotiationId, enrichError }, "Failed to enrich metadata");
+          // Continue with original metadata
+        }
+
         log.info({ negotiationId, playbookLength: result.playbook?.length }, "Playbook generated successfully");
         res.json(result);
       } catch (parseError) {
@@ -632,14 +732,17 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
       // Check if playbook already exists in database
       if (negotiation.playbook) {
         log.info({ negotiationId: req.params.id }, "Returning cached playbook from database");
+        
+        const metadata = await getEnrichedMetadata(negotiation.id, {
+          cached: true,
+          model: "cached-model",
+          prompt_version: 0,
+        });
+
         return res.json({
           success: true,
           playbook: negotiation.playbook,
-          metadata: {
-            negotiation_id: req.params.id,
-            generated_at: negotiation.playbookGeneratedAt,
-            cached: true,
-          }
+          metadata
         });
       }
 

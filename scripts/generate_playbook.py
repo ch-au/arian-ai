@@ -320,7 +320,9 @@ async def generate_playbook(negotiation_id: str) -> Dict[str, Any]:
                     "opponent_name": metadata["opponent_name"],
                     "negotiation_title": metadata["negotiation_title"],
                     "model": model_name,
-                    "prompt_version": prompt.version
+                    "prompt_version": prompt.version,
+                    "total_runs": len(all_runs),
+                    "generated_at": None  # Will be set by backend/frontend
                 }
             }
 

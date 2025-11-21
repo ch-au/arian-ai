@@ -1,5 +1,8 @@
 # Data Flow Overview: Negotiation Simulation Tool
 
+**Last Updated:** November 2025
+**Status:** ✅ Production Ready
+
 This document traces the complete data flow from configuration input through AI processing to analysis output, highlighting how the data model supports each stage.
 
 ---

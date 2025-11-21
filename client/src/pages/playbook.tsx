@@ -4,10 +4,12 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Download, Loader2, AlertCircle } from "lucide-react";
+import { ArrowLeft, Download, Loader2, AlertCircle, FileText, Printer, ChevronDown, ChevronUp } from "lucide-react";
 import { Link } from "wouter";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { SimulationRunSheet } from "@/components/SimulationRunSheet";
+import { format } from "date-fns";
+import { de } from "date-fns/locale";
 
 interface PlaybookData {
   success: boolean;
@@ -20,6 +22,8 @@ interface PlaybookData {
     negotiation_title: string;
     model: string;
     prompt_version: number;
+    total_runs?: number;
+    generated_at?: string;
   };
 }
 
@@ -28,6 +32,7 @@ export default function PlaybookPage() {
   const negotiationId = params?.id;
   const [selectedSimulationRunId, setSelectedSimulationRunId] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [isTocOpen, setIsTocOpen] = useState(false);
 
   const { data, isLoading, error } = useQuery<PlaybookData>({
     queryKey: [`/api/negotiations/${negotiationId}/playbook`],
@@ -44,13 +49,22 @@ export default function PlaybookPage() {
         .replace(/\\(\))/g, '$1')  // Remove \) -> )
     : '';
 
-  // Debug: Log a sample of the processed playbook
-  if (processedPlaybook && typeof window !== 'undefined') {
-    const sampleMatch = processedPlaybook.match(/\[44be5c86[^\]]*\][^\n]*/);
-    if (sampleMatch) {
-      console.log('DEBUG - Found link sample:', sampleMatch[0]);
-    }
-  }
+  // Extract headings for Mini-TOC
+  const toc = useMemo(() => {
+    if (!processedPlaybook) return [];
+    const headings: { id: string; text: string; level: number }[] = [];
+    const lines = processedPlaybook.split('\n');
+    lines.forEach(line => {
+      const match = line.match(/^(#{1,3})\s+(.+)$/);
+      if (match) {
+        const level = match[1].length;
+        const text = match[2];
+        const id = text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+        headings.push({ id, text, level });
+      }
+    });
+    return headings;
+  }, [processedPlaybook]);
 
   // Helper to detect if a string is a UUID
   const isSimulationRunUUID = (text: string): boolean => {
@@ -63,7 +77,7 @@ export default function PlaybookPage() {
     setSheetOpen(true);
   };
 
-  const handleDownload = () => {
+  const handleDownloadMarkdown = () => {
     if (!data?.playbook) return;
 
     const blob = new Blob([data.playbook], { type: 'text/markdown' });
@@ -75,6 +89,10 @@ export default function PlaybookPage() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  };
+
+  const handlePrintPDF = () => {
+    window.print();
   };
 
   if (isLoading) {
@@ -141,10 +159,15 @@ export default function PlaybookPage() {
     );
   }
 
+  // Format date safely
+  const formattedDate = data.metadata?.generated_at 
+    ? format(new Date(data.metadata.generated_at), "dd.MM.yyyy", { locale: de }) 
+    : format(new Date(), "dd.MM.yyyy", { locale: de });
+
   return (
-    <div className="container mx-auto p-6 max-w-5xl">
-      {/* Header */}
-      <div className="mb-6 flex items-center justify-between">
+    <div className="container mx-auto p-6 max-w-5xl print:p-0 print:max-w-none">
+      {/* Header - Hidden in Print mode because we style our own print header or just let the content speak */}
+      <div className="mb-6 flex items-center justify-between print:hidden">
         <div className="flex items-center gap-4">
           <Link href={`/analysis/${negotiationId}`}>
             <Button variant="ghost" size="icon">
@@ -154,22 +177,83 @@ export default function PlaybookPage() {
           <div>
             <h1 className="text-3xl font-bold">Negotiation Playbook</h1>
             {data.metadata && (
-              <p className="text-sm text-muted-foreground mt-1">
-                {data.metadata.negotiation_title} · {data.metadata.company_name} vs {data.metadata.opponent_name}
-              </p>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
+                <span className="font-medium text-foreground">{data.metadata.company_name} vs {data.metadata.opponent_name}</span>
+                <span>•</span>
+                <span>{formattedDate}</span>
+                {data.metadata.total_runs !== undefined && (
+                   <>
+                    <span>•</span>
+                    <span>{data.metadata.total_runs} Simulationen</span>
+                   </>
+                )}
+              </div>
             )}
           </div>
         </div>
-        <Button onClick={handleDownload} variant="outline">
-          <Download className="mr-2 h-4 w-4" />
-          Download Markdown
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={handleDownloadMarkdown} variant="outline">
+            <FileText className="mr-2 h-4 w-4" />
+            Markdown
+          </Button>
+          <Button onClick={handlePrintPDF} variant="default">
+            <Download className="mr-2 h-4 w-4" />
+            Als PDF
+          </Button>
+        </div>
+      </div>
+
+      {/* Mini TOC */}
+      {toc.length > 0 && (
+        <Card className="mb-6 bg-muted/30 print:hidden border-none shadow-none">
+          <CardHeader className="pb-2 pt-4 px-6 flex flex-row items-center justify-between cursor-pointer" onClick={() => setIsTocOpen(!isTocOpen)}>
+            <CardTitle className="text-lg font-semibold">Inhaltsverzeichnis</CardTitle>
+            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+              {isTocOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </Button>
+          </CardHeader>
+          {isTocOpen && (
+            <CardContent className="pb-4 px-6">
+              <div className="flex flex-col gap-1.5 text-sm">
+                {toc.map((item) => (
+                  <a 
+                    key={item.id} 
+                    href={`#${item.id}`}
+                    className={`
+                      text-muted-foreground hover:text-primary transition-colors hover:underline decoration-primary/50 block
+                      ${item.level === 1 ? 'font-semibold text-foreground mt-2 first:mt-0' : ''}
+                      ${item.level === 2 ? 'pl-4' : ''}
+                      ${item.level === 3 ? 'pl-8' : ''}
+                    `}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      document.getElementById(item.id)?.scrollIntoView({ behavior: 'smooth' });
+                    }}
+                  >
+                    {item.text}
+                  </a>
+                ))}
+              </div>
+            </CardContent>
+          )}
+        </Card>
+      )}
+
+      {/* Print-only Header */}
+      <div className="hidden print:block mb-8 border-b pb-4">
+        <h1 className="text-4xl font-bold mb-2">Negotiation Playbook</h1>
+        <div className="text-lg text-gray-600">
+          <p>{data.metadata?.company_name} vs {data.metadata?.opponent_name}</p>
+          <p className="text-sm mt-1">
+            Erstellt am {formattedDate} • Basierend auf {data.metadata?.total_runs ?? '?'} Simulationen
+          </p>
+        </div>
       </div>
 
       {/* Playbook Content */}
-      <Card>
-        <CardContent className="p-8">
-          <div className="prose prose-neutral dark:prose-invert max-w-none
+      <Card className="print:shadow-none print:border-none">
+        <CardContent className="p-8 print:p-0">
+          <div className="prose prose-neutral dark:prose-invert max-w-none print:prose-sm
             prose-headings:font-bold
             prose-h1:text-3xl prose-h1:mb-4 prose-h1:mt-8 prose-h1:pb-2 prose-h1:border-b
             prose-h2:text-2xl prose-h2:mb-3 prose-h2:mt-6
@@ -189,6 +273,21 @@ export default function PlaybookPage() {
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{
+                h1: ({ children, ...props }) => {
+                  const text = children?.toString() || '';
+                  const id = text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+                  return <h1 id={id} {...props}>{children}</h1>;
+                },
+                h2: ({ children, ...props }) => {
+                  const text = children?.toString() || '';
+                  const id = text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+                  return <h2 id={id} {...props}>{children}</h2>;
+                },
+                h3: ({ children, ...props }) => {
+                  const text = children?.toString() || '';
+                  const id = text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+                  return <h3 id={id} {...props}>{children}</h3>;
+                },
                 a: ({ node, children, href, ...props }) => {
                   // Extract text from children (can be string or array)
                   let childText = '';
@@ -210,7 +309,7 @@ export default function PlaybookPage() {
                           e.preventDefault();
                           handleSimulationRunClick(childText.trim());
                         }}
-                        className="cursor-pointer text-primary hover:underline font-medium"
+                        className="cursor-pointer text-primary hover:underline font-medium print:no-underline print:text-black"
                         {...props}
                       >
                         {hrefText || childText}
@@ -226,7 +325,7 @@ export default function PlaybookPage() {
                           e.preventDefault();
                           handleSimulationRunClick(hrefText.trim());
                         }}
-                        className="cursor-pointer text-primary hover:underline font-medium"
+                        className="cursor-pointer text-primary hover:underline font-medium print:no-underline print:text-black"
                         {...props}
                       >
                         {children}
@@ -245,9 +344,9 @@ export default function PlaybookPage() {
         </CardContent>
       </Card>
 
-      {/* Metadata Footer */}
+      {/* Metadata Footer - Hidden in Print as we have a header */}
       {data.metadata && (
-        <Card className="mt-6 bg-muted/50">
+        <Card className="mt-6 bg-muted/50 print:hidden">
           <CardContent className="p-4">
             <div className="flex items-center justify-between text-xs text-muted-foreground">
               <div>
