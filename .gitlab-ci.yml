@@ -109,7 +109,7 @@ deploy:azure:
     - PUBLISH_CREDS=$(az webapp deployment list-publishing-credentials --resource-group "$AZURE_RESOURCE_GROUP" --name "$AZURE_WEBAPP_NAME" --query "{username:publishingUserName, password:publishingPassword}" -o json)
     - DEPLOY_USER=$(echo "$PUBLISH_CREDS" | python3 -c "import sys, json; print(json.load(sys.stdin)['username'])")
     - DEPLOY_PASS=$(echo "$PUBLISH_CREDS" | python3 -c "import sys, json; print(json.load(sys.stdin)['password'])")
-        - echo "Building deployment URL..."
+    - echo "Building deployment URL..."
     - KUDU_URL="https://${AZURE_WEBAPP_HOSTNAME}.scm.germanywestcentral-01.azurewebsites.net/api/zipdeploy"
     - APP_URL="https://${AZURE_WEBAPP_HOSTNAME}.germanywestcentral-01.azurewebsites.net"
     - echo "Testing DNS resolution and connectivity..."
