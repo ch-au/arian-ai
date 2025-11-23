@@ -7,8 +7,65 @@ Verwendet Google Gemini 2.5 Flash mit Grounded Search (Google Search Tool)
 import os
 import sys
 import json
+from typing import Optional
 from google import genai
 from google.genai import types
+
+
+def _extract_json_payload(raw_text: str) -> Optional[str]:
+    """
+    Versucht den ersten JSON-Block ({...} oder [...]) aus dem Text zu extrahieren.
+    Berücksichtigt verschachtelte Klammern und ignoriert Zeichen innerhalb von Strings.
+    """
+
+    def _extract_from_index(text: str, start_idx: int, opening: str, closing: str) -> Optional[str]:
+        depth = 0
+        in_string = False
+        escape = False
+
+        for idx in range(start_idx, len(text)):
+            char = text[idx]
+
+            if escape:
+                escape = False
+                continue
+
+            if char == '\\':
+                escape = True
+                continue
+
+            if char == '"':
+                in_string = not in_string
+                continue
+
+            if in_string:
+                continue
+
+            if char == opening:
+                depth += 1
+            elif char == closing:
+                depth -= 1
+
+                if depth == 0:
+                    return text[start_idx:idx + 1]
+
+        return None
+
+    stripped = raw_text.strip()
+    if not stripped:
+        return None
+
+    for index, character in enumerate(stripped):
+        if character == '{':
+            candidate = _extract_from_index(stripped, index, '{', '}')
+            if candidate:
+                return candidate
+        elif character == '[':
+            candidate = _extract_from_index(stripped, index, '[', ']')
+            if candidate:
+                return candidate
+
+    return None
 
 def generate_market_intelligence(negotiation_context: dict) -> list[dict]:
     """
@@ -112,11 +169,11 @@ Gib 3-5 der wichtigsten Aspekte zurück. Bedenke, vor allem, wie sie für deine 
             config=generate_content_config,
         )
 
-        # DEBUG: Rohe Response ausgeben
-        print("=== GEMINI RAW RESPONSE ===", file=sys.stderr)
-        print(f"Response object: {response}", file=sys.stderr)
-        print(f"Response text: {response.text}", file=sys.stderr)
-        print("=== END RAW RESPONSE ===", file=sys.stderr)
+        # DEBUG: Rohe Response ausgeben (nur bei Bedarf aktivieren)
+        # print("=== GEMINI RAW RESPONSE ===", file=sys.stderr)
+        # print(f"Response object: {response}", file=sys.stderr)
+        # print(f"Response text: {response.text}", file=sys.stderr)
+        # print("=== END RAW RESPONSE ===", file=sys.stderr)
 
         # Response Text extrahieren
         response_text = response.text.strip()
@@ -128,17 +185,15 @@ Gib 3-5 der wichtigsten Aspekte zurück. Bedenke, vor allem, wie sie für deine 
             # Erste Zeile (```json) und letzte Zeile (```) entfernen
             if lines[0].startswith('```'):
                 lines = lines[1:]
-            if lines[-1].strip() == '```':
+            if lines and lines[-1].strip() == '```':
                 lines = lines[:-1]
             response_text = '\n'.join(lines).strip()
 
-        # JSON parsen
-        try:
-            result = json.loads(response_text)
+        def _normalize_and_validate(raw_json: str) -> list[dict]:
+            result = json.loads(raw_json)
             intelligence_items = result.get('intelligence', [])
 
-            # Validierung und Normalisierung
-            normalized_items = []
+            normalized_items: list[dict] = []
             for item in intelligence_items:
                 if isinstance(item, dict) and 'aspekt' in item:
                     normalized_items.append({
@@ -146,12 +201,21 @@ Gib 3-5 der wichtigsten Aspekte zurück. Bedenke, vor allem, wie sie für deine 
                         'quelle': item.get('quelle', ''),
                         'relevanz': item.get('relevanz', 'mittel'),
                     })
-
             return normalized_items
 
-        except json.JSONDecodeError as e:
+        try:
+            return _normalize_and_validate(response_text)
+
+        except json.JSONDecodeError:
             # Fallback: Versuche JSON aus Response zu extrahieren
-            print(f"JSON Parse Error: {e}", file=sys.stderr)
+            extracted = _extract_json_payload(response_text)
+            if extracted:
+                try:
+                    return _normalize_and_validate(extracted)
+                except json.JSONDecodeError:
+                    pass
+
+            print("JSON Parse Error: Expecting valid JSON payload", file=sys.stderr)
             print(f"Response Text: {response_text}", file=sys.stderr)
 
             # Return Fehler-Item

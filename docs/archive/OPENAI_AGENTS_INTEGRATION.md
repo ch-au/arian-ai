@@ -1,4 +1,6 @@
-# OpenAI Agents Integration Guide
+# OpenAI Agents Integration Guide (Legacy Reference)
+
+> **Note:** This document references the pre-2025 schema (tables such as `negotiation_dimensions`, `negotiation_contexts`). It is kept for historical context only; do not rely on it for current implementation details.
 
 ## Overview
 

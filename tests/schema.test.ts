@@ -1,555 +1,407 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { drizzle } from 'drizzle-orm/neon-http';
-import { neon } from '@neondatabase/serverless';
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { drizzle } from "drizzle-orm/neon-http";
+import { neon } from "@neondatabase/serverless";
+import * as schema from "@shared/schema";
 import {
+  registrations,
+  markets,
+  counterparts,
+  dimensions,
+  products,
+  productDimensionValues,
   negotiations,
-  negotiationDimensions,
+  negotiationProducts,
+  negotiationRounds,
+  roundStates,
+  simulations,
+  simulationQueue,
   simulationRuns,
   dimensionResults,
-  personalityTypes,
+  productResults,
+  offers,
+  events,
+  agents,
+  policies,
   influencingTechniques,
   negotiationTactics,
-  type InsertNegotiation,
-  type InsertNegotiationDimension,
-  type InsertDimensionResult,
-} from '@shared/schema';
-import { eq, and } from 'drizzle-orm';
+  agentMetrics,
+  interactions,
+  analyticsSessions,
+  experimentRuns,
+  experiments,
+  benchmarks,
+  concessions,
+  performanceMetrics,
+  personalityTypes,
+} from "@shared/schema";
+import { eq } from "drizzle-orm";
+import { debugLog, getTableName } from "./helpers/debug";
 
 const connectionString = process.env.TEST_DATABASE_URL || process.env.DATABASE_URL;
-const runDbTests = Boolean(connectionString) && process.env.RUN_DB_TESTS === 'true';
+const runDbTests = Boolean(connectionString) && process.env.RUN_DB_TESTS === "true";
 
 if (!runDbTests) {
-  describe.skip('Enhanced Schema Tests', () => {
-    it('skipped because RUN_DB_TESTS is not enabled', () => {
+  describe.skip("Enhanced schema", () => {
+    it("skipped because RUN_DB_TESTS is not enabled", () => {
       expect(true).toBe(true);
     });
   });
 } else {
   const sql = neon(connectionString!);
-  const db = drizzle(sql);
+  const db = drizzle(sql, { schema });
 
-  describe('Enhanced Schema Tests', () => {
-  let testNegotiationId: string;
-  let testTechniqueId: string;
-  let testTacticId: string;
-  let testPersonalityId: string;
+  describe("Enhanced schema", () => {
+    let registrationId: string;
+    let negotiationId: string;
+    let dimensionId: string;
+    let productId: string;
+    let roundId: string;
 
-  beforeEach(async () => {
-    // Clean up any existing test data
-    await cleanup();
-    
-    // Create test data
-    await setupTestData();
-  });
-
-  afterEach(async () => {
-    await cleanup();
-  });
-
-  async function setupTestData() {
-    // Create test negotiation
-    const [negotiation] = await db.insert(negotiations).values({
-      title: 'Test Negotiation Schema',
-      negotiationType: 'one-shot',
-      relationshipType: 'first',
-      userRole: 'buyer',
-      productMarketDescription: 'Test product for schema validation',
-      additionalComments: 'Schema test data',
-      selectedTechniques: [],
-      selectedTactics: []
-    }).returning();
-    testNegotiationId = negotiation.id;
-
-    // Create test technique
-    const [technique] = await db.insert(influencingTechniques).values({
-      name: 'Test Technique',
-      beschreibung: 'Test technique description',
-      anwendung: 'Test application',
-      wichtigeAspekte: ['Important aspect 1', 'Important aspect 2'],
-      keyPhrases: ['Key phrase 1', 'Key phrase 2']
-    }).returning();
-    testTechniqueId = technique.id;
-
-    // Create test tactic
-    const [tactic] = await db.insert(negotiationTactics).values({
-      name: 'Test Tactic',
-      beschreibung: 'Test tactic description',
-      anwendung: 'Test application',
-      wichtigeAspekte: ['Important aspect 1'],
-      keyPhrases: ['Key phrase 1']
-    }).returning();
-    testTacticId = tactic.id;
-
-    // Create test personality type
-    const [personality] = await db.insert(personalityTypes).values({
-      archetype: 'Test Archetype',
-      behaviorDescription: 'Test behavior',
-      advantages: 'Test advantages',
-      risks: 'Test risks'
-    }).returning();
-    testPersonalityId = personality.id;
-  }
-
-  async function cleanup() {
-    // Clean up in dependency order
-    await db.delete(dimensionResults);
-    await db.delete(simulationRuns);
-    await db.delete(negotiationDimensions);
-    await db.delete(negotiations);
-    await db.delete(influencingTechniques);
-    await db.delete(negotiationTactics);
-    await db.delete(personalityTypes);
-  }
-
-  describe('Negotiation Enhancements', () => {
-    it('should create negotiation with new business context fields', async () => {
-      const negotiation = await db.query.negotiations.findFirst({
-        where: eq(negotiations.id, testNegotiationId)
-      });
-
-      expect(negotiation).toBeTruthy();
-      expect(negotiation?.title).toBe('Test Negotiation Schema');
-      expect(negotiation?.negotiationType).toBe('one-shot');
-      expect(negotiation?.relationshipType).toBe('first');
-      expect(negotiation?.productMarketDescription).toBe('Test product for schema validation');
-      expect(negotiation?.additionalComments).toBe('Schema test data');
-    });
-
-    it('should validate enum constraints for negotiationType', async () => {
-      const validTypes = ['one-shot', 'multi-year'];
-      
-      for (const type of validTypes) {
-        const [result] = await db.insert(negotiations).values({
-          title: `Test ${type}`,
-          negotiationType: type as 'one-shot' | 'multi-year',
-          relationshipType: 'first',
-          userRole: 'buyer'
-        }).returning();
-        
-        expect(result.negotiationType).toBe(type);
-      }
-    });
-
-    it('should validate enum constraints for relationshipType', async () => {
-      const validTypes = ['first', 'long-standing'];
-      
-      for (const type of validTypes) {
-        const [result] = await db.insert(negotiations).values({
-          title: `Test ${type}`,
-          negotiationType: 'one-shot',
-          relationshipType: type as 'first' | 'long-standing',
-          userRole: 'buyer'
-        }).returning();
-        
-        expect(result.relationshipType).toBe(type);
-      }
-    });
-  });
-
-  describe('Flexible Dimensions System', () => {
-    it('should create and manage flexible dimensions', async () => {
-      const dimensionsToCreate = [
-        { name: 'price', minValue: '10.00', maxValue: '100.00', targetValue: '50.00', priority: 1, unit: 'EUR' },
-        { name: 'volume', minValue: '100', maxValue: '1000', targetValue: '500', priority: 1, unit: 'pieces' },
-        { name: 'delivery_time', minValue: '1', maxValue: '30', targetValue: '14', priority: 2, unit: 'days' },
-        { name: 'quality_grade', minValue: '1', maxValue: '5', targetValue: '4', priority: 3, unit: 'stars' }
-      ];
-
-      const createdDimensions = await db.insert(negotiationDimensions).values(
-        dimensionsToCreate.map(dim => ({
-          negotiationId: testNegotiationId,
-          ...dim
-        }))
-      ).returning();
-
-      expect(createdDimensions).toHaveLength(4);
-      
-      // Test priority levels
-      const mustHaveDimensions = createdDimensions.filter(d => d.priority === 1);
-      const importantDimensions = createdDimensions.filter(d => d.priority === 2);
-      const flexibleDimensions = createdDimensions.filter(d => d.priority === 3);
-      
-      expect(mustHaveDimensions).toHaveLength(2); // price, volume
-      expect(importantDimensions).toHaveLength(1); // delivery_time
-      expect(flexibleDimensions).toHaveLength(1); // quality_grade
-    });
-
-    it('should enforce unique dimension names per negotiation', async () => {
-      // Create first dimension
-      await db.insert(negotiationDimensions).values({
-        negotiationId: testNegotiationId,
-        name: 'price',
-        minValue: '10.00',
-        maxValue: '100.00',
-        targetValue: '50.00',
-        priority: 1,
-        unit: 'EUR'
-      });
-
-      // Attempting to create duplicate should throw/fail
-      await expect(db.insert(negotiationDimensions).values({
-        negotiationId: testNegotiationId,
-        name: 'price', // Duplicate name for same negotiation
-        minValue: '20.00',
-        maxValue: '200.00',
-        targetValue: '100.00',
-        priority: 2,
-        unit: 'EUR'
-      })).rejects.toThrow();
-    });
-
-    it('should allow same dimension names across different negotiations', async () => {
-      // Create second test negotiation
-      const [negotiation2] = await db.insert(negotiations).values({
-        title: 'Test Negotiation 2',
-        negotiationType: 'multi-year',
-        relationshipType: 'long-standing',
-        userRole: 'seller'
-      }).returning();
-
-      // Create price dimension for first negotiation
-      await db.insert(negotiationDimensions).values({
-        negotiationId: testNegotiationId,
-        name: 'price',
-        minValue: '10.00',
-        maxValue: '100.00',
-        targetValue: '50.00',
-        priority: 1
-      });
-
-      // Create price dimension for second negotiation (should succeed)
-      const [dimension2] = await db.insert(negotiationDimensions).values({
-        negotiationId: negotiation2.id,
-        name: 'price',
-        minValue: '20.00',
-        maxValue: '200.00',
-        targetValue: '100.00',
-        priority: 2
-      }).returning();
-
-      expect(dimension2.name).toBe('price');
-      expect(dimension2.negotiationId).toBe(negotiation2.id);
-    });
-  });
-
-  describe('Simulation Runs Enhancement', () => {
-    it('should store conversation logs and dimension results', async () => {
-      const [simulationRun] = await db.insert(simulationRuns).values({
-        negotiationId: testNegotiationId,
-        runNumber: 1,
-        techniqueId: testTechniqueId,
-        tacticId: testTacticId,
-        personalityArchetype: 'Test Archetype',
-        conversationLog: [
-          {
-            round: 1,
-            agentId: 'agent-1',
-            agentRole: 'buyer',
-            message: 'I would like to negotiate the price.',
-            proposal: { price: 45.0 },
-            timestamp: new Date().toISOString()
-          },
-          {
-            round: 1,
-            agentId: 'agent-2',
-            agentRole: 'seller',
-            message: 'The minimum I can accept is 55.',
-            proposal: { price: 55.0 },
-            timestamp: new Date().toISOString()
-          }
-        ],
-        dimensionResults: {
-          price: {
-            finalValue: 50.0,
-            achievedTarget: true,
-            priorityScore: 1
-          },
-          volume: {
-            finalValue: 600,
-            achievedTarget: true,
-            priorityScore: 1
-          }
-        }
-      }).returning();
-
-      expect(simulationRun.conversationLog).toHaveLength(2);
-      expect(simulationRun.dimensionResults).toHaveProperty('price');
-      expect(simulationRun.dimensionResults).toHaveProperty('volume');
-      expect(simulationRun.personalityArchetype).toBe('Test Archetype');
-    });
-  });
-
-  describe('Dimension Results Table', () => {
-    it('should store normalized dimension results for efficient querying', async () => {
-      // Create test simulation run
-      const [simulationRun] = await db.insert(simulationRuns).values({
-        negotiationId: testNegotiationId,
-        runNumber: 1,
-        techniqueId: testTechniqueId,
-        tacticId: testTacticId,
-        status: 'completed'
-      }).returning();
-
-      // Create dimension results
-      const results = [
-        {
-          simulationRunId: simulationRun.id,
-          dimensionName: 'price',
-          finalValue: '47.50',
-          targetValue: '50.00',
-          achievedTarget: false,
-          priorityScore: 1,
-          improvementOverBatna: '2.50'
-        },
-        {
-          simulationRunId: simulationRun.id,
-          dimensionName: 'volume',
-          finalValue: '750',
-          targetValue: '500',
-          achievedTarget: true,
-          priorityScore: 1,
-          improvementOverBatna: '250'
-        }
-      ];
-
-      const createdResults = await db.insert(dimensionResults).values(results).returning();
-      
-      expect(createdResults).toHaveLength(2);
-      
-      // Test querying by dimension name (critical for analysis features)
-      const priceResults = await db.select()
-        .from(dimensionResults)
-        .where(eq(dimensionResults.dimensionName, 'price'));
-      
-      expect(priceResults).toHaveLength(1);
-      expect(priceResults[0].finalValue).toBe('47.50');
-      expect(priceResults[0].achievedTarget).toBe(false);
-    });
-
-    it('should enforce unique dimension results per simulation run', async () => {
-      // Create test simulation run
-      const [simulationRun] = await db.insert(simulationRuns).values({
-        negotiationId: testNegotiationId,
-        runNumber: 1,
-        techniqueId: testTechniqueId,
-        tacticId: testTacticId
-      }).returning();
-
-      // Create first result
-      await db.insert(dimensionResults).values({
-        simulationRunId: simulationRun.id,
-        dimensionName: 'price',
-        finalValue: '50.00',
-        targetValue: '50.00',
-        achievedTarget: true,
-        priorityScore: 1
-      });
-
-      // Attempt to create duplicate should fail
-      await expect(db.insert(dimensionResults).values({
-        simulationRunId: simulationRun.id,
-        dimensionName: 'price', // Duplicate dimension for same run
-        finalValue: '45.00',
-        targetValue: '50.00',
-        achievedTarget: false,
-        priorityScore: 1
-      })).rejects.toThrow();
-    });
-  });
-
-  describe('Personality Types Table', () => {
-    it('should store personality archetypes from CSV data', async () => {
-      const personality = await db.query.personalityTypes.findFirst({
-        where: eq(personalityTypes.id, testPersonalityId)
-      });
-
-      expect(personality).toBeTruthy();
-      expect(personality?.archetype).toBe('Test Archetype');
-      expect(personality?.behaviorDescription).toBe('Test behavior');
-      expect(personality?.advantages).toBe('Test advantages');
-      expect(personality?.risks).toBe('Test risks');
-    });
-
-    it('should enforce unique archetype names', async () => {
-      await expect(db.insert(personalityTypes).values({
-        archetype: 'Test Archetype', // Duplicate archetype name
-        behaviorDescription: 'Different behavior',
-        advantages: 'Different advantages',
-        risks: 'Different risks'
-      })).rejects.toThrow();
-    });
-  });
-
-  describe('Critical Query Patterns for Analysis', () => {
     beforeEach(async () => {
-      // Create test dimensions
-      await db.insert(negotiationDimensions).values([
-        {
-          negotiationId: testNegotiationId,
-          name: 'price',
-          minValue: '10.00',
-          maxValue: '100.00',
-          targetValue: '50.00',
-          priority: 1,
-          unit: 'EUR'
-        },
-        {
-          negotiationId: testNegotiationId,
-          name: 'volume',
-          minValue: '100',
-          maxValue: '1000',
-          targetValue: '500',
-          priority: 1,
-          unit: 'pieces'
-        }
-      ]);
+      await cleanup();
+      await seedCoreEntities();
+    });
 
-      // Create test simulation runs with results
-      for (let i = 1; i <= 3; i++) {
-        const [simulationRun] = await db.insert(simulationRuns).values({
-          negotiationId: testNegotiationId,
-          runNumber: i,
-          techniqueId: testTechniqueId,
-          tacticId: testTacticId,
-          status: 'completed'
-        }).returning();
+    afterEach(async () => {
+      await cleanup();
+    });
 
-        await db.insert(dimensionResults).values([
-          {
-            simulationRunId: simulationRun.id,
-            dimensionName: 'price',
-            finalValue: (40 + i * 5).toString(), // 45, 50, 55
-            targetValue: '50.00',
-            achievedTarget: i >= 2, // Only runs 2 and 3 achieve target
-            priorityScore: 1
-          },
-          {
-            simulationRunId: simulationRun.id,
-            dimensionName: 'volume',
-            finalValue: (400 + i * 100).toString(), // 500, 600, 700
-            targetValue: '500.00',
-            achievedTarget: true,
-            priorityScore: 1
-          }
-        ]);
+    const cleanupOrder = [
+      agentMetrics,
+      interactions,
+      events,
+      offers,
+      dimensionResults,
+      productResults,
+      simulationRuns,
+      simulationQueue,
+      simulations,
+      roundStates,
+      negotiationRounds,
+      negotiationProducts,
+      negotiations,
+      productDimensionValues,
+      products,
+      dimensions,
+      counterparts,
+      markets,
+      registrations,
+      agents,
+      policies,
+      influencingTechniques,
+      negotiationTactics,
+      analyticsSessions,
+      experimentRuns,
+      experiments,
+      benchmarks,
+      concessions,
+      performanceMetrics,
+      personalityTypes,
+    ];
+
+    async function cleanup() {
+      debugLog("schema-test:cleanup:start");
+      for (const table of cleanupOrder) {
+        // eslint-disable-next-line no-await-in-loop
+        await db.delete(table);
+        debugLog("schema-test:cleanup:table", { table: getTableName(table) });
       }
+      debugLog("schema-test:cleanup:complete");
+    }
+
+    async function seedCoreEntities() {
+      const [registration] = await db
+        .insert(registrations)
+        .values({
+          organization: "Schema Test Org",
+          company: "TestCo",
+          country: "DE",
+          negotiationType: "strategic",
+          negotiationFrequency: "monthly",
+          goals: { margin: "10%" },
+        })
+        .returning();
+      registrationId = registration.id;
+      debugLog("schema-test:seed:registration", { registrationId });
+
+      const [market] = await db
+        .insert(markets)
+        .values({
+          registrationId,
+          name: "DACH groceries",
+          region: "EMEA",
+          countryCode: "DE",
+          currencyCode: "EUR",
+          meta: { size: "large" },
+        })
+        .returning();
+      debugLog("schema-test:seed:market", { marketId: market.id });
+
+      const [counterpart] = await db
+        .insert(counterparts)
+        .values({
+          registrationId,
+          name: "Retailer AG",
+          kind: "retailer",
+          powerBalance: "55.00",
+          style: "cooperative",
+          constraintsMeta: { payment: "Net 30" },
+        })
+        .returning();
+      debugLog("schema-test:seed:counterpart", { counterpartId: counterpart.id });
+
+      const [dimension] = await db
+        .insert(dimensions)
+        .values({
+          registrationId,
+          code: "price",
+          name: "Price per unit",
+          valueType: "numeric",
+          unit: "EUR",
+          spec: { min: 1, max: 5 },
+        })
+        .returning();
+      dimensionId = dimension.id;
+      debugLog("schema-test:seed:dimension", { dimensionId });
+
+      const [product] = await db
+        .insert(products)
+        .values({
+          registrationId,
+          name: "Chocolate Bar 50g",
+          gtin: "1234567890123",
+          brand: "SweetCo",
+          categoryPath: "Snacks/Chocolate",
+          attrs: { shelf: "ambient" },
+        })
+        .returning();
+      productId = product.id;
+      debugLog("schema-test:seed:product", { productId });
+
+      await db.insert(productDimensionValues).values({
+        productId,
+        dimensionId,
+        value: { currency: "EUR", amount: 1.1 },
+        source: "list_price",
+        isCurrent: true,
+      });
+      debugLog("schema-test:seed:product-dimension", { productId, dimensionId });
+
+      const [negotiation] = await db
+        .insert(negotiations)
+        .values({
+          registrationId,
+          marketId: market.id,
+          counterpartId: counterpart.id,
+          title: "Q1 Shelf Reset",
+          description: "Q1 placement renegotiation",
+          scenario: {
+            zopa: { price: { min: 1, max: 2 } },
+            companyKnown: true,
+          },
+          status: "planned",
+        })
+        .returning();
+      negotiationId = negotiation.id;
+      debugLog("schema-test:seed:negotiation", { negotiationId });
+
+      await db.insert(negotiationProducts).values({
+        negotiationId,
+        productId,
+      });
+      debugLog("schema-test:seed:negotiation-product");
+
+      const [round] = await db
+        .insert(negotiationRounds)
+        .values({
+          negotiationId,
+          roundNumber: 1,
+          state: { transcript: [] },
+        })
+        .returning();
+      roundId = round.id;
+    }
+
+    it("scopes master data to registrations and cascades on delete", async () => {
+      const marketsBefore = await db.select().from(markets).where(eq(markets.registrationId, registrationId));
+      expect(marketsBefore).toHaveLength(1);
+
+      await db.delete(registrations).where(eq(registrations.id, registrationId));
+
+      const marketsAfter = await db.select().from(markets).where(eq(markets.registrationId, registrationId));
+      expect(marketsAfter).toHaveLength(0);
     });
 
-    it('should efficiently query dimension-specific results', async () => {
-      // Test the critical query pattern: get all results for a specific dimension
-      const priceResults = await db.select({
-        simulationRunId: dimensionResults.simulationRunId,
-        finalValue: dimensionResults.finalValue,
-        achievedTarget: dimensionResults.achievedTarget,
-        runNumber: simulationRuns.runNumber
-      })
-      .from(dimensionResults)
-      .innerJoin(simulationRuns, eq(dimensionResults.simulationRunId, simulationRuns.id))
-      .where(and(
-        eq(dimensionResults.dimensionName, 'price'),
-        eq(simulationRuns.negotiationId, testNegotiationId)
-      ))
-      .orderBy(dimensionResults.finalValue);
-
-      expect(priceResults).toHaveLength(3);
-      expect(priceResults[0].finalValue).toBe('45'); // Lowest price
-      expect(priceResults[2].finalValue).toBe('55'); // Highest price
-      
-      // Test success rate calculation
-      const successfulPriceRuns = priceResults.filter(r => r.achievedTarget);
-      const successRate = successfulPriceRuns.length / priceResults.length;
-      expect(successRate).toBe(2/3); // 2 out of 3 achieved target
+    it("enforces unique dimension code per registration", async () => {
+      await expect(
+        db.insert(dimensions).values({
+          registrationId,
+          code: "price",
+          name: "Duplicate price",
+          valueType: "numeric",
+          unit: "EUR",
+          spec: {},
+        }),
+      ).rejects.toThrow();
     });
 
-    it('should support cross-dimension analysis queries', async () => {
-      // Query to analyze performance across multiple dimensions
-      const crossDimensionResults = await db.select({
-        dimensionName: dimensionResults.dimensionName,
-        avgFinalValue: dimensionResults.finalValue, // In real query, would use AVG()
-        achievedTarget: dimensionResults.achievedTarget
-      })
-      .from(dimensionResults)
-      .innerJoin(simulationRuns, eq(dimensionResults.simulationRunId, simulationRuns.id))
-      .where(eq(simulationRuns.negotiationId, testNegotiationId));
-
-      // Group results by dimension
-      const byDimension = crossDimensionResults.reduce((acc, result) => {
-        if (!acc[result.dimensionName]) {
-          acc[result.dimensionName] = [];
-        }
-        acc[result.dimensionName].push(result);
-        return acc;
-      }, {} as Record<string, typeof crossDimensionResults>);
-
-      expect(Object.keys(byDimension)).toContain('price');
-      expect(Object.keys(byDimension)).toContain('volume');
-      expect(byDimension.price).toHaveLength(3);
-      expect(byDimension.volume).toHaveLength(3);
-    });
-  });
-
-  describe('Relations and Data Integrity', () => {
-    it('should cascade delete dimensions when negotiation is deleted', async () => {
-      // Create dimensions
-      await db.insert(negotiationDimensions).values({
-        negotiationId: testNegotiationId,
-        name: 'price',
-        minValue: '10.00',
-        maxValue: '100.00',
-        targetValue: '50.00',
-        priority: 1
+    it("tracks historical product dimension values", async () => {
+      await db.insert(productDimensionValues).values({
+        productId,
+        dimensionId,
+        value: { currency: "EUR", amount: 0.95 },
+        source: "promo_price",
+        isCurrent: false,
+        measuredAt: new Date(Date.now() - 86_400_000),
       });
 
-      // Verify dimension exists
-      let dimensions = await db.select()
-        .from(negotiationDimensions)
-        .where(eq(negotiationDimensions.negotiationId, testNegotiationId));
-      expect(dimensions).toHaveLength(1);
+      const history = await db
+        .select()
+        .from(productDimensionValues)
+        .where(eq(productDimensionValues.productId, productId));
 
-      // Delete negotiation
-      await db.delete(negotiations).where(eq(negotiations.id, testNegotiationId));
-
-      // Verify dimensions are cascaded deleted
-      dimensions = await db.select()
-        .from(negotiationDimensions)
-        .where(eq(negotiationDimensions.negotiationId, testNegotiationId));
-      expect(dimensions).toHaveLength(0);
+      expect(history).toHaveLength(2);
+      const currentEntry = history.find((entry) => entry.isCurrent);
+      expect(currentEntry?.value).toMatchObject({ amount: 1.1 });
     });
 
-    it('should cascade delete dimension results when simulation run is deleted', async () => {
-      // Create simulation run
-      const [simulationRun] = await db.insert(simulationRuns).values({
-        negotiationId: testNegotiationId,
-        runNumber: 1,
-        techniqueId: testTechniqueId,
-        tacticId: testTacticId
-      }).returning();
+    it("persists BDI state via round_states", async () => {
+      const [state] = await db
+        .insert(roundStates)
+        .values({
+          roundId,
+          beliefs: { powerBalance: "even" },
+          intentions: "Probe payment terms",
+          internalAnalysis: "Opponent cautious",
+          batnaAssessment: "0.65",
+          walkAwayThreshold: "0.30",
+        })
+        .returning();
 
-      // Create dimension result
+      expect(state.roundId).toBe(roundId);
+      await expect(
+        db.insert(roundStates).values({
+          roundId,
+          beliefs: {},
+        }),
+      ).rejects.toThrow();
+    });
+
+    it("stores simulation outputs for dimension and product results", async () => {
+      const [simulation] = await db
+        .insert(simulations)
+        .values({
+          registrationId,
+          negotiationId,
+          name: "Baseline Simulation",
+          numRounds: 6,
+          settings: { seed: 42 },
+        })
+        .returning();
+
+      const [queue] = await db
+        .insert(simulationQueue)
+        .values({
+          negotiationId,
+          simulationId: simulation.id,
+          totalSimulations: 1,
+        })
+        .returning();
+
+      const [run] = await db
+        .insert(simulationRuns)
+        .values({
+          negotiationId,
+          simulationId: simulation.id,
+          queueId: queue.id,
+          status: "completed",
+          runNumber: 1,
+          totalRounds: 4,
+          dealValue: "125000.00",
+          otherDimensions: {},
+        })
+        .returning();
+
       await db.insert(dimensionResults).values({
-        simulationRunId: simulationRun.id,
-        dimensionName: 'price',
-        finalValue: '50.00',
-        targetValue: '50.00',
-        achievedTarget: true,
-        priorityScore: 1
+        simulationRunId: run.id,
+        dimensionName: "Price per unit",
+        finalValue: "1.20",
+        targetValue: "1.25",
+        achievedTarget: false,
+        priorityScore: 1,
       });
 
-      // Verify result exists
-      let results = await db.select()
-        .from(dimensionResults)
-        .where(eq(dimensionResults.simulationRunId, simulationRun.id));
+      await db.insert(productResults).values({
+        simulationRunId: run.id,
+        productId,
+        productName: "Chocolate Bar 50g",
+        targetPrice: "1.30",
+        minMaxPrice: "0.90",
+        estimatedVolume: 120000,
+        agreedPrice: "1.20",
+        subtotal: "144000.00",
+        targetSubtotal: "156000.00",
+      });
+      debugLog("schema-test:product-results:inserted", { runId: run.id, productId });
+
+      const results = await db
+        .select()
+        .from(productResults)
+        .where(eq(productResults.simulationRunId, run.id));
+      debugLog("schema-test:product-results:fetched", { runId: run.id, count: results.length });
+
       expect(results).toHaveLength(1);
-
-      // Delete simulation run
-      await db.delete(simulationRuns).where(eq(simulationRuns.id, simulationRun.id));
-
-      // Verify results are cascaded deleted
-      results = await db.select()
-        .from(dimensionResults)
-        .where(eq(dimensionResults.simulationRunId, simulationRun.id));
-      expect(results).toHaveLength(0);
+      expect(results[0].agreedPrice).toBe("1.20");
     });
-  });
+
+    it("records offers and events per round", async () => {
+      const [policy] = await db.insert(policies).values({ name: "Default", kind: "llm" }).returning();
+      const [agent] = await db
+        .insert(agents)
+        .values({
+          registrationId,
+          role: "buyer",
+          agentKind: "llm",
+          policyId: policy.id,
+          modelName: "gpt-4o-mini",
+          tools: [],
+        })
+        .returning();
+
+      const [offer] = await db
+        .insert(offers)
+        .values({
+          roundId,
+          side: "buyer",
+          agentId: agent.id,
+          price: "1.15",
+          quantity: "100000",
+          currencyCode: "EUR",
+          unit: "unit",
+          terms: { payment: "Net 45" },
+        })
+        .returning();
+
+      await db.insert(events).values({
+        roundId,
+        eventKind: "message",
+        role: "assistant",
+        agentId: agent.id,
+        name: "counter_offer",
+        parameters: { offerId: offer.id },
+        observations: { sentiment: "neutral" },
+      });
+
+      await db.insert(agentMetrics).values({
+        agentId: agent.id,
+        metricName: "latency_ms",
+        metricValue: "1200",
+        details: { run: "baseline" },
+      });
+
+      const [offerRow] = await db.select().from(offers).where(eq(offers.id, offer.id));
+      debugLog("schema-test:offers:fetched", { offerId: offer.id, roundId });
+      expect(offerRow?.terms).toMatchObject({ payment: "Net 45" });
+    });
   });
 }

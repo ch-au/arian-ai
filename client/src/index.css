@@ -3,74 +3,98 @@
 @tailwind utilities;
 
 :root {
-  --background: hsl(0, 0%, 100%);
-  --foreground: hsl(20, 14.3%, 4.1%);
-  --muted: hsl(60, 4.8%, 95.9%);
-  --muted-foreground: hsl(25, 5.3%, 44.7%);
-  --popover: hsl(0, 0%, 100%);
-  --popover-foreground: hsl(20, 14.3%, 4.1%);
-  --card: hsl(0, 0%, 100%);
-  --card-foreground: hsl(20, 14.3%, 4.1%);
-  --border: hsl(20, 5.9%, 90%);
-  --input: hsl(20, 5.9%, 90%);
-  --primary: hsl(207, 90%, 54%);
-  --primary-foreground: hsl(211, 100%, 99%);
-  --secondary: hsl(60, 4.8%, 95.9%);
-  --secondary-foreground: hsl(24, 9.8%, 10%);
-  --accent: hsl(60, 4.8%, 95.9%);
-  --accent-foreground: hsl(24, 9.8%, 10%);
-  --destructive: hsl(0, 84.2%, 60.2%);
-  --destructive-foreground: hsl(60, 9.1%, 97.8%);
-  --ring: hsl(20, 14.3%, 4.1%);
+  /* Base - Slate-50 / Slate-950 for dark mode concept, but keeping light mode primary */
+  --background: 210 40% 98%; /* Slate-50 */
+  --foreground: 222 47% 11%; /* Slate-950 */
+
+  /* Muted - Slate-100 */
+  --muted: 210 40% 96.1%;
+  --muted-foreground: 215.4 16.3% 46.9%; /* Slate-500 */
+
+  /* Popover/Card - White */
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 11%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+
+  /* Borders - Enhanced for better visibility */
+  --border: 214.3 31.8% 88%; /* Darker than before */
+  --border-strong: 217.2 32.6% 80%; /* New: Strong borders */
+  --input: 214.3 31.8% 88%;
+
+  /* Primary - Navy (#102C5D) */
+  --primary: 218 71% 21%;
+  --primary-foreground: 210 40% 98%;
+
+  /* Secondary - Slate-100 */
+  --secondary: 210 40% 96.1%;
+  --secondary-foreground: 222 47% 11%;
+
+  /* Accent - Slate-100 (used for hovers etc) */
+  --accent: 210 40% 96.1%;
+  --accent-foreground: 222 47% 11%;
+
+  /* Destructive - Red (#DC372C) */
+  --destructive: 4 67% 52%;
+  --destructive-foreground: 210 40% 98%;
+
+  /* Warning - Mustard (#EBD533) */
+  --warning: 53 78% 56%;
+  --warning-foreground: 222 47% 11%;
+
+  /* Success - keeping existing or adjusting slightly */
+  --success: 142 76% 36%;
+  --success-foreground: 355 7% 97%;
+
+  --ring: 218 71% 21%; /* Match Primary */
   --radius: 0.5rem;
-  --success: hsl(142, 76%, 36%);
-  --success-foreground: hsl(355, 7%, 97%);
-  --warning: hsl(32, 95%, 44%);
-  --warning-foreground: hsl(355, 7%, 97%);
-  --chart-1: hsl(207, 90%, 54%);
-  --chart-2: hsl(142, 76%, 36%);
-  --chart-3: hsl(32, 95%, 44%);
-  --chart-4: hsl(280, 65%, 60%);
-  --chart-5: hsl(340, 75%, 55%);
+
+  /* Charts - updated to match theme */
+  --chart-1: 218 71% 21%; /* Navy */
+  --chart-2: 4 67% 52%;   /* Red */
+  --chart-3: 53 78% 56%;  /* Mustard */
+  --chart-4: 215 25% 27%; /* Slate-800 */
+  --chart-5: 215 16% 47%; /* Slate-500 */
 }
 
 .dark {
-  --background: hsl(240, 10%, 3.9%);
-  --foreground: hsl(0, 0%, 98%);
-  --muted: hsl(240, 3.7%, 15.9%);
-  --muted-foreground: hsl(240, 5%, 64.9%);
-  --popover: hsl(240, 10%, 3.9%);
-  --popover-foreground: hsl(0, 0%, 98%);
-  --card: hsl(240, 10%, 3.9%);
-  --card-foreground: hsl(0, 0%, 98%);
-  --border: hsl(240, 3.7%, 15.9%);
-  --input: hsl(240, 3.7%, 15.9%);
-  --primary: hsl(207, 90%, 54%);
-  --primary-foreground: hsl(211, 100%, 99%);
-  --secondary: hsl(240, 3.7%, 15.9%);
-  --secondary-foreground: hsl(0, 0%, 98%);
-  --accent: hsl(240, 3.7%, 15.9%);
-  --accent-foreground: hsl(0, 0%, 98%);
-  --destructive: hsl(0, 62.8%, 30.6%);
-  --destructive-foreground: hsl(0, 0%, 98%);
-  --ring: hsl(240, 4.9%, 83.9%);
-  --radius: 0.5rem;
-  --success: hsl(142, 76%, 36%);
-  --success-foreground: hsl(355, 7%, 97%);
-  --warning: hsl(32, 95%, 44%);
-  --warning-foreground: hsl(355, 7%, 97%);
-  --chart-1: hsl(207, 90%, 54%);
-  --chart-2: hsl(142, 76%, 36%);
-  --chart-3: hsl(32, 95%, 44%);
-  --chart-4: hsl(280, 65%, 60%);
-  --chart-5: hsl(340, 75%, 55%);
+  --background: 222 47% 11%;
+  --foreground: 210 40% 98%;
+
+  --muted: 217.2 32.6% 17.5%;
+  --muted-foreground: 215 20.2% 65.1%;
+
+  --popover: 222 47% 11%;
+  --popover-foreground: 210 40% 98%;
+
+  --card: 222 47% 11%;
+  --card-foreground: 210 40% 98%;
+
+  --border: 217.2 32.6% 17.5%;
+  --input: 217.2 32.6% 17.5%;
+
+  --primary: 210 40% 98%;
+  --primary-foreground: 222 47% 11%;
+
+  --secondary: 217.2 32.6% 17.5%;
+  --secondary-foreground: 210 40% 98%;
+
+  --accent: 217.2 32.6% 17.5%;
+  --accent-foreground: 210 40% 98%;
+
+  --destructive: 4 67% 52%;
+  --destructive-foreground: 210 40% 98%;
+
+  --warning: 53 78% 56%;
+  --warning-foreground: 222 47% 11%;
+
+  --ring: 212.7 26.8% 83.9%;
 }
 
 @layer base {
   * {
     @apply border-border;
   }
-
   body {
     @apply font-sans antialiased bg-background text-foreground;
   }
@@ -80,13 +104,58 @@
   .animate-pulse-dot {
     animation: pulse-dot 2s infinite;
   }
-
   @keyframes pulse-dot {
-    0%, 100% {
-      opacity: 1;
-    }
-    50% {
-      opacity: 0.5;
-    }
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  /* Enhanced border utilities */
+  .border-strong {
+    border-color: hsl(var(--border-strong));
+  }
+
+  /* Enhanced shadow utilities for better depth */
+  .shadow-elevated {
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  }
+  
+  .shadow-card {
+    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  }
+}
+
+/* Print Styles - Ensure only content is printed */
+@media print {
+  /* Hide sidebar, header, buttons, and other non-content elements */
+  aside, header, nav, .sidebar, .header, .no-print {
+    display: none !important;
+  }
+
+  /* Ensure container takes full width and has no margin/padding */
+  .container {
+    max-width: none !important;
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Reset layout constraints that prevent full page printing */
+  /* This overrides the h-screen and overflow-hidden/auto on AppLayout */
+  html, body, #root, main, div[class*="h-screen"], div[class*="overflow-"] {
+    height: auto !important;
+    overflow: visible !important;
+    display: block !important;
+  }
+
+  /* Reset background and text colors for print */
+  body {
+    background: white !important;
+    color: black !important;
+  }
+
+  /* Ensure card content doesn't have shadows or borders in print */
+  .card, .shadow-card, .shadow-elevated {
+    box-shadow: none !important;
+    border: none !important;
   }
 }

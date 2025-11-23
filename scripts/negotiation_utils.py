@@ -192,15 +192,21 @@ def _extract_numeric(value: Any) -> Optional[float]:
     return None
 
 
-def normalize_model_output(response: Dict[str, Any], dimensions: List[Dict[str, Any]]) -> Dict[str, Any]:
+def normalize_model_output(response: Dict[str, Any], dimensions: List[Dict[str, Any]], products: List[Dict[str, Any]] = None) -> Dict[str, Any]:
     """
     Normalize and validate the model output to reduce 'failed' runs:
     - Ensure action is one of the allowed set (default 'continue')
     - Coerce offer.dimension_values to numeric values, extracting numbers from strings like "Net 30"
     - Clamp values to dimension min/max when available
     - Clamp confidence/batna_assessment/walk_away_threshold to [0,1]
+    - Fix product key mismatches by mapping AI-generated keys to correct product keys
     Returns a mutated copy of the response dict.
     """
+    import logging
+    import unicodedata
+    import re
+
+    logger = logging.getLogger(__name__)
     allowed_actions = {"continue", "accept", "terminate", "walk_away", "pause"}
     resp = response or {}
 
@@ -222,14 +228,70 @@ def normalize_model_output(response: Dict[str, Any], dimensions: List[Dict[str, 
             min_v, max_v, unit = None, None, ""
         dim_index[name] = {"min": min_v, "max": max_v, "unit": unit}
 
+    # Build product key mapping for fixing AI-generated keys
+    product_key_map = {}
+    if products:
+        for product in products:
+            # Extract product name and generate correct key
+            attrs = product.get('attrs', {}) if isinstance(product.get('attrs'), dict) else {}
+            name = (
+                product.get('name')
+                or attrs.get('name')
+                or product.get('produktName')
+            )
+            if name:
+                correct_key = _slugify_product_key(name)
+                # Also store the product_key if explicitly set
+                explicit_key = product.get('product_key') or attrs.get('product_key')
+                if explicit_key:
+                    correct_key = explicit_key
+
+                # Create mapping from various possible AI-generated variations to correct key
+                product_key_map[correct_key] = correct_key  # Identity mapping
+                # Add common variations without underscores
+                product_key_map[correct_key.replace('_', '')] = correct_key
+                # Add variations with different casing
+                product_key_map[correct_key.lower()] = correct_key
+                product_key_map[name.lower().replace(' ', '')] = correct_key
+
+                logger.debug(f"Product key mapping: {name} -> {correct_key}")
+
     # Normalize each provided dimension
     normalized_dims: Dict[str, Any] = {}
     for key, raw in dim_vals.items():
+        # CRITICAL FIX: Map AI-generated product keys to correct keys
+        corrected_key = key
+        if products and product_key_map:
+            # Try exact match first (will match correct keys to themselves)
+            if key in product_key_map:
+                corrected_key = product_key_map[key]
+                # Only log if we actually corrected something (key changed)
+                if corrected_key != key:
+                    logger.debug(f"[PRODUCT_KEY_FIX] Exact match correction '{key}' -> '{corrected_key}'")
+            else:
+                # Key not in map - try fuzzy matching for variations
+                normalized_key = _slugify_product_key(key)
+
+                # Check if normalized version matches any correct key
+                if normalized_key in product_key_map:
+                    corrected_key = product_key_map[normalized_key]
+                    # Only log if we actually corrected something
+                    if corrected_key != key:
+                        logger.debug(f"[PRODUCT_KEY_FIX] Fuzzy matched '{key}' -> '{corrected_key}'")
+                else:
+                    # Try substring matching for partial matches (e.g., "milkanu" -> "milka_nuss")
+                    for correct_key in set(product_key_map.values()):
+                        # Check if keys are similar enough (common prefix or substring)
+                        if _is_similar_product_key(normalized_key, correct_key):
+                            corrected_key = correct_key
+                            logger.debug(f"[PRODUCT_KEY_FIX] Similar match '{key}' -> '{corrected_key}'")
+                            break
+
         val = _extract_numeric(raw)
-        meta = dim_index.get(key)
+        meta = dim_index.get(corrected_key)
         if val is None and meta:
             # Fall back to target if present or midpoint of range
-            target = d.get("targetValue") if (d := next((x for x in dimensions if x.get("name") == key), None)) else None
+            target = d.get("targetValue") if (d := next((x for x in dimensions if x.get("name") == corrected_key), None)) else None
             val = _safe_float_convert(target) if target is not None else None
 
         if val is None:
@@ -249,7 +311,8 @@ def normalize_model_output(response: Dict[str, Any], dimensions: List[Dict[str, 
             if unit_lower in ['usd', 'eur', 'gbp', 'currency', '$', '€', '£', 'days', 'months', 'years', 'weeks'] or '%' in unit_lower:
                 val = int(round(val))
 
-        normalized_dims[key] = val
+        # Use corrected key in output
+        normalized_dims[corrected_key] = val
 
     # Replace with normalized map
     offer["dimension_values"] = normalized_dims
@@ -287,6 +350,93 @@ def _safe_float_convert(value: Any) -> float:
         return float(value) if value is not None else 0.0
     except (ValueError, TypeError):
         return 0.0
+
+
+def _slugify_product_key(value: str) -> str:
+    """
+    Convert a product name to a normalized key for dimension matching.
+    Matches the logic in run_production_negotiation.py._slugify_product_key.
+
+    Example:
+        "Milka Nuss 90g" -> "milka_nuss_90g"
+    """
+    import re
+    import unicodedata
+
+    normalized = value.lower()
+    # Manually handle German umlauts and sharp s before normalization
+    replacements = {
+        'ä': 'ae', 'ö': 'oe', 'ü': 'ue', 'ß': 'ss'
+    }
+    for char, repl in replacements.items():
+        normalized = normalized.replace(char, repl)
+
+    normalized = unicodedata.normalize("NFD", normalized)
+    normalized = "".join(ch for ch in normalized if unicodedata.category(ch) != "Mn")
+    normalized = re.sub(r"[^a-z0-9\s_-]", "", normalized)
+    normalized = re.sub(r"[\s_-]+", "_", normalized)
+    return normalized.strip("_")
+
+
+def _is_similar_product_key(key1: str, key2: str, min_overlap: int = 6) -> bool:
+    """
+    Check if two product keys are similar enough to be considered a match.
+    Uses common prefix and substring matching.
+
+    Args:
+        key1: First product key (AI-generated)
+        key2: Second product key (correct key from database)
+        min_overlap: Minimum number of characters that must match
+
+    Returns:
+        True if keys are similar enough to match
+
+    Examples:
+        >>> _is_similar_product_key("milkanu", "milka_nuss")
+        True  # Common prefix "milka"
+        >>> _is_similar_product_key("milkacrunch90g", "milka_crunch_90g")
+        True  # Substring match after removing underscores
+    """
+    if not key1 or not key2:
+        return False
+
+    # Normalize both keys (remove underscores for comparison)
+    norm1 = key1.replace('_', '').lower()
+    norm2 = key2.replace('_', '').lower()
+
+    # Exact match after normalization
+    if norm1 == norm2:
+        return True
+
+    # Check for common prefix (at least min_overlap chars)
+    if len(norm1) >= min_overlap and len(norm2) >= min_overlap:
+        if norm1[:min_overlap] == norm2[:min_overlap]:
+            return True
+
+    # Check if one is a substantial substring of the other
+    if len(norm1) >= min_overlap and len(norm2) >= min_overlap:
+        if norm1 in norm2 or norm2 in norm1:
+            return True
+
+    # Check for Levenshtein-like similarity (edit distance)
+    # For short keys, allow small differences
+    if len(norm1) > 0 and len(norm2) > 0:
+        max_len = max(len(norm1), len(norm2))
+        min_len = min(len(norm1), len(norm2))
+
+        # If lengths are very different, not a match
+        if max_len - min_len > 3:
+            return False
+
+        # Count matching characters in sequence
+        matches = sum(1 for a, b in zip(norm1, norm2) if a == b)
+        similarity_ratio = matches / max_len
+
+        # Require at least 70% character match
+        if similarity_ratio >= 0.7:
+            return True
+
+    return False
 
 
 def _format_example_value(value: float, unit: str) -> str:

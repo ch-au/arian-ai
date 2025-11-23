@@ -4,7 +4,7 @@
  * Max 60 Sekunden Aufnahme
  */
 
-import { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Mic, MicOff, Loader, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
@@ -192,9 +192,9 @@ export function VoiceInput({
 /**
  * Info Text Component for Voice Input
  */
-export function VoiceInputInfo() {
+export function VoiceInputInfo({ className = "" }: { className?: string } = {}) {
   return (
-    <div className="flex items-start gap-2 text-sm text-muted-foreground mt-2">
+    <div className={`flex items-start gap-2 text-sm text-muted-foreground mt-2 ${className}`}>
       <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
       <p>
         Klicken Sie auf das Mikrofon-Symbol und sprechen Sie Ihren Text.

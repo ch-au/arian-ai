@@ -8,7 +8,6 @@ import {
   negotiationTactics, 
   personalityTypes,
   simulationRuns,
-  negotiationRounds,
   dimensionResults,
   negotiations,
   type InsertInfluencingTechnique,
@@ -53,7 +52,6 @@ export async function importInfluencingTechniques(): Promise<void> {
     // Clear existing data in dependency order (cascade deletes)
     log.info('🧹 Clearing dependent data...');
     await db.delete(dimensionResults);
-    await db.delete(negotiationRounds); 
     await db.delete(simulationRuns);
     
     log.info('🧹 Clearing techniques...');
@@ -269,7 +267,7 @@ export async function validateImportedData(): Promise<boolean> {
     return isValid;
     
   } catch (error) {
-    log.error('❌ Data validation failed:', error);
+    log.error({ err: error }, '❌ Data validation failed');
     return false;
   }
 }
@@ -280,21 +278,21 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   
   switch (command) {
     case 'techniques':
-      importInfluencingTechniques().catch(log.error);
+      importInfluencingTechniques().catch((err) => log.error({ err }, 'Failed to import techniques'));
       break;
     case 'tactics':
-      importNegotiationTactics().catch(log.error);
+      importNegotiationTactics().catch((err) => log.error({ err }, 'Failed to import tactics'));
       break;
     case 'personalities':
-      importPersonalityTypes().catch(log.error);
+      importPersonalityTypes().catch((err) => log.error({ err }, 'Failed to import personalities'));
       break;
     case 'all':
       importAllCSVData()
         .then(() => validateImportedData())
-        .catch(log.error);
+        .catch((err) => log.error({ err }, 'Failed to import all datasets'));
       break;
     case 'validate':
-      validateImportedData().catch(log.error);
+      validateImportedData().catch((err) => log.error({ err }, 'Validation failed'));
       break;
     default:
       log.info('Usage: tsx server/csv-import.ts [techniques|tactics|personalities|all|validate]');

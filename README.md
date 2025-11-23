@@ -2,31 +2,46 @@
 
 > Advanced AI-powered negotiation simulation platform with configurable personalities, tactics, and real-time analytics
 
+**Status:** ✅ Production Ready | **Version:** 1.0.0 | **Last Updated:** November 2025
+
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-20232A?style=flat&logo=react&logoColor=61DAFB)](https://reactjs.org/)
-[![LiteLLM](https://img.shields.io/badge/LiteLLM-Multi--Provider-FF6B6B?style=flat)](https://docs.litellm.ai/)
-[![OpenAI](https://img.shields.io/badge/OpenAI-412991?style=flat&logo=openai&logoColor=white)](https://openai.com/)
+[![OpenAI Agents](https://img.shields.io/badge/OpenAI_Agents-412991?style=flat&logo=openai&logoColor=white)](https://platform.openai.com/docs/agents)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-316192?style=flat&logo=postgresql&logoColor=white)](https://postgresql.org/)
 
 ## Features
 
-- **AI-Powered Negotiations** - Autonomous agent negotiations using LiteLLM (OpenAI, Anthropic, Google Gemini)
-- **Configurable Personalities** - Big Five personality traits for realistic behavior
-- **Strategic Techniques** - 10+ psychological influence techniques, 44+ tactical approaches
-- **Combinatorial Testing** - Automated N×M technique-tactic combination testing
-- **Real-time Analytics** - Live monitoring with comprehensive performance metrics
-- **AI Evaluation** - Automatic post-simulation analysis with effectiveness scoring
-- **Multi-Product Support** - Handle complex negotiations with multiple products
-- **Full Observability** - Langfuse integration for AI tracing and cost tracking
+### Core Capabilities
+- **AI-Powered Negotiations** - Autonomous multi-round agent negotiations using OpenAI Agents SDK
+- **Configurable Personalities** - Interpersonal Circumplex (dominance/affiliation) for realistic counterpart behavior
+- **Strategic Techniques** - 10+ psychological influence techniques based on Cialdini principles
+- **Tactical Approaches** - 44+ negotiation tactics from academic research
+- **Combinatorial Testing** - Automated N×M×P×D matrix testing (techniques × tactics × personalities × ZOPA distances)
+- **Multi-Product Support** - Complex negotiations with multiple products, dimensions, and constraints
+
+### Analysis & Insights
+- **Real-time Monitoring** - Live WebSocket updates with queue status and progress tracking
+- **AI Evaluation** - Automatic LLM powered effectiveness scoring and tactical analysis
+- **Interactive Analysis** - Performance matrix heatmaps with drill-down to individual simulations
+- **Price Evolution Charts** - Visualize negotiation convergence patterns per product
+- **Conversation Playback** - Full negotiation transcripts with role indicators and offers
+- **Cost Tracking** - Complete API cost visibility via Langfuse integration
+
+### Security & Deployment
+- **JWT Authentication** - Self-hosted authentication with bcrypt password hashing
+- **User Isolation** - Complete data isolation via foreign keys and middleware
+- **Azure Ready** - CI/CD with GitHub Actions, health monitoring, hybrid Python+Node runtime
+- **Full Observability** - Langfuse integration for AI tracing and debugging
 
 ## Quick Start
 
 ### Prerequisites
 
-- Node.js 18+
-- PostgreSQL database (Neon serverless recommended)
-- Python 3.11+
-- AI Provider API keys (OpenAI, Anthropic, or Gemini)
+- **Node.js 18+** - JavaScript runtime
+- **Python 3.11+** - For AI negotiation microservice
+- **PostgreSQL** - Database (Neon serverless recommended)
+- **OpenAI API Key** - Required for AI agents (GPT-4o/GPT-4o-mini)
+- **Langfuse Account** - Optional but recommended for observability
 
 ### Installation
 
@@ -43,21 +58,25 @@ pip install -r scripts/requirements.txt
 
 ### Configuration
 
-Create `.env` file in root:
+Create `.env` file in root directory:
 
 ```env
 # Database (Required)
 DATABASE_URL="postgresql://user:pass@host.neon.tech/db?sslmode=require"
 
-# AI Providers (at least one required)
-OPENAI_API_KEY="sk-..."          # For OpenAI models
-ANTHROPIC_API_KEY="sk-ant-..."   # For Claude models (optional)
-GEMINI_API_KEY="..."             # For Google Gemini (optional)
+# Authentication (Required)
+JWT_SECRET="your-secret-key-here"  # Generate with: openssl rand -base64 32
 
-# Langfuse (Optional but recommended)
+# AI Provider (Required)
+OPENAI_API_KEY="sk-..."
+
+# Langfuse Observability (Optional but recommended)
 LANGFUSE_PUBLIC_KEY="pk-lf-..."
 LANGFUSE_SECRET_KEY="sk-lf-..."
 LANGFUSE_HOST="https://cloud.langfuse.com"
+
+# Environment
+NODE_ENV="development"
 ```
 
 ### Start Development
@@ -88,7 +107,7 @@ npm run dev        # Start development server
 - `scripts/run_production_negotiation.py` - AI negotiation service
 - `scripts/evaluate_simulation.py` - AI evaluation service
 
-For detailed architecture, see [AGENTS.md](AGENTS.md).
+For detailed architecture, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [HANDOVER_SUMMARY.md](HANDOVER_SUMMARY.md).
 
 ## Development
 
@@ -122,23 +141,28 @@ arian-ai/
 └── data/            # Reference CSV files
 ```
 
-For complete development guide, see [AGENTS.md](AGENTS.md).
+For complete development guide, see [HANDOVER_SUMMARY.md](HANDOVER_SUMMARY.md).
 
 ## Documentation
 
-### Getting Started
-- **[AGENTS.md](AGENTS.md)** - Complete development guide and technical reference
+### 📚 Getting Started
+- **[README.md](README.md)** (this file) - Quick start and overview
+- **[BENUTZERHANDBUCH.md](BENUTZERHANDBUCH.md)** - 🇩🇪 **Deutsches Benutzerhandbuch** (User Guide)
 - **[HANDOVER_SUMMARY.md](HANDOVER_SUMMARY.md)** - Developer onboarding guide
 - **[CHANGELOG.md](CHANGELOG.md)** - Version history and recent changes
 
-### Technical Documentation
-- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Platform architecture
-- **[docs/DATA_MODEL_SPECIFICATION.md](docs/DATA_MODEL_SPECIFICATION.md)** - Database schema
-- **[docs/TESTING_GUIDE.md](docs/TESTING_GUIDE.md)** - Testing strategy
-- **[docs/](docs/)** - All technical docs with navigation index
+### 🏗️ Architecture & Data Model
+- **[FINAL_SCHEMA_DOCUMENTATION.md](FINAL_SCHEMA_DOCUMENTATION.md)** - Complete database schema reference
+- **[DATA_FLOW_OVERVIEW.md](DATA_FLOW_OVERVIEW.md)** - End-to-end data flow documentation
+- **[docs/DATA_MODEL_SPECIFICATION.md](docs/DATA_MODEL_SPECIFICATION.md)** - In-depth schema specification
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - System architecture details
 
-### Deployment
+### 🚀 Deployment & Operations
 - **[AZURE_DEPLOYMENT.md](AZURE_DEPLOYMENT.md)** - Azure App Service deployment guide
+- **[docs/TESTING_GUIDE.md](docs/TESTING_GUIDE.md)** - Testing strategy and test suite
+
+### 📦 Legacy Documentation
+Historical analyses and migration docs are archived in [`docs/archive/`](docs/archive/).
 
 ## Testing
 
@@ -179,7 +203,7 @@ For automated Azure deployment with GitHub Actions, see **[AZURE_DEPLOYMENT.md](
 3. Update documentation if needed
 4. Create pull request
 
-For coding conventions and architecture patterns, see [AGENTS.md](AGENTS.md).
+For coding conventions and architecture patterns, see [HANDOVER_SUMMARY.md](HANDOVER_SUMMARY.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## License
 

@@ -1,980 +1,815 @@
 import { Router } from "express";
 import { z } from "zod";
-import { storage } from "../storage";
-import type { NegotiationEngine } from "../services/negotiation-engine";
+import { storage, type NegotiationDimensionConfig, type NegotiationScenarioConfig } from "../storage";
 import { createRequestLogger } from "../services/logger";
+import type { NegotiationEngine } from "../services/negotiation-engine";
+import { SimulationQueueService } from "../services/simulation-queue";
+import { type Negotiation, registrations, counterparts } from "@shared/schema";
+import { requireAuth } from "../middleware/auth";
+import { db } from "../db";
+import { eq } from "drizzle-orm";
+
+// Helper to fetch enriched metadata
+async function getEnrichedMetadata(negotiationId: string, currentMetadata: any = {}) {
+  const negotiation = await storage.getNegotiation(negotiationId);
+  if (!negotiation) return currentMetadata;
+
+  const simulationStats = await SimulationQueueService.getSimulationStats(negotiationId);
+  
+  // Default names
+  let companyName = currentMetadata.company_name || "Ihr Unternehmen";
+  let opponentName = currentMetadata.opponent_name || "Verhandlungspartner";
+  
+  // Fetch Registration (Company Name)
+  if (negotiation.registrationId) {
+    const [registration] = await db
+      .select()
+      .from(registrations)
+      .where(eq(registrations.id, negotiation.registrationId));
+      
+    if (registration) {
+      companyName = registration.company || registration.organization || companyName;
+    }
+  }
+  
+  // Fetch Counterpart (Opponent Name)
+  if (negotiation.counterpartId) {
+    const [counterpart] = await db
+      .select()
+      .from(counterparts)
+      .where(eq(counterparts.id, negotiation.counterpartId));
+      
+    if (counterpart) {
+      opponentName = counterpart.name || opponentName;
+    }
+  }
+  
+  // Fallback to scenario if relational data is missing
+  if ((companyName === "Ihr Unternehmen" || opponentName === "Verhandlungspartner") && negotiation.scenario) {
+    const scenario = negotiation.scenario as any;
+    if (companyName === "Ihr Unternehmen" && scenario.companyProfile) {
+      companyName = scenario.companyProfile.company || scenario.companyProfile.organization || companyName;
+    }
+    if (opponentName === "Verhandlungspartner" && scenario.counterpartProfile) {
+      opponentName = scenario.counterpartProfile.name || opponentName;
+    }
+  }
+
+  return {
+    ...currentMetadata,
+    negotiation_id: negotiationId,
+    negotiation_title: negotiation.title,
+    company_name: companyName,
+    opponent_name: opponentName,
+    total_runs: simulationStats.totalRuns,
+    generated_at: currentMetadata.generated_at || negotiation.playbookGeneratedAt || new Date(),
+  };
+}
+
+const scenarioSchema: z.ZodType<NegotiationScenarioConfig> = z.object({
+  title: z.string().optional(),
+  userRole: z.enum(["buyer", "seller"]).optional(),
+  negotiationType: z.string().optional(),
+  relationshipType: z.string().optional(),
+  negotiationFrequency: z.string().optional(),
+  productMarketDescription: z.string().optional(),
+  additionalComments: z.string().optional(),
+  counterpartPersonality: z.string().optional(),
+  zopaDistance: z.string().optional(),
+  sonderinteressen: z.string().optional(),
+  maxRounds: z.number().int().positive().optional(),
+  selectedTechniques: z.array(z.string()).optional(),
+  selectedTactics: z.array(z.string()).optional(),
+  userZopa: z.record(z.any()).optional(),
+  counterpartDistance: z.record(z.number()).optional(),
+  metadata: z.record(z.any()).optional(),
+  market: z
+    .object({
+      name: z.string().optional(),
+      region: z.string().optional(),
+      countryCode: z.string().optional(),
+      currencyCode: z.string().optional(),
+      intelligence: z.string().optional(),
+      notes: z.string().optional(),
+    })
+    .optional(),
+  companyProfile: z
+    .object({
+      organization: z.string().optional(),
+      company: z.string().optional(),
+      country: z.string().optional(),
+      negotiationType: z.string().optional(),
+      negotiationFrequency: z.string().optional(),
+      goals: z.record(z.any()).optional(),
+    })
+    .optional(),
+  counterpartProfile: z
+    .object({
+      name: z.string().optional(),
+      kind: z.string().optional(),
+      powerBalance: z.string().optional(),
+      style: z.string().optional(),
+      notes: z.string().optional(),
+    })
+    .optional(),
+  products: z
+    .array(
+      z.object({
+        id: z.string().optional(),
+        name: z.string(),
+        brand: z.string().optional(),
+        category: z.string().optional(),
+        targetPrice: z.number().optional(),
+        minPrice: z.number().optional(),
+        maxPrice: z.number().optional(),
+        estimatedVolume: z.number().optional(),
+        attrs: z.record(z.any()).optional(),
+      }),
+    )
+    .optional(),
+  dimensions: z
+    .array(
+      z.object({
+        id: z.string().uuid().optional(),
+        name: z.string(),
+        minValue: z.number(),
+        maxValue: z.number(),
+        targetValue: z.number(),
+        priority: z.number().int().min(1).max(3),
+        unit: z.string().optional().nullable(),
+      }),
+    )
+    .optional(),
+});
+
+const createNegotiationSchema = z.object({
+  registrationId: z.string().uuid(),
+  marketId: z.string().uuid().optional(),
+  counterpartId: z.string().uuid().optional(),
+  title: z.string().min(1),
+  description: z.string().optional(),
+  scenario: scenarioSchema,
+  productIds: z.array(z.string().uuid()).optional(),
+});
+
+const updateNegotiationSchema = z.object({
+  title: z.string().min(1).optional(),
+  description: z.string().optional(),
+  status: z.enum(["planned", "running", "completed", "aborted"]).optional(),
+  scenario: scenarioSchema.optional(),
+});
+
+const dimensionsSchema = z.object({
+  dimensions: z.array(
+    z.object({
+      id: z.string().uuid().optional(),
+      name: z.string(),
+      minValue: z.number(),
+      maxValue: z.number(),
+      targetValue: z.number(),
+      priority: z.number().int().min(1).max(3),
+      unit: z.string().optional().nullable(),
+    }),
+  ),
+});
 
 export function createNegotiationRouter(negotiationEngine: NegotiationEngine): Router {
   const router = Router();
   const log = createRequestLogger("routes:negotiations");
 
-  router.get("/", async (_req, res) => {
+  router.get("/", requireAuth, async (req, res) => {
     try {
-      const negotiations = await storage.getAllNegotiations();
-
-      const negotiationsWithStats = await Promise.all(
-        negotiations.map(async (negotiation) => {
-          try {
-            const { SimulationQueueService } = await import("../services/simulation-queue");
-            const simulationResults = await SimulationQueueService.getSimulationResultsByNegotiation(
-              negotiation.id,
-            );
-
-            const totalRuns = simulationResults.length;
-            const completedRuns = simulationResults.filter((r) => r.status === "completed").length;
-            const runningRuns = simulationResults.filter((r) => r.status === "running").length;
-            const failedRuns = simulationResults.filter((r) => r.status === "failed").length;
-            const pendingRuns = simulationResults.filter((r) => r.status === "pending").length;
-
-            // For configured negotiations without queue, calculate planned simulations
-            let plannedSimulations = 0;
-            if (totalRuns === 0 && (negotiation.status === "configured" || negotiation.status === "pending")) {
-              const techniques = negotiation.selectedTechniques?.length || 0;
-              const tactics = negotiation.selectedTactics?.length || 0;
-
-              // Calculate based on configuration
-              const personalityMultiplier = negotiation.counterpartPersonality === "all-personalities" ? 5 : 1;
-              const distanceMultiplier = negotiation.zopaDistance === "all-distances" ? 3 : 1;
-
-              plannedSimulations = techniques * tactics * personalityMultiplier * distanceMultiplier;
-            }
-
-            return {
-              ...negotiation,
-              simulationStats: {
-                totalRuns: totalRuns > 0 ? totalRuns : plannedSimulations,
-                completedRuns,
-                runningRuns,
-                failedRuns,
-                pendingRuns,
-                successRate: totalRuns > 0 ? Math.round((completedRuns / totalRuns) * 100) : 0,
-                isPlanned: totalRuns === 0 && plannedSimulations > 0, // Flag to indicate planned vs actual
-              },
-            };
-          } catch (error) {
-            log.warn({ err: error, negotiationId: negotiation.id }, "Failed to load simulation stats");
-            return {
-              ...negotiation,
-              simulationStats: {
-                totalRuns: 0,
-                completedRuns: 0,
-                runningRuns: 0,
-                failedRuns: 0,
-                pendingRuns: 0,
-                successRate: 0,
-              },
-            };
-          }
-        }),
+      const userId = (req as any).user.id;
+      const records = await storage.getAllNegotiations(userId);
+      const enriched = await Promise.all(
+        records.map(async (negotiation) => ({
+          ...negotiation,
+          simulationStats: await SimulationQueueService.getSimulationStats(negotiation.id),
+        })),
       );
-
-      res.json(negotiationsWithStats);
+      res.json(enriched);
     } catch (error) {
-      log.error({ err: error }, "Failed to get negotiations");
-      res.status(500).json({ error: "Failed to get negotiations" });
+      log.error({ err: error }, "Failed to list negotiations");
+      res.status(500).json({ error: "Failed to load negotiations" });
     }
   });
 
-  router.get("/active", async (_req, res) => {
-    try {
-      const negotiations = await storage.getActiveNegotiations();
-      res.json(negotiations);
-    } catch (error) {
-      log.error({ err: error }, "Failed to get active negotiations");
-      res.status(500).json({ error: "Failed to get active negotiations" });
-    }
-  });
-
-  router.get("/recent", async (req, res) => {
-    try {
-      const limit = parseInt(req.query.limit as string, 10) || 10;
-      const negotiations = await storage.getRecentNegotiations(limit);
-      res.json(negotiations);
-    } catch (error) {
-      log.error({ err: error }, "Failed to get recent negotiations");
-      res.status(500).json({ error: "Failed to get recent negotiations" });
-    }
-  });
-
-  router.get("/:id", async (req, res) => {
+  router.get("/:id", requireAuth, async (req, res) => {
     try {
       const negotiation = await storage.getNegotiation(req.params.id);
       if (!negotiation) {
         return res.status(404).json({ error: "Negotiation not found" });
       }
 
-      const [dimensions, allTechniques, allTactics] = await Promise.all([
-        storage.getNegotiationDimensions(req.params.id).catch(() => []),
-        storage.getAllInfluencingTechniques().catch(() => []),
-        storage.getAllNegotiationTactics().catch(() => []),
-      ]);
+      if (negotiation.userId && negotiation.userId !== (req as any).user.id) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
 
-      const formattedDimensions = dimensions.map((dim) => ({
-        id: dim.id,
-        name: dim.name,
-        minValue: parseFloat(dim.minValue),
-        maxValue: parseFloat(dim.maxValue),
-        targetValue: parseFloat(dim.targetValue),
-        priority: dim.priority,
-        unit: dim.unit,
-      }));
-
-      const selectedTechniques = (negotiation.selectedTechniques || []).filter((id) =>
-        allTechniques.some((tech) => tech.id === id),
-      );
-
-      const selectedTactics = (negotiation.selectedTactics || []).filter((id) =>
-        allTactics.some((tactic) => tactic.id === id),
-      );
-
-      const response = {
-        ...negotiation,
-        selectedTechniques,
-        selectedTactics,
-        dimensions: formattedDimensions,
-      };
-
-      res.json(response);
-    } catch (error) {
-      log.error({ err: error, negotiationId: req.params.id }, "Failed to get negotiation");
-      res.status(500).json({ error: "Failed to get negotiation" });
-    }
-  });
-
-  router.get("/:id/dimensions", async (req, res) => {
-    try {
-      const dimensions = await storage.getNegotiationDimensions(req.params.id);
+      const products = await storage.getProductsByNegotiation(negotiation.id);
+      const simulationStats = await SimulationQueueService.getSimulationStats(negotiation.id);
       res.json({
-        negotiationId: req.params.id,
-        dimensionsFound: dimensions.length,
-        dimensions,
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to get negotiation dimensions";
-      res.status(500).json({ error: message });
-    }
-  });
-
-  router.get("/:id/rounds", async (req, res) => {
-    try {
-      const rounds = await storage.getNegotiationRounds(req.params.id);
-      res.json(rounds);
-    } catch (error) {
-      log.error({ err: error, negotiationId: req.params.id }, "Failed to get negotiation rounds");
-      res.status(500).json({ error: "Failed to get negotiation rounds" });
-    }
-  });
-
-  router.post("/enhanced", async (req, res) => {
-    try {
-      const enhancedNegotiationSchema = z.object({
-        title: z.string().min(1, "Title is required"),
-        userRole: z.enum(["buyer", "seller"]),
-        negotiationType: z.enum(["one-shot", "multi-year"]),
-        relationshipType: z.enum(["first", "long-standing"]),
-        productMarketDescription: z.string().optional(),
-        additionalComments: z.string().optional(),
-        selectedTechniques: z.array(z.string()),
-        selectedTactics: z.array(z.string()),
-        counterpartPersonality: z.string().optional(),
-        zopaDistance: z.string().optional(),
-        maxRounds: z.number().int().min(1).max(100).optional().default(10),
-        buyerAgentId: z.string().uuid().optional(),
-        sellerAgentId: z.string().uuid().optional(),
-        dimensions: z.array(
-          z.object({
-            id: z.string(),
-            name: z.string().min(1, "Dimension name is required"),
-            minValue: z.number(),
-            maxValue: z.number(),
-            targetValue: z.number(),
-            priority: z.number().int().min(1).max(3),
-            unit: z.string().optional(),
-          }),
-        ).min(1, "At least one dimension is required"),
-      });
-
-      const validatedData = enhancedNegotiationSchema.parse(req.body);
-
-      const agents = await storage.getAllAgents();
-      const contexts = await storage.getAllNegotiationContexts();
-
-      if (agents.length < 2) {
-        throw new Error("At least 2 agents required");
-      }
-      if (contexts.length === 0) {
-        throw new Error("At least 1 context required");
-      }
-
-      const [allTechniques, allTactics] = await Promise.all([
-        storage.getAllInfluencingTechniques(),
-        storage.getAllNegotiationTactics(),
-      ]);
-
-      const selectedTechniqueUUIDs = validatedData.selectedTechniques
-        .map((nameOrId) =>
-          allTechniques.find((tech) => tech.id === nameOrId || tech.name === nameOrId)?.id,
-        )
-        .filter((id): id is string => Boolean(id));
-
-      const selectedTacticUUIDs = validatedData.selectedTactics
-        .map((nameOrId) =>
-          allTactics.find((tactic) => tactic.id === nameOrId || tactic.name === nameOrId)?.id,
-        )
-        .filter((id): id is string => Boolean(id));
-
-      const negotiationData = {
-        title: validatedData.title,
-        negotiationType: validatedData.negotiationType,
-        relationshipType: validatedData.relationshipType,
-        contextId: contexts[0].id,
-        buyerAgentId: validatedData.buyerAgentId || (validatedData.userRole === "buyer" ? agents[0].id : agents[1].id),
-        sellerAgentId: validatedData.sellerAgentId || (validatedData.userRole === "buyer" ? agents[1].id : agents[0].id),
-        userRole: validatedData.userRole,
-        productMarketDescription: validatedData.productMarketDescription || null,
-        additionalComments: validatedData.additionalComments || null,
-        selectedTechniques: selectedTechniqueUUIDs,
-        selectedTactics: selectedTacticUUIDs,
-        counterpartPersonality: validatedData.counterpartPersonality || null,
-        zopaDistance: validatedData.zopaDistance || null,
-        maxRounds: validatedData.maxRounds || 10,
-        status: "configured" as const,
-      };
-
-      const negotiation = await storage.createNegotiationWithDimensions(
-        negotiationData,
-        validatedData.dimensions.map((d) => ({
-          name: d.name,
-          minValue: d.minValue.toString(),
-          maxValue: d.maxValue.toString(),
-          targetValue: d.targetValue.toString(),
-          priority: d.priority,
-          unit: d.unit || null,
-        })),
-      );
-
-      res.status(201).json({
         negotiation,
-        dimensionsCount: validatedData.dimensions.length,
-        message: "Negotiation created successfully",
+        products,
+        simulationStats,
       });
     } catch (error) {
-      log.error({ err: error }, "Failed to create enhanced negotiation");
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ error: "Invalid negotiation data", details: error.errors });
-      }
-      const message = error instanceof Error ? error.message : "Failed to create negotiation";
-      res.status(500).json({ error: message, timestamp: new Date().toISOString() });
+      log.error({ err: error, negotiationId: req.params.id }, "Failed to fetch negotiation");
+      res.status(500).json({ error: "Failed to fetch negotiation" });
     }
   });
 
-  router.put("/:id", async (req, res) => {
+  router.post("/", requireAuth, async (req, res) => {
     try {
-      const negotiationId = req.params.id;
-
-      const enhancedNegotiationSchema = z.object({
-        title: z.string().min(1, "Title is required"),
-        userRole: z.enum(["buyer", "seller"]),
-        negotiationType: z.enum(["one-shot", "multi-year"]),
-        relationshipType: z.enum(["first", "long-standing"]),
-        productMarketDescription: z.string().optional(),
-        additionalComments: z.string().optional(),
-        selectedTechniques: z.array(z.string()),
-        selectedTactics: z.array(z.string()),
-        counterpartPersonality: z.string().optional(),
-        zopaDistance: z.enum(["close", "medium", "far"]).optional(),
-        dimensions: z.array(
-          z.object({
-            id: z.string(),
-            name: z.string().min(1, "Dimension name is required"),
-            minValue: z.number(),
-            maxValue: z.number(),
-            targetValue: z.number(),
-            priority: z.number().int().min(1).max(3),
-            unit: z.string().optional(),
-          }),
-        ).min(1, "At least one dimension is required"),
+      const payload = createNegotiationSchema.parse(req.body);
+      const negotiation = await storage.createNegotiation({
+        registrationId: payload.registrationId,
+        userId: (req as any).user.id,
+        marketId: payload.marketId,
+        counterpartId: payload.counterpartId,
+        title: payload.title,
+        description: payload.description,
+        scenario: payload.scenario,
+        productIds: payload.productIds,
+        status: "planned",
       });
 
-      const validatedData = enhancedNegotiationSchema.parse(req.body);
-
-      const negotiationData = {
-        title: validatedData.title,
-        userRole: validatedData.userRole,
-        negotiationType: validatedData.negotiationType,
-        relationshipType: validatedData.relationshipType,
-        productMarketDescription: validatedData.productMarketDescription || "",
-        additionalComments: validatedData.additionalComments || "",
-        selectedTechniques: validatedData.selectedTechniques,
-        selectedTactics: validatedData.selectedTactics,
-        counterpartPersonality: validatedData.counterpartPersonality,
-        zopaDistance: validatedData.zopaDistance,
-      };
-
-      const updatedNegotiation = await storage.updateNegotiation(negotiationId, negotiationData);
-
-      res.json({ negotiation: updatedNegotiation, message: "Negotiation updated successfully" });
-    } catch (error) {
-      log.error({ err: error, negotiationId: req.params.id }, "Failed to update negotiation");
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ error: "Invalid negotiation data", details: error.errors });
-      }
-      const message = error instanceof Error ? error.message : "Failed to update negotiation";
-      res.status(500).json({ error: message });
-    }
-  });
-
-  router.post("/", async (req, res) => {
-    try {
-      const createNegotiationSchema = z.object({
-        contextId: z.string().uuid(),
-        buyerAgentId: z.string().uuid(),
-        sellerAgentId: z.string().uuid(),
-        userRole: z.enum(["buyer", "seller"]),
-        maxRounds: z.number().int().min(1).max(100),
-        selectedTechniques: z.array(z.string()),
-        selectedTactics: z.array(z.string()),
-        title: z.string().min(1).default("Untitled Negotiation"),
-        negotiationType: z.enum(["one-shot", "multi-year"]).default("one-shot"),
-        relationshipType: z.enum(["first", "long-standing"]).default("first"),
-        productMarketDescription: z.string().optional(),
-        additionalComments: z.string().optional(),
-        counterpartPersonality: z.string().optional(),
-        zopaDistance: z.enum(["close", "medium", "far"]).optional(),
-        userZopa: z.object({
-          volumen: z.object({ min: z.number(), max: z.number(), target: z.number() }),
-          preis: z.object({ min: z.number(), max: z.number(), target: z.number() }),
-          laufzeit: z.object({ min: z.number(), max: z.number(), target: z.number() }),
-          zahlungskonditionen: z.object({ min: z.number(), max: z.number(), target: z.number() }),
-        }),
-        counterpartDistance: z.object({
-          volumen: z.number().min(-1).max(1),
-          preis: z.number().min(-1).max(1),
-          laufzeit: z.number().min(-1).max(1),
-          zahlungskonditionen: z.number().min(-1).max(1),
-        }),
-        sonderinteressen: z.string().optional(),
-      });
-
-      const validatedData = createNegotiationSchema.parse(req.body);
-
-      const negotiationData = {
-        contextId: validatedData.contextId,
-        buyerAgentId: validatedData.buyerAgentId,
-        sellerAgentId: validatedData.sellerAgentId,
-        userRole: validatedData.userRole,
-        maxRounds: validatedData.maxRounds,
-        selectedTechniques: validatedData.selectedTechniques,
-        selectedTactics: validatedData.selectedTactics,
-        title: validatedData.title,
-        negotiationType: validatedData.negotiationType,
-        relationshipType: validatedData.relationshipType,
-        productMarketDescription: validatedData.productMarketDescription || null,
-        additionalComments: validatedData.additionalComments || null,
-        counterpartPersonality: validatedData.counterpartPersonality || null,
-        zopaDistance: validatedData.zopaDistance || null,
-        userZopa: validatedData.userZopa,
-        counterpartDistance: validatedData.counterpartDistance,
-        sonderinteressen: validatedData.sonderinteressen || null,
-        status: "pending" as const,
-      };
-
-      // Create negotiation WITHOUT simulation runs (runs will be created by /start route via queue)
-      const negotiation = await storage.createNegotiation(negotiationData);
-
-      res.status(201).json({
-        negotiation,
-        message: "Negotiation created successfully. Use POST /api/negotiations/:id/start to begin simulations.",
-      });
+      res.status(201).json(negotiation);
     } catch (error) {
       log.error({ err: error }, "Failed to create negotiation");
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ error: "Invalid negotiation data", details: error.errors });
+        res.status(400).json({ error: error.flatten() });
+      } else {
+        res.status(500).json({ error: "Failed to create negotiation" });
       }
-      res.status(500).json({ error: "Failed to create negotiation" });
     }
   });
 
-  router.post("/:id/start", async (req, res) => {
+  router.patch("/:id", requireAuth, async (req, res) => {
+    try {
+      const existing = await storage.getNegotiation(req.params.id);
+      if (existing && existing.userId && existing.userId !== (req as any).user.id) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+
+      const payload = updateNegotiationSchema.parse(req.body);
+      const negotiation = await storage.updateNegotiation(req.params.id, {
+        title: payload.title,
+        description: payload.description,
+        status: payload.status,
+        scenario: payload.scenario,
+      });
+
+      res.json(negotiation);
+    } catch (error) {
+      log.error({ err: error, negotiationId: req.params.id }, "Failed to update negotiation");
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: error.flatten() });
+      } else {
+        res.status(500).json({ error: "Failed to update negotiation" });
+      }
+    }
+  });
+
+  router.post("/:id/start", requireAuth, async (req, res) => {
     try {
       const negotiation = await storage.getNegotiation(req.params.id);
       if (!negotiation) {
         return res.status(404).json({ error: "Negotiation not found" });
       }
 
-      if (negotiation.status !== "configured" && negotiation.status !== "pending") {
-        return res.status(400).json({ error: "Negotiation must be configured before starting" });
+      if (negotiation.userId && negotiation.userId !== (req as any).user.id) {
+        return res.status(403).json({ error: "Forbidden" });
       }
 
-      const { SimulationQueueService } = await import("../services/simulation-queue");
+      await storage.startNegotiation(negotiation.id);
 
-      const selectedTechniques = negotiation.selectedTechniques || [];
-      const selectedTactics = negotiation.selectedTactics || [];
+      // Check for existing queue to resume
+      const existingQueueId = await SimulationQueueService.findQueueByNegotiation(negotiation.id);
+      if (existingQueueId) {
+        const status = await SimulationQueueService.getQueueStatus(existingQueueId);
 
-      if (selectedTechniques.length === 0 || selectedTactics.length === 0) {
-        return res.status(400).json({
-          error: "Negotiation must have at least one technique and one tactic selected",
-        });
+        // Resume if pending, paused, or running
+        if (["pending", "paused", "running"].includes(status.status)) {
+          if (status.status === "paused") {
+            await SimulationQueueService.resumeQueue(existingQueueId);
+          } else {
+            await SimulationQueueService.startQueue(existingQueueId);
+          }
+          return res.json({ negotiationId: negotiation.id, queueId: existingQueueId, action: "resumed" });
+        }
+
+        // If completed/failed with outstanding work (pending, failed, or timeout runs), resume
+        const outstandingCount = status.totalSimulations - status.completedCount;
+        if (outstandingCount > 0) {
+          // If there are failed runs, restart them
+          if (status.failedCount > 0) {
+            await SimulationQueueService.restartFailedSimulations(existingQueueId);
+          }
+          // Start the queue to process pending/restarted runs
+          await SimulationQueueService.startQueue(existingQueueId);
+          return res.json({ negotiationId: negotiation.id, queueId: existingQueueId, action: "resumed_pending" });
+        }
       }
 
-      let personalities: string[] = [];
-      let zopaDistances: string[] = [];
-
-      if (negotiation.counterpartPersonality) {
-        personalities =
-          negotiation.counterpartPersonality === "all-personalities"
-            ? ["all"]
-            : [negotiation.counterpartPersonality];
-      } else {
-        personalities = ["all"];
-      }
-
-      if (negotiation.zopaDistance) {
-        zopaDistances =
-          negotiation.zopaDistance === "all-distances"
-            ? ["all"]
-            : [negotiation.zopaDistance];
-      } else {
-        zopaDistances = ["all"];
-      }
-
-      const queueId = await SimulationQueueService.createQueue({
-        negotiationId: req.params.id,
-        techniques: selectedTechniques,
-        tactics: selectedTactics,
-        personalities,
-        zopaDistances,
-      });
-
-      await storage.updateNegotiationStatus(req.params.id, "running");
-
-      // Auto-start the queue execution
+      // Create new queue ONLY if none exists OR previous is fully complete (all runs finished)
+      const queueId = await SimulationQueueService.createQueue({ negotiationId: negotiation.id });
       await SimulationQueueService.startQueue(queueId);
 
-      const personalityMultiplier = personalities.includes("all") ? 5 : personalities.length;
-      const distanceMultiplier = zopaDistances.includes("all") ? 3 : zopaDistances.length;
-      const totalSimulations = selectedTechniques.length * selectedTactics.length * personalityMultiplier * distanceMultiplier;
-
-      res.json({
-        message: "Simulation queue created and started successfully",
-        queueId,
-        totalSimulations,
-        breakdown: {
-          techniques: selectedTechniques.length,
-          tactics: selectedTactics.length,
-          personalities: personalityMultiplier,
-          distances: distanceMultiplier,
-        },
-      });
+      res.json({ negotiationId: negotiation.id, queueId, action: "created" });
     } catch (error) {
       log.error({ err: error, negotiationId: req.params.id }, "Failed to start negotiation");
-      
-      // Provide more detailed error information
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      const errorDetails = error instanceof Error ? error.stack : undefined;
-      
-      log.error({ 
-        error: errorMessage, 
-        stack: errorDetails,
-        negotiationId: req.params.id 
-      }, "Detailed error information");
-      
-      res.status(500).json({ 
-        error: "Failed to start negotiation",
-        details: errorMessage,
-        negotiationId: req.params.id
-      });
+      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to start negotiation" });
     }
   });
 
-  router.post("/:id/stop", async (req, res) => {
+  router.post("/:id/pause", requireAuth, async (req, res) => {
     try {
+      const negotiation = await storage.getNegotiation(req.params.id);
+      if (!negotiation) {
+        return res.status(404).json({ error: "Negotiation not found" });
+      }
+
+      if (negotiation.userId && negotiation.userId !== (req as any).user.id) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+
+      const queueId = await SimulationQueueService.findQueueByNegotiation(negotiation.id);
+      if (queueId) {
+        await SimulationQueueService.pauseQueue(queueId);
+        // Update negotiation status to reflect paused state
+        // Since 'paused' isn't a negotiation status in schema (only planned/running/completed/aborted),
+        // we keep it as 'running' or update schema. 
+        // SimulationQueueService.updateQueueStatus syncs negotiation status.
+        // But updateQueueStatus sets negotiation to 'running' for 'paused' queue status.
+        // So this is consistent.
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      log.error({ err: error, negotiationId: req.params.id }, "Failed to pause negotiation");
+      res.status(500).json({ error: "Failed to pause negotiation" });
+    }
+  });
+
+  router.post("/:id/stop", requireAuth, async (req, res) => {
+    try {
+      const existing = await storage.getNegotiation(req.params.id);
+      if (existing && existing.userId && existing.userId !== (req as any).user.id) {
+         return res.status(403).json({ error: "Forbidden" });
+      }
+
       await negotiationEngine.stopNegotiation(req.params.id);
-      res.json({ message: "Negotiation stopped successfully" });
+      await SimulationQueueService.stopQueuesForNegotiation(req.params.id);
+      const negotiation = await storage.updateNegotiationStatus(req.params.id, "aborted");
+      res.json({ negotiation });
     } catch (error) {
       log.error({ err: error, negotiationId: req.params.id }, "Failed to stop negotiation");
       res.status(500).json({ error: "Failed to stop negotiation" });
     }
   });
 
-  router.delete("/:id", async (req, res) => {
+  router.delete("/:id", requireAuth, async (req, res) => {
     try {
+      const negotiation = await storage.getNegotiation(req.params.id);
+      if (!negotiation) {
+        return res.status(404).json({ error: "Negotiation not found" });
+      }
+
+      if (negotiation.userId && negotiation.userId !== (req as any).user.id) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+
+      await negotiationEngine.stopNegotiation(req.params.id);
+      await SimulationQueueService.stopQueuesForNegotiation(req.params.id);
       await storage.deleteNegotiation(req.params.id);
-      res.json({ message: "Negotiation deleted successfully" });
+      res.json({ success: true });
     } catch (error) {
       log.error({ err: error, negotiationId: req.params.id }, "Failed to delete negotiation");
       res.status(500).json({ error: "Failed to delete negotiation" });
     }
   });
 
-  router.get("/:id/simulation-runs", async (req, res) => {
+  router.get("/:id/dimensions", requireAuth, async (req, res) => {
     try {
-      const runs = await storage.getSimulationRuns(req.params.id);
-      res.json(runs);
-    } catch (error) {
-      log.error({ err: error, negotiationId: req.params.id }, "Failed to get simulation runs");
-      res.status(500).json({ error: "Failed to get simulation runs" });
-    }
-  });
-
-  /**
-   * POST /api/negotiations/:id/analysis/evaluate
-   * Backfill AI evaluations for simulation runs that are missing them
-   */
-  router.post("/:id/analysis/evaluate", async (req, res) => {
-    try {
-      const { id: negotiationId } = req.params;
-      
-      if (!negotiationId) {
-        return res.status(400).json({ error: 'Negotiation ID is required' });
+      const negotiation = await storage.getNegotiation(req.params.id);
+      if (negotiation && negotiation.userId && negotiation.userId !== (req as any).user.id) {
+        return res.status(403).json({ error: "Forbidden" });
       }
 
-      const { SimulationQueueService } = await import("../services/simulation-queue");
-      
-      log.info({ negotiationId }, "[EVALUATION_BACKFILL] Starting evaluation");
-      
-      // Get count of runs that will be evaluated (same logic as service)
-      const { simulationRuns } = await import("@shared/schema");
-      const { db } = await import("../db");
-      const { and, or, eq } = await import("drizzle-orm");
-      
-      const allRuns = await db.select()
-        .from(simulationRuns)
-        .where(
-          and(
-            eq(simulationRuns.negotiationId, negotiationId),
-            or(
-              eq(simulationRuns.outcome, 'DEAL_ACCEPTED'),
-              eq(simulationRuns.outcome, 'WALK_AWAY')
-            )
-          )
-        );
-      
-      // Filter runs that need evaluation (NULL or empty string)
-      const runsToEvaluate = allRuns.filter(r => !r.tacticalSummary || r.tacticalSummary.trim() === '');
-      
-      log.info({ negotiationId, runsToEvaluate: runsToEvaluate.length, totalRuns: allRuns.length }, "[EVALUATION_BACKFILL] Found runs needing evaluation");
-      
-      // Start backfill process asynchronously
-      SimulationQueueService.backfillEvaluationsForNegotiation(negotiationId).catch(error => {
-        log.error({ err: error, negotiationId }, "[EVALUATION_BACKFILL] Backfill failed");
-      });
-      
-      res.json({
-        success: true,
-        message: `Started evaluation for ${runsToEvaluate.length} simulation runs`,
-        totalRuns: runsToEvaluate.length,
-      });
+      const dimensions = await storage.getNegotiationDimensions(req.params.id);
+      res.json({ negotiationId: req.params.id, dimensions });
     } catch (error) {
-      log.error({ err: error }, "[EVALUATION_BACKFILL] Failed to start evaluation");
-      const message = error instanceof Error ? error.message : 'Failed to start evaluation';
-      res.status(500).json({ error: message });
+      log.error({ err: error, negotiationId: req.params.id }, "Failed to fetch dimensions");
+      res.status(500).json({ error: "Failed to fetch dimensions" });
     }
   });
 
-  router.get("/:id/analysis", async (req, res) => {
+  router.put("/:id/dimensions", requireAuth, async (req, res) => {
     try {
-      const negotiationId = req.params.id;
+      const negotiation = await storage.getNegotiation(req.params.id);
+      if (negotiation && negotiation.userId && negotiation.userId !== (req as any).user.id) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
 
-      // Get negotiation details
-      const negotiation = await storage.getNegotiation(negotiationId);
+      const payload = dimensionsSchema.parse(req.body);
+      const updated = await storage.setNegotiationDimensions(req.params.id, payload.dimensions as NegotiationDimensionConfig[]);
+      res.json({ negotiationId: req.params.id, dimensions: updated });
+    } catch (error) {
+      log.error({ err: error, negotiationId: req.params.id }, "Failed to update dimensions");
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: error.flatten() });
+      } else {
+        res.status(500).json({ error: "Failed to update dimensions" });
+      }
+    }
+  });
+
+  router.get("/:id/analysis", requireAuth, async (req, res) => {
+    try {
+      const negotiation = await storage.getNegotiation(req.params.id);
       if (!negotiation) {
         return res.status(404).json({ error: "Negotiation not found" });
       }
 
-      // Get all simulation runs via queue
-      const { SimulationQueueService } = await import("../services/simulation-queue");
-      const runs = await SimulationQueueService.getSimulationResultsByNegotiation(negotiationId);
+      if (negotiation.userId && negotiation.userId !== (req as any).user.id) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
 
-      // Get techniques and tactics for name mapping
-      const [allTechniques, allTactics, products] = await Promise.all([
+      const [products, techniques, tactics, results] = await Promise.all([
+        storage.getProductsByNegotiation(negotiation.id),
         storage.getAllInfluencingTechniques(),
         storage.getAllNegotiationTactics(),
-        storage.getProductsByNegotiation(negotiationId),
+        SimulationQueueService.getSimulationResultsByNegotiation(negotiation.id),
       ]);
 
-      // Transform runs with enhanced data
-      const enhancedRuns = runs.map((run) => {
-        const technique = allTechniques.find(t => t.id === run.techniqueId);
-        const tactic = allTactics.find(t => t.id === run.tacticId);
-        const dealValue = run.dealValue ? parseFloat(run.dealValue) : 0;
-        const totalRounds = run.totalRounds || 0;
+      const techniqueMap = new Map((techniques ?? []).map((tech) => [tech.id, tech.name]));
+      const tacticMap = new Map((tactics ?? []).map((tactic) => [tactic.id, tactic.name]));
+
+      const userRole = negotiation.scenario?.userRole?.toLowerCase() === "buyer" ? "buyer" : "seller";
+
+      const runs = results.map((run) => {
+        const dealValue = run.dealValue ? Number(run.dealValue) : 0;
+        const totalRounds = typeof run.totalRounds === "number" ? run.totalRounds : Number(run.totalRounds ?? 0);
+        const actualCost = run.actualCost ? Number(run.actualCost) : 0;
         const efficiency = totalRounds > 0 ? dealValue / totalRounds : 0;
+        const roundDimensions = extractRoundDimensions(run.conversationLog ?? []);
 
         return {
           id: run.id,
           runNumber: run.runNumber,
+          status: run.status,
           techniqueId: run.techniqueId,
+          techniqueName: techniqueMap.get(run.techniqueId ?? "") ?? "Unbekannte Technik",
           tacticId: run.tacticId,
-          techniqueName: technique?.name || "Unknown",
-          tacticName: tactic?.name || "Unknown",
+          tacticName: tacticMap.get(run.tacticId ?? "") ?? "Unbekannte Taktik",
           dealValue,
           totalRounds,
-          actualCost: parseFloat(run.actualCost || "0"),
+          actualCost,
           outcome: run.outcome,
-          status: run.status,
-          otherDimensions: run.otherDimensions || {},
-          conversationLog: run.conversationLog || [],
+          otherDimensions: run.otherDimensions ?? {},
+          conversationLog: run.conversationLog ?? [],
           efficiency,
-          // AI Evaluation fields
+          rank: 0,
           tacticalSummary: run.tacticalSummary,
-          techniqueEffectivenessScore: run.techniqueEffectivenessScore ? parseFloat(run.techniqueEffectivenessScore) : null,
-          tacticEffectivenessScore: run.tacticEffectivenessScore ? parseFloat(run.tacticEffectivenessScore) : null,
+          techniqueEffectivenessScore: run.techniqueEffectivenessScore ? Number(run.techniqueEffectivenessScore) : null,
+          tacticEffectivenessScore: run.tacticEffectivenessScore ? Number(run.tacticEffectivenessScore) : null,
+          dimensionResults: run.dimensionResults ?? [],
+          productResults: run.productResults ?? [],
+          roundDimensions,
+          zopaDistance: run.zopaDistance ?? null,
         };
       });
 
-      // Calculate summary statistics
-      const completedRuns = enhancedRuns.filter(r => r.status === "completed" && r.dealValue > 0);
-
-      const sortedByDealValue = [...completedRuns].sort((a, b) => b.dealValue - a.dealValue);
-      const sortedByRounds = [...completedRuns].sort((a, b) => a.totalRounds - b.totalRounds);
-      const sortedByEfficiency = [...completedRuns].sort((a, b) => b.efficiency - a.efficiency);
-
-      const summary = {
-        bestDealValue: sortedByDealValue[0] ? {
-          runId: sortedByDealValue[0].id,
-          value: sortedByDealValue[0].dealValue,
-          technique: sortedByDealValue[0].techniqueName,
-          tactic: sortedByDealValue[0].tacticName,
-          rounds: sortedByDealValue[0].totalRounds,
-        } : null,
-        fastestCompletion: sortedByRounds[0] ? {
-          runId: sortedByRounds[0].id,
-          rounds: sortedByRounds[0].totalRounds,
-          technique: sortedByRounds[0].techniqueName,
-          tactic: sortedByRounds[0].tacticName,
-          dealValue: sortedByRounds[0].dealValue,
-        } : null,
-        mostEfficient: sortedByEfficiency[0] ? {
-          runId: sortedByEfficiency[0].id,
-          efficiency: sortedByEfficiency[0].efficiency,
-          technique: sortedByEfficiency[0].techniqueName,
-          tactic: sortedByEfficiency[0].tacticName,
-          dealValue: sortedByEfficiency[0].dealValue,
-          rounds: sortedByEfficiency[0].totalRounds,
-        } : null,
-        avgDealValue: completedRuns.length > 0
-          ? completedRuns.reduce((sum, r) => sum + r.dealValue, 0) / completedRuns.length
-          : 0,
-        avgRounds: completedRuns.length > 0
-          ? completedRuns.reduce((sum, r) => sum + r.totalRounds, 0) / completedRuns.length
-          : 0,
-        totalRuns: runs.length,
-        completedRuns: completedRuns.length,
-      };
-
-      // Create performance matrix (technique × tactic)
-      const matrix: Record<string, any> = {};
-      completedRuns.forEach(run => {
-        const key = `${run.techniqueId}_${run.tacticId}`;
-        if (!matrix[key]) {
-          matrix[key] = {
-            techniqueId: run.techniqueId,
-            techniqueName: run.techniqueName,
-            tacticId: run.tacticId,
-            tacticName: run.tacticName,
-            dealValue: run.dealValue,
-            rounds: run.totalRounds,
-            efficiency: run.efficiency,
-            runId: run.id,
-          };
+      const rankedRuns = [...runs].sort((a, b) => {
+        if (userRole === "buyer") {
+          // Buyer: Lower price is better (ascending)
+          // Handle 0 deal values (failed/incomplete) by pushing them to end?
+          // Or assume filtered? This is all runs.
+          // If dealValue is 0, treat as worst? 
+          // But here we sort all runs.
+          // Let's stick to numeric sort, but handle 0 properly if needed.
+          // Actually dealValue 0 usually means failed/no agreement.
+          // If a,b both > 0: a - b
+          // If a=0, b>0: b is better? No, 0 is usually invalid.
+          // Let's treat 0 as infinity for buyer?
+          const valA = a.dealValue > 0 ? a.dealValue : Number.MAX_VALUE;
+          const valB = b.dealValue > 0 ? b.dealValue : Number.MAX_VALUE;
+          return valA - valB;
+        } else {
+          // Seller: Higher price is better (descending)
+          return b.dealValue - a.dealValue;
         }
       });
 
-      // Rank runs by deal value
-      const rankedRuns = enhancedRuns.map((run, index) => ({
-        ...run,
-        rank: completedRuns.findIndex(r => r.id === run.id) + 1,
+      const rankMap = new Map(rankedRuns.map((run, index) => [run.id, index + 1]));
+      const runsWithRank = runs.map((run) => ({ ...run, rank: rankMap.get(run.id) ?? 0 }));
+
+      const completedRuns = runsWithRank.filter((run) => run.status === "completed");
+      const completedWithDeals = completedRuns.filter((run) => run.dealValue > 0);
+
+      const totalRuns = runsWithRank.length;
+      const completedCount = completedRuns.length;
+
+      const avgDealValue =
+        completedWithDeals.length > 0
+          ? completedWithDeals.reduce((sum, run) => sum + run.dealValue, 0) / completedWithDeals.length
+          : 0;
+      const avgRounds =
+        completedRuns.length > 0
+          ? completedRuns.reduce((sum, run) => sum + (run.totalRounds || 0), 0) / completedRuns.length
+          : 0;
+
+      const bestRun = completedWithDeals.reduce<typeof completedWithDeals[number] | null>((best, current) => {
+        if (!best) return current;
+        
+        if (userRole === "buyer") {
+           // Buyer: Lower is better
+           if (current.dealValue < best.dealValue) return current;
+        } else {
+           // Seller: Higher is better
+           if (current.dealValue > best.dealValue) return current;
+        }
+        return best;
+      }, null);
+
+      const fastestRun = completedRuns.reduce<typeof completedRuns[number] | null>((best, current) => {
+        if (!best || (current.totalRounds ?? Infinity) < (best.totalRounds ?? Infinity)) {
+          return current;
+        }
+        return best;
+      }, null);
+
+      const mostEfficientRun = completedWithDeals.reduce<typeof completedWithDeals[number] | null>((best, current) => {
+        if (!best || current.efficiency > (best.efficiency ?? -Infinity)) {
+          return current;
+        }
+        return best;
+      }, null);
+
+      const matrix = runsWithRank.map((run) => ({
+        techniqueId: run.techniqueId,
+        techniqueName: run.techniqueName,
+        tacticId: run.tacticId,
+        tacticName: run.tacticName,
+        dealValue: run.dealValue,
+        rounds: run.totalRounds,
+        efficiency: run.efficiency,
+        runId: run.id,
       }));
 
-      res.json({
-        negotiation: {
-          id: negotiation.id,
-          title: negotiation.title,
-          userRole: negotiation.userRole,
-          productCount: products.length,
+        res.json({
+          negotiation: {
+            id: negotiation.id,
+            title: negotiation.title,
+            description: negotiation.description,
+            status: negotiation.status,
+            scenario: negotiation.scenario,
+            userRole: userRole,
+            productCount: products.length,
+          },
+        runs: runsWithRank,
+        summary: {
+          bestDealValue: bestRun
+            ? {
+                runId: bestRun.id,
+                value: bestRun.dealValue,
+                technique: bestRun.techniqueName,
+                tactic: bestRun.tacticName,
+                rounds: bestRun.totalRounds,
+              }
+            : null,
+          fastestCompletion: fastestRun
+            ? {
+                runId: fastestRun.id,
+                rounds: fastestRun.totalRounds,
+                technique: fastestRun.techniqueName,
+                tactic: fastestRun.tacticName,
+                dealValue: fastestRun.dealValue,
+              }
+            : null,
+          mostEfficient: mostEfficientRun
+            ? {
+                runId: mostEfficientRun.id,
+                efficiency: mostEfficientRun.efficiency,
+                technique: mostEfficientRun.techniqueName,
+                tactic: mostEfficientRun.tacticName,
+                dealValue: mostEfficientRun.dealValue,
+                rounds: mostEfficientRun.totalRounds,
+              }
+            : null,
+          avgDealValue,
+          avgRounds,
+          totalRuns,
+          completedRuns: completedCount,
         },
-        runs: rankedRuns,
-        summary,
-        matrix: Object.values(matrix),
+        matrix,
       });
     } catch (error) {
-      log.error({ err: error, negotiationId: req.params.id }, "Failed to get negotiation analysis");
-      res.status(500).json({ error: "Failed to get negotiation analysis" });
+      log.error({ err: error, negotiationId: req.params.id }, "Failed to build negotiation analysis");
+      res.status(500).json({ error: "Failed to build negotiation analysis" });
     }
   });
 
-  router.get("/simulation-runs/:runId/status", async (req, res) => {
+  router.post("/:id/analysis/evaluate", requireAuth, async (req, res) => {
     try {
-      const run = await storage.getSimulationRun(req.params.runId);
-      if (!run) {
-        return res.status(404).json({ error: "Simulation run not found" });
+      const negotiation = await storage.getNegotiation(req.params.id);
+      if (negotiation && negotiation.userId && negotiation.userId !== (req as any).user.id) {
+        return res.status(403).json({ error: "Forbidden" });
       }
-      res.json(run);
+
+      const result = await SimulationQueueService.backfillEvaluationsForNegotiation(req.params.id);
+      res.json({ success: true, ...result });
     } catch (error) {
-      log.error({ err: error, simulationRunId: req.params.runId }, "Failed to get simulation run status");
-      res.status(500).json({ error: "Failed to get simulation run status" });
+      log.error({ err: error, negotiationId: req.params.id }, "Failed to evaluate negotiation analysis");
+      res.status(500).json({ error: "Failed to trigger evaluation" });
     }
   });
 
-  router.post("/simulation-runs/:runId/stop", async (req, res) => {
-    try {
-      await negotiationEngine.stopNegotiation(req.params.runId);
-      res.json({ message: "Simulation run stopped successfully" });
-    } catch (error) {
-      log.error({ err: error, simulationRunId: req.params.runId }, "Failed to stop simulation run");
-      res.status(500).json({ error: "Failed to stop simulation run" });
-    }
-  });
+  // Shared playbook generation logic
+  const generatePlaybookForNegotiation = async (negotiationId: string, res: any) => {
+    log.info({ negotiationId }, "Generating playbook");
 
-  /**
-   * POST /api/negotiations/phase2
-   * Create negotiation with Phase 2 enhanced configuration
-   */
-  router.post("/phase2", async (req, res) => {
-    try {
-      const phase2Schema = z.object({
-        // Grundeinstellungen
-        title: z.string().min(1, "Title is required"),
-        userRole: z.enum(["buyer", "seller"]),
-        negotiationType: z.enum(["one-shot", "multi-year"]),
-        companyKnown: z.boolean().optional(),
-        counterpartKnown: z.boolean().optional(),
-        negotiationFrequency: z.enum(["yearly", "quarterly", "monthly", "ongoing"]).optional(),
-        powerBalance: z.number().int().min(0).max(100).optional(),
-        maxRounds: z.number().int().min(1).max(15),
-        marktProduktKontext: z.string().optional(),
-        wichtigerKontext: z.string().optional(),
+    // Call Python script to generate playbook
+    const { spawn } = await import("child_process");
+    const pythonPath = process.env.PYTHON_PATH || "python";
+    const scriptPath = "./scripts/generate_playbook.py";
 
-        // Dimensionen
-        produkte: z.array(
-          z.object({
-            id: z.string(),
-            produktName: z.string(),
-            zielPreis: z.number(),
-            minMaxPreis: z.number(),
-            geschätztesVolumen: z.number().int(),
-          })
-        ).optional(),
-        konditionen: z.array(
-          z.object({
-            id: z.string(),
-            name: z.string(),
-            einheit: z.string().optional(),
-            minWert: z.number().optional(),
-            maxWert: z.number().optional(),
-            zielWert: z.number(),
-            priorität: z.number().int().min(1).max(3),
-          })
-        ).optional(),
+    const pythonProcess = spawn(pythonPath, [
+      scriptPath,
+      `--negotiation-id=${negotiationId}`,
+    ]);
 
-        // Taktiken & Techniken
-        selectedTacticIds: z.array(z.string()),
-        selectedTechniqueIds: z.array(z.string()),
+    let stdoutData = "";
+    let stderrData = "";
 
-        // Gegenseite
-        beschreibungGegenseite: z.string().optional(),
-        verhandlungsModus: z.enum(["kooperativ", "moderat", "aggressiv", "sehr-aggressiv"]).optional(),
-        geschätzteDistanz: z.record(z.string(), z.number()).optional(),
+    pythonProcess.stdout.on("data", (data) => {
+      stdoutData += data.toString();
+    });
 
-        // Market Intelligence
-        marketIntelligence: z.array(
-          z.object({
-            aspekt: z.string(),
-            quelle: z.string(),
-            relevanz: z.enum(["hoch", "mittel", "niedrig"]),
-          })
-        ).optional(),
-      });
+    pythonProcess.stderr.on("data", (data) => {
+      stderrData += data.toString();
+      log.debug({ stderr: data.toString() }, "Python stderr");
+    });
 
-      const validatedData = phase2Schema.parse(req.body);
-
-      log.debug({ 
-        title: validatedData.title,
-        produkte: validatedData.produkte?.length || 0,
-        konditionen: validatedData.konditionen?.length || 0,
-        tactics: validatedData.selectedTacticIds.length,
-        techniques: validatedData.selectedTechniqueIds.length,
-      }, "[phase2] Creating negotiation");
-
-      // Get agents
-      const agents = await storage.getAllAgents();
-
-      if (agents.length === 0) {
-        return res.status(400).json({
-          error: "System not initialized",
-          message: "No agents found. Please run seed data first.",
+    pythonProcess.on("close", async (code) => {
+      if (code !== 0) {
+        log.error(
+          { negotiationId, code, stderr: stderrData },
+          "Playbook generation failed"
+        );
+        return res.status(500).json({
+          error: "Playbook generation failed",
+          details: stderrData,
         });
       }
 
-      // Use first two agents as buyer and seller
-      const buyerAgent = agents[0];
-      const sellerAgent = agents[1] || agents[0]; // Fallback to same agent if only one exists
+      try {
+        const result = JSON.parse(stdoutData);
 
-      // Create a custom context for this phase2 negotiation based on actual data
-      const customContext = await storage.createNegotiationContext({
-        name: validatedData.title,
-        description: validatedData.marktProduktKontext || "Phase 2 negotiation",
-        productInfo: {
-          products: validatedData.produkte || []
-        },
-        marketConditions: validatedData.marketIntelligence || [],
-        baselineValues: {}
-      });
+        if (!result.success) {
+          log.error({ negotiationId, error: result.error }, "Playbook generation error");
+          return res.status(500).json({
+            error: "Playbook generation failed",
+            details: result.error,
+          });
+        }
 
-      // Create negotiation with Phase 2 enhanced data
-      const negotiationData = {
-        contextId: customContext.id,
-        buyerAgentId: buyerAgent.id,
-        sellerAgentId: sellerAgent.id,
-        title: validatedData.title,
-        userRole: validatedData.userRole,
-        negotiationType: validatedData.negotiationType,
-        maxRounds: validatedData.maxRounds,
-        status: "configured" as const, // Set status to configured so it can be started
+        // Save playbook to database
+        try {
+          await storage.updateNegotiation(negotiationId, {
+            playbook: result.playbook,
+            playbookGeneratedAt: new Date(),
+          });
+          log.info({ negotiationId }, "Playbook saved to database");
+        } catch (dbError) {
+          log.error({ negotiationId, dbError }, "Failed to save playbook to database");
+          // Continue anyway - we can still return the result
+        }
 
-        // Phase2 specific fields
-        companyKnown: validatedData.companyKnown || false,
-        counterpartKnown: validatedData.counterpartKnown || false,
-        negotiationFrequency: validatedData.negotiationFrequency || null,
-        powerBalance: validatedData.powerBalance || 50,
-        verhandlungsModus: validatedData.verhandlungsModus || null,
+        // Enrich metadata with reliable DB data
+        try {
+          result.metadata = await getEnrichedMetadata(negotiationId, result.metadata);
+        } catch (enrichError) {
+          log.error({ negotiationId, enrichError }, "Failed to enrich metadata");
+          // Continue with original metadata
+        }
 
-        // Store Phase 2 data in appropriate fields
-        relationshipType: validatedData.counterpartKnown ? "long-standing" : "first",
-        productMarketDescription: validatedData.marktProduktKontext || "",
-        additionalComments: validatedData.wichtigerKontext || "",
-
-        selectedTechniques: validatedData.selectedTechniqueIds,
-        selectedTactics: validatedData.selectedTacticIds,
-
-        counterpartPersonality: validatedData.beschreibungGegenseite || "",
-        zopaDistance: validatedData.verhandlungsModus || "moderat", // Keep for compatibility, but verhandlungsModus is preferred
-
-        // Store geschätzteDistanz in metadata
-        metadata: {
-          geschätzteDistanz: validatedData.geschätzteDistanz || {},
-        },
-
-        // Default ZOPA for now - will be replaced with products/conditions
-        userZopa: {
-          volumen: { min: 100, max: 1000, target: 500 },
-          preis: { min: 1, max: 10, target: 5 },
-          laufzeit: { min: 1, max: 12, target: 6 },
-          zahlungskonditionen: { min: 14, max: 90, target: 30 },
-        },
-        counterpartDistance: {
-          volumen: 0,
-          preis: 0,
-          laufzeit: 0,
-          zahlungskonditionen: 0,
-        },
-      };
-
-      const negotiation = await storage.createNegotiation(negotiationData);
-
-      // Store products with the negotiation
-      if (validatedData.produkte && validatedData.produkte.length > 0) {
-        const productsData = validatedData.produkte.map((p) => ({
-          negotiationId: negotiation.id,
-          produktName: p.produktName,
-          zielPreis: p.zielPreis.toString(),
-          minMaxPreis: p.minMaxPreis.toString(),
-          geschätztesVolumen: p.geschätztesVolumen,
-        }));
-        await storage.createProducts(productsData);
-      log.debug({ negotiationId: negotiation.id, productsCount: productsData.length }, "[phase2] Saved products");
-      }
-
-      // Store conditions (other dimensions) in negotiation_dimensions table
-      if (validatedData.konditionen && validatedData.konditionen.length > 0) {
-        const dimensionsData = validatedData.konditionen.map((k) => ({
-          negotiationId: negotiation.id,
-          name: k.name,
-          minValue: (k.minWert || 0).toString(),
-          maxValue: (k.maxWert || k.zielWert).toString(),
-          targetValue: k.zielWert.toString(),
-          priority: k.priorität,
-          unit: k.einheit || null,
-        }));
-        await storage.createNegotiationDimensions(negotiation.id, dimensionsData);
-        log.debug({ negotiationId: negotiation.id, dimensionsCount: dimensionsData.length }, "[phase2] Saved dimensions");
-      }
-
-      // TODO: Store market intelligence
-      log.debug({ 
-        negotiationId: negotiation.id,
-        produkte: validatedData.produkte?.length || 0,
-        konditionen: validatedData.konditionen?.length || 0,
-        marketIntelligence: validatedData.marketIntelligence?.length || 0,
-      }, "[phase2] Phase 2 data received");
-
-      res.json({
-        success: true,
-        negotiation,
-        message: "Phase 2 negotiation created successfully",
-        productsCount: validatedData.produkte?.length || 0,
-      });
-    } catch (error) {
-      log.error({ err: error }, "[phase2] Failed to create negotiation");
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({
-          error: "Invalid negotiation data",
-          details: error.errors
+        log.info({ negotiationId, playbookLength: result.playbook?.length }, "Playbook generated successfully");
+        res.json(result);
+      } catch (parseError) {
+        log.error(
+          { negotiationId, parseError, stdout: stdoutData },
+          "Failed to parse playbook result"
+        );
+        res.status(500).json({
+          error: "Failed to parse playbook result",
+          details: String(parseError),
         });
       }
-      const message = error instanceof Error ? error.message : "Failed to create Phase 2 negotiation";
-      res.status(500).json({ error: message });
+    });
+
+    pythonProcess.on("error", (error) => {
+      log.error({ negotiationId, error }, "Failed to spawn Python process");
+      res.status(500).json({
+        error: "Failed to start playbook generation",
+        details: error.message,
+      });
+    });
+  };
+
+  // GET endpoint to retrieve/generate playbook
+  router.get("/:id/playbook", requireAuth, async (req, res) => {
+    try {
+      const negotiation = await storage.getNegotiation(req.params.id);
+      if (!negotiation) {
+        return res.status(404).json({ error: "Negotiation not found" });
+      }
+
+      if (negotiation.userId && negotiation.userId !== (req as any).user.id) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+
+      // Check if playbook already exists in database
+      if (negotiation.playbook) {
+        log.info({ negotiationId: req.params.id }, "Returning cached playbook from database");
+        
+        const metadata = await getEnrichedMetadata(negotiation.id, {
+          cached: true,
+          model: "cached-model",
+          prompt_version: 0,
+        });
+
+        return res.json({
+          success: true,
+          playbook: negotiation.playbook,
+          metadata
+        });
+      }
+
+      // If not cached, generate new playbook
+      log.info({ negotiationId: req.params.id }, "No cached playbook found, generating new one");
+      await generatePlaybookForNegotiation(req.params.id, res);
+    } catch (error) {
+      log.error({ err: error, negotiationId: req.params.id }, "Failed to generate playbook");
+      res.status(500).json({ error: "Failed to generate playbook" });
     }
   });
 
-  /**
-   * POST /api/negotiations/backfill-evaluations
-   * Backfill AI evaluations for simulation runs that don't have them yet
-   */
-  router.post("/backfill-evaluations", async (req, res) => {
+  // POST endpoint to trigger playbook generation
+  router.post("/:id/playbook", requireAuth, async (req, res) => {
     try {
-      const { SimulationQueueService } = await import("../services/simulation-queue");
-      
-      // Get all simulation runs that need evaluation
-      const runsNeedingEvaluation = await SimulationQueueService.getSimulationRunsNeedingEvaluation();
-      
-      log.info({ runsNeedingEvaluation: runsNeedingEvaluation.length }, "[EVALUATION_BACKFILL] Found runs needing evaluation");
-      
-      // Start backfill process asynchronously
-      SimulationQueueService.backfillEvaluations(runsNeedingEvaluation).catch(error => {
-        log.error({ err: error }, "[EVALUATION_BACKFILL] Backfill process failed");
-      });
-      
-      res.json({
-        success: true,
-        message: `Started backfill process for ${runsNeedingEvaluation.length} simulation runs`,
-        totalRuns: runsNeedingEvaluation.length,
-      });
-    } catch (error) {
-      log.error({ err: error }, "[EVALUATION_BACKFILL] Failed to start backfill");
-      const message = error instanceof Error ? error.message : 'Failed to start evaluation backfill';
-      res.status(500).json({ error: message });
-    }
-  });
+      const negotiation = await storage.getNegotiation(req.params.id);
+      if (!negotiation) {
+        return res.status(404).json({ error: "Negotiation not found" });
+      }
 
-  /**
-   * GET /api/negotiations/evaluation-status
-   * Get evaluation status statistics
-   */
-  router.get("/evaluation-status", async (_req, res) => {
-    try {
-      const { SimulationQueueService } = await import("../services/simulation-queue");
-      
-      const stats = await SimulationQueueService.getEvaluationStats();
-      
-      res.json(stats);
+      if (negotiation.userId && negotiation.userId !== (req as any).user.id) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+
+      await generatePlaybookForNegotiation(req.params.id, res);
     } catch (error) {
-      log.error({ err: error }, "[EVALUATION_STATUS] Failed to get evaluation status");
-      const message = error instanceof Error ? error.message : 'Failed to get evaluation status';
-      res.status(500).json({ error: message });
+      log.error({ err: error, negotiationId: req.params.id }, "Failed to generate playbook");
+      res.status(500).json({ error: "Failed to generate playbook" });
     }
   });
 
   return router;
+}
+
+function extractRoundDimensions(conversationLog: unknown[]): Array<{ round: number; dimension: string; value: number }> {
+  if (!Array.isArray(conversationLog)) {
+    return [];
+  }
+
+  const timeline: Array<{ round: number; dimension: string; value: number }> = [];
+
+  for (const entry of conversationLog) {
+    if (!entry || typeof entry !== "object") continue;
+    const round = typeof (entry as any).round === "number" ? (entry as any).round : null;
+    const offer = (entry as any).offer;
+    if (round === null || !offer || typeof offer !== "object") continue;
+    const dimensionValues = (offer as any).dimension_values || (offer as any).dimensionValues;
+    if (!dimensionValues || typeof dimensionValues !== "object") continue;
+
+    for (const [dimension, rawValue] of Object.entries(dimensionValues)) {
+      const numeric = coerceNumber(rawValue);
+      if (numeric === null) continue;
+      timeline.push({ round, dimension, value: numeric });
+    }
+  }
+
+  return timeline;
+}
+
+function coerceNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const normalized = value.replace(",", ".");
+    const parsed = Number(normalized.match(/-?\d+(\.\d+)?/)?.[0]);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
 }

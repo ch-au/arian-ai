@@ -2,12 +2,13 @@ import { Router } from "express";
 import { analyticsService } from "../services/analytics.js";
 import { createAnalyticsExportRouter } from "./analytics-export.js";
 import { createRequestLogger } from "../services/logger";
+import { requireAuth } from "../middleware/auth";
 
 export function createAnalyticsRouter(): Router {
   const router = Router();
   const log = createRequestLogger("routes:analytics");
 
-  router.get("/performance", async (req, res) => {
+  router.get("/performance", requireAuth, async (req, res) => {
     try {
       const { agentId, startDate, endDate } = req.query;
       const report = await analyticsService.generatePerformanceReport(

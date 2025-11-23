@@ -11,20 +11,10 @@ export function createStrategyRouter(): Router {
   const router = Router();
   const log = createRequestLogger("routes:strategies");
 
-  router.get("/tactics/category/:category", async (req, res) => {
-    try {
-      const tactics = await storage.getTacticsByCategory(req.params.category);
-      res.json(tactics);
-    } catch (error) {
-      log.error({ err: error, category: req.params.category }, "Failed to get tactics by category");
-      res.status(500).json({ error: "Failed to get tactics by category" });
-    }
-  });
-
   router.post("/tactics", async (req, res) => {
     try {
       const tacticData = insertNegotiationTacticSchema.parse(req.body);
-      const tactic = await storage.createTactic(tacticData);
+      const tactic = await storage.createNegotiationTactic(tacticData);
       res.status(201).json(tactic);
     } catch (error) {
       log.error({ err: error }, "Failed to create tactic");
@@ -124,7 +114,8 @@ export function createStrategyRouter(): Router {
 
   router.post("/negotiation-tactics", async (req, res) => {
     try {
-      const tactic = await storage.createNegotiationTactic(req.body);
+      const tacticData = insertNegotiationTacticSchema.parse(req.body);
+      const tactic = await storage.createNegotiationTactic(tacticData);
       res.status(201).json(tactic);
     } catch (error) {
       log.error({ err: error }, "Failed to create negotiation tactic");

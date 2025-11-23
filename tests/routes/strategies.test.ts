@@ -12,8 +12,7 @@ vi.mock("../../server/storage", () => {
     getAllInfluencingTechniques: vi.fn(),
     createInfluencingTechnique: vi.fn(),
     getAllNegotiationTactics: vi.fn(),
-    createTactic: vi.fn(),
-    getTacticsByCategory: vi.fn(),
+    createNegotiationTactic: vi.fn(),
     getAllAgents: vi.fn(),
     getAllNegotiationContexts: vi.fn(),
     createNegotiationWithDimensions: vi.fn(),
@@ -78,19 +77,8 @@ describe("Strategy routes", () => {
     expect(storage.createInfluencingTechnique).not.toHaveBeenCalled();
   });
 
-  it("returns tactics by category", async () => {
-    storage.getTacticsByCategory.mockResolvedValue([{ id: "tac-1", name: "Tactic" }]);
-
-    const { invoke } = setupInvoker();
-    const res = await invoke("get", "/tactics/category/:category", { params: { category: "closing" } });
-
-    expect(res.statusCode).toBe(200);
-    expect(storage.getTacticsByCategory).toHaveBeenCalledWith("closing");
-    expect(res.jsonData).toHaveLength(1);
-  });
-
   it("creates negotiation tactic", async () => {
-    storage.createTactic.mockResolvedValue({ id: "tac-1" });
+    storage.createNegotiationTactic.mockResolvedValue({ id: "tac-1" });
 
     const { invoke } = setupInvoker();
     const payload = {
@@ -103,6 +91,6 @@ describe("Strategy routes", () => {
     const res = await invoke("post", "/tactics", { body: payload });
 
     expect(res.statusCode).toBe(201);
-    expect(storage.createTactic).toHaveBeenCalledWith(payload);
+    expect(storage.createNegotiationTactic).toHaveBeenCalledWith(payload);
   });
 });

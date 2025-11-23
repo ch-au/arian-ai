@@ -1,6 +1,8 @@
 /**
- * Production-Ready Negotiation Engine
+ * Production-Ready Negotiation Engine (Legacy Snapshot)
  * Integrates OpenAI Agents with Langfuse for structured multi-turn negotiations
+ *
+ * NOTE: This archive file references the pre-2025 schema (e.g., `negotiation_dimensions`, `negotiation_contexts`). Use only for historical context.
  */
 
 import { Agent, Runner } from 'openai-agents';

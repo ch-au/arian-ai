@@ -6,3 +6,9 @@ python-dotenv>=1.0.1
 
 # Official OpenAI Agents instrumentation for Langfuse
 openinference-instrumentation-openai-agents>=0.1.0
+
+# Database connectivity for playbook generation
+psycopg2-binary>=2.9.11
+
+# Google Gemini API for market intelligence
+google-genai>=1.51.0
