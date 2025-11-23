@@ -1,76 +1,98 @@
-import { useQuery } from "@tanstack/react-query";
+import React, { useMemo } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import MetricsCards from "@/components/dashboard/metrics-cards";
-import LiveNegotiations from "@/components/dashboard/live-negotiations";
-import SimulationRunHistory from "@/components/dashboard/simulation-run-history";
-import SuccessChart from "@/components/dashboard/success-chart";
-import AgentPerformance from "@/components/dashboard/agent-performance";
-import QuickActions from "@/components/dashboard/quick-actions";
-import EvaluationBackfillCard from "@/components/dashboard/evaluation-backfill-card";
+import NegotiationsList from "@/components/dashboard/negotiations-list";
 import { Button } from "@/components/ui/button";
-import { Plus } from "lucide-react";
+import { Plus, StopCircle } from "lucide-react";
+import { useNegotiations } from "@/hooks/use-negotiations";
+import { deriveDashboardMetrics, type DashboardMetricSummary } from "@/lib/dashboard-helpers";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 export default function Dashboard() {
-  const { data: metrics } = useQuery<any>({
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+
+  const { data: metricsData } = useQuery<DashboardMetricSummary>({
     queryKey: ["/api/dashboard/metrics"],
+    staleTime: 60 * 1000,
   });
 
-  const { data: successTrends } = useQuery<any[]>({
-    queryKey: ["/api/dashboard/success-trends"],
+  const { data: negotiations = [] } = useNegotiations();
+
+  const stopAllMutation = useMutation({
+    mutationFn: async () => {
+      const running = negotiations?.filter((n) => n.status === "running") ?? [];
+      await Promise.all(
+        running.map(async (negotiation) => {
+          try {
+            const queuesResponse = await apiRequest("GET", `/api/simulations/queues?negotiationId=${negotiation.id}`);
+            const queues = await queuesResponse.json();
+            const activeQueues = queues.filter((q: any) => q.status === "running" || q.status === "pending");
+            if (activeQueues.length > 0) {
+              await Promise.all(
+                activeQueues.map((queue: any) => apiRequest("POST", `/api/simulations/queue/${queue.id}/stop`)),
+              );
+            }
+          } catch (error) {
+            console.error(`Failed to stop negotiation ${negotiation.id}:`, error);
+          }
+        }),
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/negotiations"] });
+      toast({
+        title: "Alle Queues gestoppt",
+        description: "Alle laufenden Simulationen wurden angehalten.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Aktion fehlgeschlagen",
+        description: error instanceof Error ? error.message : "Unbekannter Fehler",
+        variant: "destructive",
+      });
+    },
   });
 
-  const { data: topAgents } = useQuery<any[]>({
-    queryKey: ["/api/dashboard/top-agents"],
-  });
-
-  const { data: negotiations = [], isLoading: isLoadingNegotiations } = useQuery<any[]>({
-    queryKey: ["/api/negotiations"],
-    refetchInterval: 5000,
-  });
+  const metrics = useMemo(
+    () => metricsData ?? deriveDashboardMetrics(negotiations),
+    [metricsData, negotiations],
+  );
 
   const handleNewNegotiation = () => {
-    // Navigate to negotiation creation
-    window.location.href = "/negotiations";
+    setLocation("/create-negotiation");
   };
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Key Metrics Cards */}
-      {metrics && <MetricsCards metrics={metrics} />}
-
-      {/* Real-time Monitoring Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Live Negotiations */}
-        <LiveNegotiations negotiations={negotiations.filter(n => n.status === 'running' || n.status === 'active')} />
-
-        {/* Simulation Run History */}
-        <SimulationRunHistory negotiations={negotiations} isLoading={isLoadingNegotiations} />
-
-        {/* AI Evaluation Status */}
-        <EvaluationBackfillCard />
+    <div className="space-y-8">
+      {/* Page Actions */}
+      <div className="flex justify-end items-center gap-3">
+        <Button
+          variant="outline"
+          className="text-red-600 hover:text-red-700 border-red-200 hover:bg-red-50"
+          onClick={() => stopAllMutation.mutate()}
+        >
+          <StopCircle className="mr-2 h-4 w-4" />
+          Alle stoppen
+        </Button>
+        <Button
+          onClick={handleNewNegotiation}
+        >
+          <Plus className="mr-2 h-4 w-4" />
+          Neue Verhandlung
+        </Button>
       </div>
 
-      {/* Performance Analytics */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Success Rate Trends */}
-        <div className="lg:col-span-2">
-          {successTrends && <SuccessChart data={successTrends} />}
-        </div>
+      <div className="space-y-6">
+        {/* Key Metrics Cards */}
+        <MetricsCards metrics={metrics} />
 
-        {/* Agent Performance */}
-        {topAgents && <AgentPerformance agents={topAgents} />}
+        {/* Negotiations List */}
+        <NegotiationsList />
       </div>
-
-      {/* Quick Actions Panel */}
-      <QuickActions />
-
-      {/* Floating Action Button */}
-      <Button
-        onClick={handleNewNegotiation}
-        className="fixed bottom-6 right-6 w-14 h-14 rounded-full shadow-lg hover:shadow-xl transition-shadow"
-        size="icon"
-      >
-        <Plus className="h-6 w-6" />
-      </Button>
     </div>
   );
 }

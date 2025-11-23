@@ -9,58 +9,35 @@ import CreateNegotiationForm from "@/components/CreateNegotiationForm";
 export default function CreateNegotiation() {
   const [, setLocation] = useLocation();
 
-  const { data: agents, isLoading: isLoadingAgents } = useQuery<any[]>({
-    queryKey: ["/api/agents"],
-    queryFn: () => apiRequest("GET", "/api/agents").then(res => res.json()),
+  const { data: techniques = [], isLoading: loadingTechniques } = useQuery<any[]>({
+    queryKey: ["/api/influencing-techniques"],
+    queryFn: () => apiRequest("GET", "/api/influencing-techniques").then(res => res.json()),
   });
 
-  const { data: contexts, isLoading: isLoadingContexts } = useQuery<any[]>({
-    queryKey: ["/api/contexts"],
-    queryFn: () => apiRequest("GET", "/api/contexts").then(res => res.json()),
+  const { data: tactics = [], isLoading: loadingTactics } = useQuery<any[]>({
+    queryKey: ["/api/negotiation-tactics"],
+    queryFn: () => apiRequest("GET", "/api/negotiation-tactics").then(res => res.json()),
   });
 
   const handleSuccess = () => {
-    setLocation("/negotiations");
+    setLocation("/");
   };
 
-  return (
-    <div className="space-y-6 p-6">
-      <div className="flex items-center space-x-4">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setLocation("/negotiations")}
-        >
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Negotiations
-        </Button>
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Create New Negotiation</h1>
-          <p className="text-gray-600 mt-2">Configure a new AI negotiation simulation with custom agents and strategies</p>
-        </div>
-      </div>
+  const isLoading = loadingTechniques || loadingTactics;
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Negotiation Configuration</CardTitle>
-          <CardDescription>
-            Follow the 4-step process to set up your negotiation simulation with specific techniques and tactics
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {isLoadingAgents || isLoadingContexts ? (
-            <div className="text-center py-8">
-              <p>Loading agents and contexts...</p>
-            </div>
-          ) : (
-            <CreateNegotiationForm
-              agents={agents || []}
-              contexts={contexts || []}
-              onSuccess={handleSuccess}
-            />
-          )}
-        </CardContent>
-      </Card>
-    </div>
+  return (
+    <>
+      {isLoading ? (
+        <div className="text-center py-8 text-sm text-muted-foreground">
+          Lade Einfluss-Techniken und Taktiken …
+        </div>
+      ) : (
+        <CreateNegotiationForm
+          techniques={techniques}
+          tactics={tactics}
+          onSuccess={handleSuccess}
+        />
+      )}
+    </>
   );
 }

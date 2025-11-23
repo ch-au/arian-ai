@@ -1,1440 +1,2050 @@
-import { useState } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
+import React, { useState } from "react";
+import { useFieldArray, useForm, UseFieldArrayReturn, UseFormReturn } from "react-hook-form";
 import { z } from "zod";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useMutation } from "@tanstack/react-query";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { Settings, Users, Target, Play, ArrowLeft, ArrowRight, Brain, Zap, Info } from "lucide-react";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { ChevronDown, ChevronRight, Copy, ExternalLink, Plus, Sparkles, Trash2 } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { VoiceInput, VoiceInputInfo } from "@/components/VoiceInput";
 
-const zopaDimensionSchema = z.object({
-  min: z.number(),
-  max: z.number(),
-  target: z.number(),
+const productSchema = z.object({
+  name: z.string().min(1, "Pflichtfeld"),
+  brand: z.string().optional(),
+  targetPrice: z.number().min(0, "≥ 0"),
+  minPrice: z.number().min(0, "≥ 0").optional(),
+  maxPrice: z.number().min(0, "≥ 0").optional(),
+  estimatedVolume: z.number().min(0, "≥ 0"),
 });
 
-const createNegotiationSchema = z.object({
-  contextId: z.string().min(1, "Please select a negotiation context"),
-  buyerAgentId: z.string().min(1, "Please select a buyer agent"),
-  sellerAgentId: z.string().min(1, "Please select a seller agent"),
-  maxRounds: z.number().min(1).max(100),
-  selectedTechniques: z.array(z.string()).min(1, "Select at least one influencing technique"),
-  selectedTactics: z.array(z.string()).min(1, "Select at least one negotiation tactic"),
-  // Role and ZOPA configuration (consolidated)
-  userRole: z.enum(["buyer", "seller"]),
-  // Business context fields
-  title: z.string().min(1, "Title is required").default("Untitled Negotiation"),
-  negotiationType: z.enum(["one-shot", "multi-year"]).default("one-shot"),
-  relationshipType: z.enum(["first", "long-standing"]).default("first"),
-  productMarketDescription: z.string().optional(),
-  additionalComments: z.string().optional(),
-  counterpartPersonality: z.string().optional(),
-  zopaDistance: z.enum(["close", "medium", "far"]).optional(),
-  userZopa: z.object({
-    volumen: zopaDimensionSchema,
-    preis: zopaDimensionSchema,
-    laufzeit: zopaDimensionSchema,
-    zahlungskonditionen: zopaDimensionSchema,
-  }),
-  // Counterpart distance settings (consolidated)
-  counterpartDistance: z.object({
-    volumen: z.number().min(-1).max(1).default(0),
-    preis: z.number().min(-1).max(1).default(0),
-    laufzeit: z.number().min(-1).max(1).default(0),
-    zahlungskonditionen: z.number().min(-1).max(1).default(0),
-  }),
-  sonderinteressen: z.string().optional(),
-  autoStart: z.boolean().default(false),
+const dimensionSchema = z.object({
+  name: z.string().min(1, "Pflichtfeld"),
+  unit: z.string().optional(),
+  minValue: z.number(),
+  maxValue: z.number(),
+  targetValue: z.number(),
+  priority: z.number().int().min(1).max(3),
 });
 
-type CreateNegotiationForm = z.infer<typeof createNegotiationSchema>;
-
-interface Props {
-  agents: any[];
-  contexts: any[];
-  onSuccess: () => void;
-}
-
-export default function CreateNegotiationForm({ agents, contexts, onSuccess }: Props) {
-  const [step, setStep] = useState(1);
-  const { toast } = useToast();
-
-  const { data: techniques = [], isLoading: isLoadingTechniques } = useQuery<any[]>({
-    queryKey: ["/api/influencing-techniques"],
-    queryFn: () => apiRequest("GET", "/api/influencing-techniques").then(res => res.json()),
-  });
-
-  const { data: tactics = [], isLoading: isLoadingTactics } = useQuery<any[]>({
-    queryKey: ["/api/negotiation-tactics"],
-    queryFn: () => apiRequest("GET", "/api/negotiation-tactics").then(res => res.json()),
-  });
-
-  const form = useForm<CreateNegotiationForm>({
-    resolver: zodResolver(createNegotiationSchema),
-    defaultValues: {
-      maxRounds: 10,
-      selectedTechniques: [],
-      selectedTactics: [],
-      userRole: "buyer",
-      title: "Untitled Negotiation",
-      negotiationType: "one-shot",
-      relationshipType: "first",
-      productMarketDescription: "",
-      additionalComments: "",
-      counterpartPersonality: "",
-      zopaDistance: undefined,
-      userZopa: {
-        volumen: { min: 100, max: 1000, target: 500 },
-        preis: { min: 10, max: 100, target: 50 },
-        laufzeit: { min: 12, max: 36, target: 24 },
-        zahlungskonditionen: { min: 30, max: 90, target: 60 },
-      },
-      counterpartDistance: {
-        volumen: 0,
-        preis: 0,
-        laufzeit: 0,
-        zahlungskonditionen: 0,
-      },
-      sonderinteressen: "",
-      autoStart: false,
-    },
-  });
-
-  const createMutation = useMutation({
-    mutationFn: async (data: CreateNegotiationForm) => {
-      console.log("Form data before sending:", data);
-      
-      const payload = {
-        contextId: data.contextId,
-        buyerAgentId: data.buyerAgentId,
-        sellerAgentId: data.sellerAgentId,
-        maxRounds: data.maxRounds,
-        selectedTechniques: data.selectedTechniques,
-        selectedTactics: data.selectedTactics,
-        userRole: data.userRole,
-        title: data.title,
-        negotiationType: data.negotiationType,
-        relationshipType: data.relationshipType,
-        productMarketDescription: data.productMarketDescription || "",
-        additionalComments: data.additionalComments || "",
-        counterpartPersonality: data.counterpartPersonality || "",
-        zopaDistance: data.zopaDistance || undefined,
-        userZopa: data.userZopa,
-        counterpartDistance: data.counterpartDistance,
-        sonderinteressen: data.sonderinteressen || "",
-      };
-      
-      console.log("Sending payload:", payload);
-      
-      const response = await apiRequest("POST", "/api/negotiations", payload);
-      return response.json();
-    },
-    onSuccess: async (negotiation) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/negotiations"] });
-      
-      if (form.getValues().autoStart) {
-        try {
-          await apiRequest("POST", `/api/negotiations/${negotiation.id}/start`);
-          toast({
-            title: "Negotiation Created & Started",
-            description: "Your negotiation simulation has been created and started successfully.",
-          });
-        } catch (error) {
-          toast({
-            title: "Negotiation Created",
-            description: "Negotiation created but failed to auto-start. You can start it manually.",
-            variant: "destructive",
+const formSchema = z
+  .object({
+    title: z.string().min(1),
+    description: z.string().optional(),
+    company: z.object({
+      organization: z.string().min(1),
+      company: z.string().optional(),
+      country: z.string().min(1),
+      negotiationType: z.string().min(1),
+      relationshipType: z.string().min(1),
+      negotiationFrequency: z.string().min(1),
+    }),
+    market: z.object({
+      name: z.string().min(1),
+      region: z.string().optional(),
+      countryCode: z.string().min(1),
+      currencyCode: z.string().min(1),
+      intelligence: z.string().optional(),
+      notes: z.string().optional(),
+    }),
+    counterpart: z.object({
+      name: z.string().min(1),
+      kind: z.enum(["retailer", "manufacturer", "distributor", "other"]),
+      powerBalance: z.number().min(0).max(100),
+      dominance: z.number().min(-100).max(100).default(0),
+      affiliation: z.number().min(-100).max(100).default(0),
+      style: z.string().optional(),
+      notes: z.string().optional(),
+    }),
+    products: z.array(productSchema).min(1, "Mindestens ein Produkt erfassen"),
+    dimensions: z.array(dimensionSchema).min(1, "Mindestens eine Dimension erfassen"),
+    strategy: z.object({
+      userRole: z.enum(["buyer", "seller"]),
+      maxRounds: z.number().min(1).max(50),
+      selectedTechniques: z.array(z.string()).min(1, "Mindestens eine Technik auswählen"),
+      selectedTactics: z.array(z.string()).min(1, "Mindestens eine Taktik auswählen"),
+      companyKnown: z.boolean().default(false),
+      counterpartKnown: z.boolean().default(false),
+      counterpartDistance: z.number().min(0).max(100).optional(),
+    }),
+  })
+  .superRefine((values, ctx) => {
+    values.products.forEach((product, index) => {
+      if (values.strategy.userRole === "seller") {
+        if (typeof product.minPrice !== "number") {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["products", index, "minPrice"],
+            message: "Bitte Preisuntergrenze angeben.",
           });
         }
       } else {
-        toast({
-          title: "Negotiation Created",
-          description: "Your negotiation simulation has been created successfully.",
-        });
+        if (typeof product.maxPrice !== "number") {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["products", index, "maxPrice"],
+            message: "Bitte Preisobergrenze angeben.",
+          });
+        }
       }
-      
+    });
+  });
+
+type FormSchema = z.infer<typeof formSchema>;
+
+type Technique = { id: string; name: string; beschreibung?: string };
+type Tactic = { id: string; name: string; beschreibung?: string };
+type MarketInsight = { aspekt: string; relevanz: "hoch" | "mittel" | "niedrig"; quelle: string };
+
+type CreateNegotiationFormProps = {
+  techniques: Technique[];
+  tactics: Tactic[];
+  onSuccess: () => void;
+};
+
+const steps = [
+  { id: 0, label: "Allgemeine Angaben" },
+  { id: 1, label: "Verhandlungsdimensionen" },
+  { id: 2, label: "Markthintergrund" },
+  { id: 3, label: "Verhandlungsstrategie" },
+  { id: 4, label: "Zusammenfassung" },
+];
+
+const appendTranscript = (current: string | undefined, transcript: string) => {
+  if (!transcript) {
+    return current ?? "";
+  }
+  return current && current.length > 0 ? `${current}\n\n${transcript}` : transcript;
+};
+
+type VoiceFieldControlsProps = {
+  value?: string;
+  onChange: (nextValue: string) => void;
+};
+
+const VoiceFieldControls = ({ value, onChange }: VoiceFieldControlsProps) => (
+  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+    <VoiceInput onTranscript={(text) => onChange(appendTranscript(value, text))} />
+    <VoiceInputInfo className="mt-0" />
+  </div>
+);
+
+export default function CreateNegotiationForm({ techniques, tactics, onSuccess }: CreateNegotiationFormProps) {
+  const { toast } = useToast();
+  const [step, setStep] = useState(0);
+  const [marketInsights, setMarketInsights] = useState<MarketInsight[]>([]);
+  const [isLoadingInsights, setIsLoadingInsights] = useState(false);
+  const [marketInsightsError, setMarketInsightsError] = useState<string | null>(null);
+
+  const form = useForm<FormSchema>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      title: "Neue Verhandlung",
+      description: "",
+      company: {
+        organization: "",
+        company: "",
+        country: "Deutschland",
+        negotiationType: "Jahresgespräch",
+        relationshipType: "strategisch",
+        negotiationFrequency: "jährlich",
+      },
+      market: {
+        name: "",
+        region: "",
+        countryCode: "DE",
+        currencyCode: "EUR",
+        intelligence: "",
+        notes: "",
+      },
+      counterpart: {
+        name: "",
+        kind: "retailer",
+        powerBalance: 50,
+        dominance: 0,
+        affiliation: 0,
+        style: "partnerschaftlich",
+        notes: "",
+      },
+      products: [
+        {
+          name: "",
+          brand: "",
+          targetPrice: 1.1,
+          minPrice: 0.95,
+          maxPrice: 1.3,
+          estimatedVolume: 100000,
+        },
+      ],
+      dimensions: [
+        {
+          name: "Preis pro Einheit",
+          unit: "EUR",
+          minValue: 0.95,
+          maxValue: 1.3,
+          targetValue: 1.1,
+          priority: 1,
+        },
+      ],
+      strategy: {
+        userRole: "seller",
+        maxRounds: 6,
+        selectedTechniques: [],
+        selectedTactics: [],
+        companyKnown: true,
+        counterpartKnown: true,
+        counterpartDistance: 50,
+      },
+    },
+  });
+
+  const productsArray = useFieldArray<FormSchema, "products", "id">({
+    control: form.control,
+    name: "products",
+  });
+
+  const dimensionsArray = useFieldArray<FormSchema, "dimensions", "id">({
+    control: form.control,
+    name: "dimensions",
+  });
+
+  const mutation = useMutation({
+    mutationFn: async (values: FormSchema) => {
+      const registrationRes = await apiRequest("POST", "/api/registrations", {
+        organization: values.company.organization,
+        company: values.company.company,
+        country: values.company.country,
+        negotiationType: values.company.negotiationType,
+        negotiationFrequency: values.company.negotiationFrequency,
+      });
+      const registration = await registrationRes.json();
+
+      const marketRes = await apiRequest("POST", `/api/registrations/${registration.id}/markets`, {
+        name: values.market.name,
+        region: values.market.region,
+        countryCode: values.market.countryCode,
+        currencyCode: values.market.currencyCode,
+        meta: {
+          intelligence: values.market.intelligence,
+          notes: values.market.notes,
+        },
+      });
+      const market = await marketRes.json();
+
+      const counterpartRes = await apiRequest("POST", `/api/registrations/${registration.id}/counterparts`, {
+        name: values.counterpart.name,
+        kind: values.counterpart.kind,
+        powerBalance: String(values.counterpart.powerBalance ?? ""),
+        dominance: values.counterpart.dominance ?? 0,
+        affiliation: values.counterpart.affiliation ?? 0,
+        style: values.counterpart.style,
+        notes: values.counterpart.notes,
+      });
+      const counterpart = await counterpartRes.json();
+
+      const productIds: string[] = [];
+      for (const product of values.products) {
+        const productRes = await apiRequest("POST", `/api/registrations/${registration.id}/products`, {
+          name: product.name,
+          brand: product.brand,
+          attrs: {
+            targetPrice: product.targetPrice,
+            minPrice: product.minPrice,
+            maxPrice: product.maxPrice,
+            estimatedVolume: product.estimatedVolume,
+          },
+        });
+        const createdProduct = await productRes.json();
+        productIds.push(createdProduct.id);
+      }
+
+      const scenario = {
+        userRole: values.strategy.userRole,
+        negotiationType: values.company.negotiationType,
+        relationshipType: values.company.relationshipType,
+        negotiationFrequency: values.company.negotiationFrequency,
+        maxRounds: values.strategy.maxRounds,
+        selectedTechniques: values.strategy.selectedTechniques,
+        selectedTactics: values.strategy.selectedTactics,
+        counterpartDistance: { gesamt: values.strategy.counterpartDistance ?? 50 },
+        metadata: {
+          companyKnown: values.strategy.companyKnown,
+          counterpartKnown: values.strategy.counterpartKnown,
+        },
+        dimensions: values.dimensions,
+        companyProfile: {
+          organization: values.company.organization,
+          company: values.company.company,
+          country: values.company.country,
+          negotiationType: values.company.negotiationType,
+          negotiationFrequency: values.company.negotiationFrequency,
+        },
+        market: values.market,
+        counterpartProfile: {
+          ...values.counterpart,
+          powerBalance:
+            typeof values.counterpart.powerBalance === "number"
+              ? String(values.counterpart.powerBalance)
+              : values.counterpart.powerBalance,
+        },
+        products: values.products.map((product, index) => ({
+          ...product,
+          productId: productIds[index],
+        })),
+      };
+
+      const negotiationRes = await apiRequest("POST", "/api/negotiations", {
+        registrationId: registration.id,
+        marketId: market.id,
+        counterpartId: counterpart.id,
+        productIds,
+        title: values.title,
+        description: values.description,
+        scenario,
+      });
+
+      return negotiationRes.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/negotiations"] });
+      toast({
+        title: "Verhandlung angelegt",
+        description: "Die Konfiguration wurde gespeichert.",
+      });
       onSuccess();
     },
-    onError: () => {
+    onError: (error) => {
+      const description = error instanceof Error ? error.message : "Die Verhandlung konnte nicht angelegt werden.";
       toast({
-        title: "Error",
-        description: "Failed to create negotiation. Please try again.",
+        title: "Fehler",
+        description,
         variant: "destructive",
       });
     },
   });
 
-  const onSubmit = (data: CreateNegotiationForm) => {
-    createMutation.mutate(data);
+  const currentStep = steps[step];
+  const next = () => setStep(prev => Math.min(prev + 1, steps.length - 1));
+  const back = () => setStep(prev => Math.max(prev - 1, 0));
+
+  const enhancePromptFields = (insights: MarketInsight[]) => {
+    if (!insights.length) return;
+    const bullets = insights.map((item, index) => `${index + 1}. ${item.aspekt}${item.relevanz ? ` (${item.relevanz})` : ""}`).join("\n");
+    const currentMarketSummary = form.getValues("market.intelligence");
+    form.setValue("market.intelligence", appendTranscript(currentMarketSummary, bullets));
   };
 
-  const nextStep = () => {
-    if (step < 5) setStep(step + 1);
+  const buildMarketContext = () => {
+    const values = form.getValues();
+    const lines = [
+      values.market.name ? `Markt: ${values.market.name}` : "",
+      values.market.region ? `Region: ${values.market.region}` : "",
+      values.market.currencyCode ? `Währung: ${values.market.currencyCode}` : "",
+      values.market.notes,
+      values.market.intelligence,
+    ].filter(Boolean);
+    return lines.join("\n").trim();
   };
 
-  const prevStep = () => {
-    if (step > 1) setStep(step - 1);
+  const generateMarketInsights = async () => {
+    const values = form.getValues();
+    if (!values.title?.trim()) {
+      toast({ title: "Titel fehlt", description: "Bitte vergeben Sie einen Verhandlungstitel, bevor Sie Insights abrufen.", variant: "destructive" });
+      return;
+    }
+
+    const contextPayload = buildMarketContext();
+      if (!contextPayload) {
+        toast({
+          title: "Kontext erforderlich",
+          description: "Bitte beschreiben Sie den Markt oder fügen Sie Notizen hinzu, damit die KI die Recherche starten kann.",
+          variant: "destructive",
+        });
+        return;
+    }
+
+    try {
+      setIsLoadingInsights(true);
+      setMarketInsightsError(null);
+      const res = await apiRequest("POST", "/api/market-intelligence", {
+        title: values.title,
+        marktProduktKontext: contextPayload,
+        userRole: values.strategy.userRole,
+        produkte: values.products.map((product, index) => ({
+          id: `temp-${index}`,
+          produktName: product.name,
+          zielPreis: product.targetPrice,
+        })),
+      });
+      const data = await res.json();
+      const insights = data.intelligence ?? [];
+      setMarketInsights(insights);
+      if (insights.length > 0) {
+        enhancePromptFields(insights);
+      }
+      toast({
+        title: "Marktanalyse aktualisiert",
+        description: `${insights.length} Insight${insights.length === 1 ? "" : "s"} übernommen.`,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Marktanalyse konnte nicht geladen werden.";
+      setMarketInsightsError(message);
+      setMarketInsights([]);
+      toast({ title: "KI-Analyse fehlgeschlagen", description: message, variant: "destructive" });
+    } finally {
+      setIsLoadingInsights(false);
+    }
   };
 
-  const canProceedToStep2 = form.watch("contextId");
-  const canProceedToStep3 = canProceedToStep2 && form.watch("buyerAgentId") && form.watch("sellerAgentId");
-  const canProceedToStep4 = canProceedToStep3 && form.watch("selectedTechniques")?.length > 0 && form.watch("selectedTactics")?.length > 0;
-  const canProceedToStep5 = canProceedToStep4 && form.watch("userRole");
+  const applyInsightsToFields = () => {
+    enhancePromptFields(marketInsights);
+    toast({
+      title: "Insights übernommen",
+      description: "Die recherchierten Aspekte wurden in den Prompt und die Marktnotizen eingefügt.",
+    });
+  };
 
-  const stepTitles = [
-    "Define Basic Parameters",
-    "Select Agents", 
-    "Choose Negotiation Style",
-    "Configure ZOPA",
-    "Review & Configure"
-  ];
+  const renderStep = () => {
+    switch (currentStep.id) {
+      case 0:
+        return <GeneralSetupStep form={form} />;
+      case 1:
+        return (
+          <ProductsDimensionsStep
+            form={form}
+            productsArray={productsArray}
+            dimensionsArray={dimensionsArray}
+          />
+        );
+      case 2:
+        return (
+          <MarketBackgroundStep
+            form={form}
+            insights={marketInsights}
+            isLoadingInsights={isLoadingInsights}
+            insightsError={marketInsightsError}
+            onGenerateInsights={generateMarketInsights}
+            onApplyInsights={applyInsightsToFields}
+          />
+        );
+      case 3:
+        return <StrategyStep form={form} techniques={techniques} tactics={tactics} />;
+      case 4:
+        return <SummaryStep values={form.getValues()} techniques={techniques} tactics={tactics} />;
+      default:
+        return null;
+    }
+  };
 
-  const stepIcons = [Settings, Users, Brain, Target, Play];
+  return (
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(values => mutation.mutate(values))} className="space-y-6">
+        {/* Page Title */}
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-bold">Neue Verhandlung anlegen</h1>
+        </div>
+        <StepIndicator current={step} />
+        {renderStep()}
+        <div className="flex justify-between">
+          <Button type="button" variant="outline" onClick={back} disabled={step === 0}>
+            Zurück
+          </Button>
+          {step < steps.length - 1 ? (
+            <Button type="button" onClick={next}>
+              Weiter
+            </Button>
+          ) : (
+            <Button type="submit" disabled={mutation.isPending}>
+              {mutation.isPending ? "Wird gespeichert …" : "Verhandlung anlegen"}
+            </Button>
+          )}
+        </div>
+      </form>
+    </Form>
+  );
+}
+
+function StepIndicator({ current }: { current: number }) {
+  const progress = ((current + 1) / steps.length) * 100;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between text-sm">
+        <span className="font-medium">Schritt {current + 1} von {steps.length}</span>
+        <span className="text-muted-foreground">{steps[current].label}</span>
+      </div>
+      <div className="relative">
+        <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+          <div
+            className="h-full bg-primary transition-all duration-300 ease-out"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+      </div>
+      <div className="flex justify-between text-xs text-muted-foreground">
+        {steps.map((step, index) => (
+          <span
+            key={step.id}
+            className={index === current ? "font-semibold text-foreground" : index < current ? "text-primary" : ""}
+          >
+            {index + 1}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
+  return (
+    <Card>
+      <CardContent className="space-y-4 pt-6">
+        <div>
+          <h2 className="text-xl font-semibold">{title}</h2>
+          {description && <p className="text-sm text-muted-foreground">{description}</p>}
+        </div>
+        {children}
+      </CardContent>
+    </Card>
+  );
+}
+
+// Step 1: General Setup (Title + Company in one row, then 2 columns)
+function GeneralSetupStep({ form }: { form: UseFormReturn<FormSchema> }) {
+  return (
+    <div className="space-y-6">
+      {/* Title and Company in one row */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="grid gap-4 md:grid-cols-2">
+            <FormField
+              control={form.control}
+              name="title"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Verhandlungstitel</FormLabel>
+                  <FormControl>
+                    <Input className="h-11 text-lg font-semibold" placeholder="Q4 Aktionsverhandlung 2025" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField control={form.control} name="company.organization" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Organisation</FormLabel>
+                <FormControl>
+                  <Input className="h-11" placeholder="Demo Foods GmbH" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Two Columns: Counterpart and Background Info */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Column 1: Counterpart with Interpersonal Circumplex */}
+        <Section title="Verhandlungspartner">
+          <div className="space-y-4">
+            <FormField control={form.control} name="counterpart.name" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Name</FormLabel>
+                <FormControl>
+                  <Input placeholder="Retailer AG" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+            <FormField control={form.control} name="counterpart.kind" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Typ</FormLabel>
+                <Select onValueChange={field.onChange} value={field.value}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Auswählen" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="retailer">Einzelhändler</SelectItem>
+                    <SelectItem value="manufacturer">Hersteller</SelectItem>
+                    <SelectItem value="distributor">Distributor</SelectItem>
+                    <SelectItem value="other">Sonstiger</SelectItem>
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )} />
+
+            {/* Interpersonal Circumplex Sliders - in one row */}
+            <div className="grid grid-cols-2 gap-4">
+              <FormField control={form.control} name="counterpart.dominance" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Dominanz ({field.value ?? 0})</FormLabel>
+                  <FormControl>
+                    <Slider
+                      value={[field.value ?? 0]}
+                      min={-100}
+                      max={100}
+                      step={10}
+                      onValueChange={([value]) => field.onChange(value)}
+                      className="py-4"
+                    />
+                  </FormControl>
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>Submissiv</span>
+                    <span>Dominant</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">Wie durchsetzungsfähig tritt der Partner auf?</p>
+                  <FormMessage />
+                </FormItem>
+              )} />
+
+              <FormField control={form.control} name="counterpart.affiliation" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Affiliation ({field.value ?? 0})</FormLabel>
+                  <FormControl>
+                    <Slider
+                      value={[field.value ?? 0]}
+                      min={-100}
+                      max={100}
+                      step={10}
+                      onValueChange={([value]) => field.onChange(value)}
+                      className="py-4"
+                    />
+                  </FormControl>
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>Feindlich</span>
+                    <span>Freundlich</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">Wie kooperativ ist der Partner eingestellt?</p>
+                  <FormMessage />
+                </FormItem>
+              )} />
+            </div>
+
+            {/* Distance Slider - separate row */}
+            <FormField control={form.control} name="strategy.counterpartDistance" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Distanz zur eigenen Position ({field.value ?? 50})</FormLabel>
+                <FormControl>
+                  <Slider
+                    value={[field.value ?? 50]}
+                    min={0}
+                    max={100}
+                    step={5}
+                    onValueChange={([value]) => field.onChange(value)}
+                    className="py-4"
+                  />
+                </FormControl>
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>Nah</span>
+                  <span>Fern</span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">Wie weit ist die Ausgangsposition entfernt?</p>
+                <FormMessage />
+              </FormItem>
+            )} />
+          </div>
+        </Section>
+
+        {/* Column 2: Background Information */}
+        <Section title="Hintergrundinformationen">
+          <div className="space-y-4">
+            <FormField control={form.control} name="company.negotiationType" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Verhandlungstyp</FormLabel>
+                <FormControl>
+                  <Input placeholder="Jahresgespräch" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+
+            <FormField control={form.control} name="strategy.userRole" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Ihre Rolle</FormLabel>
+                <Select onValueChange={field.onChange} value={field.value}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Rolle wählen" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="seller">Verkäufer:in</SelectItem>
+                    <SelectItem value="buyer">Einkäufer:in</SelectItem>
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )} />
+
+            {/* Checkboxes in one row */}
+            <div className="flex items-center gap-6">
+              <FormField control={form.control} name="strategy.companyKnown" render={({ field }) => (
+                <FormItem className="flex items-center space-x-2">
+                  <FormControl>
+                    <Checkbox checked={field.value} onCheckedChange={(checked) => field.onChange(Boolean(checked))} />
+                  </FormControl>
+                  <div className="leading-tight">
+                    <FormLabel>Unternehmen bekannt</FormLabel>
+                  </div>
+                </FormItem>
+              )} />
+              <FormField control={form.control} name="strategy.counterpartKnown" render={({ field }) => (
+                <FormItem className="flex items-center space-x-2">
+                  <FormControl>
+                    <Checkbox checked={field.value} onCheckedChange={(checked) => field.onChange(Boolean(checked))} />
+                  </FormControl>
+                  <div className="leading-tight">
+                    <FormLabel>Partner bekannt</FormLabel>
+                  </div>
+                </FormItem>
+              )} />
+            </div>
+
+            {/* Power Balance Slider */}
+            <FormField control={form.control} name="counterpart.powerBalance" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Power Balance ({field.value ?? 50})</FormLabel>
+                <FormControl>
+                  <Slider
+                    value={[field.value ?? 50]}
+                    min={0}
+                    max={100}
+                    step={5}
+                    onValueChange={([value]) => field.onChange(value)}
+                    className="py-4"
+                  />
+                </FormControl>
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>Starke Position</span>
+                  <span>Schwache Position</span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">Wie ist das Machtverhältnis gegenüber dem Partner?</p>
+                <FormMessage />
+              </FormItem>
+            )} />
+
+            <FormField
+              control={form.control}
+              name="description"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Zusatzinformationen</FormLabel>
+                  <div className="space-y-2">
+                    <FormControl>
+                      <Textarea rows={3} placeholder="Weitere Hinweise zur Verhandlung..." {...field} />
+                    </FormControl>
+                    <VoiceFieldControls value={field.value} onChange={field.onChange} />
+                  </div>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+        </Section>
+      </div>
+    </div>
+  );
+}
+
+// Step 3: Market Background (Market info + Research functionality)
+type MarketBackgroundStepProps = {
+  form: UseFormReturn<FormSchema>;
+  insights: MarketInsight[];
+  isLoadingInsights: boolean;
+  insightsError: string | null;
+  onGenerateInsights: () => void;
+  onApplyInsights: () => void;
+};
+
+function MarketBackgroundStep({
+  form,
+  insights,
+  isLoadingInsights,
+  insightsError,
+  onGenerateInsights,
+  onApplyInsights,
+}: MarketBackgroundStepProps) {
+  return (
+    <div className="space-y-6">
+      {/* Market Information */}
+      <Section title="Marktinformationen">
+        <div className="grid gap-4 md:grid-cols-2">
+          <FormField control={form.control} name="market.name" render={({ field }) => (
+            <FormItem>
+              <FormLabel>Marktname</FormLabel>
+              <FormControl>
+                <Input placeholder="DACH Grocery" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )} />
+          <FormField control={form.control} name="market.region" render={({ field }) => (
+            <FormItem>
+              <FormLabel>Region</FormLabel>
+              <FormControl>
+                <Input placeholder="Mitteleuropa" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )} />
+          <FormField control={form.control} name="market.countryCode" render={({ field }) => (
+            <FormItem>
+              <FormLabel>Ländercode</FormLabel>
+              <FormControl>
+                <Input placeholder="DE" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )} />
+          <FormField control={form.control} name="market.currencyCode" render={({ field }) => (
+            <FormItem>
+              <FormLabel>Währung</FormLabel>
+              <FormControl>
+                <Input placeholder="EUR" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )} />
+        </div>
+      </Section>
+
+      {/* Market Intelligence & Research - Two Columns */}
+      <Section title="Marktrecherche & Insights">
+        <div className="grid gap-6 lg:grid-cols-2">
+          {/* Column 1: Automatic Research */}
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-sm font-medium mb-2">Automatische Recherche</h3>
+              <p className="text-xs text-muted-foreground mb-4">
+                Starten Sie die KI-gestützte Marktanalyse und übernehmen Sie relevante Ergebnisse per Klick.
+              </p>
+            </div>
+            <MarketInsightsPanel
+              insights={insights}
+              isLoading={isLoadingInsights}
+              error={insightsError}
+              onGenerate={onGenerateInsights}
+              onApply={onApplyInsights}
+            />
+          </div>
+
+          {/* Column 2: Manual Input with Voice */}
+          <div className="space-y-4">
+            <FormField
+              control={form.control}
+              name="market.intelligence"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Markt-Insights</FormLabel>
+                  <div className="space-y-2">
+                    <FormControl>
+                      <Textarea rows={8} placeholder="Markttrends, Nachfrageschwankungen, Wettbewerbssituation..." {...field} />
+                    </FormControl>
+                    <VoiceFieldControls value={field.value} onChange={field.onChange} />
+                  </div>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="market.notes"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Zusätzliche Notizen</FormLabel>
+                  <div className="space-y-2">
+                    <FormControl>
+                      <Textarea rows={4} placeholder="Weitere Hinweise zum Markt..." {...field} />
+                    </FormControl>
+                    <VoiceFieldControls value={field.value} onChange={field.onChange} />
+                  </div>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+        </div>
+      </Section>
+    </div>
+  );
+}
+
+function CompanyStep({ form }: { form: UseFormReturn<FormSchema> }) {
+  return (
+    <Section title="Unternehmensdaten" description="Wie lautet Ihr Firmenprofil?">
+      <div className="grid gap-4 md:grid-cols-2">
+***
+        <FormField
+          control={form.control}
+          name="title"
+          render={({ field }) => (
+            <FormItem className="md:col-span-2">
+              <FormLabel>Verhandlungstitel</FormLabel>
+              <FormControl>
+                <Input className="h-12 text-lg" placeholder="Q4 Aktionsverhandlung" {...field} />
+              </FormControl>
+              <p className="text-xs text-muted-foreground">Dieser Titel erscheint später im Dashboard & Analyse-Ansichten.</p>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField control={form.control} name="company.organization" render={({ field }) => (
+          <FormItem>
+            <FormLabel>Organisation</FormLabel>
+            <FormControl>
+              <Input placeholder="Demo Foods GmbH" {...field} />
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )} />
+        <FormField control={form.control} name="company.company" render={({ field }) => (
+          <FormItem>
+            <FormLabel>Markenname (optional)</FormLabel>
+            <FormControl>
+              <Input placeholder="Demo Marke" {...field} />
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )} />
+        <FormField control={form.control} name="company.country" render={({ field }) => (
+          <FormItem>
+            <FormLabel>Land</FormLabel>
+            <FormControl>
+              <Input placeholder="Deutschland" {...field} />
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )} />
+        <FormField control={form.control} name="company.negotiationType" render={({ field }) => (
+          <FormItem>
+            <FormLabel>Verhandlungstyp</FormLabel>
+            <FormControl>
+              <Input placeholder="Jahresgespräch" {...field} />
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )} />
+        <FormField control={form.control} name="company.relationshipType" render={({ field }) => (
+          <FormItem>
+            <FormLabel>Beziehung</FormLabel>
+            <FormControl>
+              <Input placeholder="strategisch" {...field} />
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )} />
+        <FormField control={form.control} name="company.negotiationFrequency" render={({ field }) => (
+          <FormItem>
+            <FormLabel>Frequenz</FormLabel>
+            <FormControl>
+              <Input placeholder="jährlich" {...field} />
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )} />
+        <FormField
+          control={form.control}
+          name="description"
+          render={({ field }) => (
+            <FormItem className="md:col-span-2">
+              <FormLabel>Beschreibung (optional)</FormLabel>
+              <div className="space-y-2">
+                <FormControl>
+                  <Textarea rows={3} placeholder="Kurze Beschreibung der Verhandlung" {...field} />
+                </FormControl>
+                <VoiceFieldControls value={field.value} onChange={field.onChange} />
+              </div>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+      </div>
+    </Section>
+  );
+}
+
+type MarketStepProps = {
+  form: UseFormReturn<FormSchema>;
+  insights: MarketInsight[];
+  isLoadingInsights: boolean;
+  insightsError: string | null;
+  onGenerateInsights: () => void;
+  onApplyInsights: () => void;
+};
+
+function MarketStep({ form, insights, isLoadingInsights, insightsError, onGenerateInsights, onApplyInsights }: MarketStepProps) {
+  return (
+    <Section title="Marktumfeld" description="Beschreiben Sie das Segment für die Simulation.">
+      <div className="grid gap-4 md:grid-cols-2">
+        <FormField control={form.control} name="market.name" render={({ field }) => (
+          <FormItem>
+            <FormLabel>Marktname</FormLabel>
+            <FormControl>
+              <Input placeholder="DACH Grocery" {...field} />
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )} />
+        <FormField control={form.control} name="market.region" render={({ field }) => (
+          <FormItem>
+            <FormLabel>Region</FormLabel>
+            <FormControl>
+              <Input placeholder="Mitteleuropa" {...field} />
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )} />
+        <FormField control={form.control} name="market.countryCode" render={({ field }) => (
+          <FormItem>
+            <FormLabel>Ländercode</FormLabel>
+            <FormControl>
+              <Input placeholder="DE" {...field} />
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )} />
+        <FormField control={form.control} name="market.currencyCode" render={({ field }) => (
+          <FormItem>
+            <FormLabel>Währung</FormLabel>
+            <FormControl>
+              <Input placeholder="EUR" {...field} />
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )} />
+        <FormField
+          control={form.control}
+          name="market.intelligence"
+          render={({ field }) => (
+            <FormItem className="md:col-span-2">
+              <FormLabel>Markt-Insights</FormLabel>
+              <div className="space-y-2">
+                <FormControl>
+                  <Textarea rows={3} placeholder="Markttrends, Nachfrageschwankungen …" {...field} />
+                </FormControl>
+                <VoiceFieldControls value={field.value} onChange={field.onChange} />
+              </div>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="market.notes"
+          render={({ field }) => (
+            <FormItem className="md:col-span-2">
+              <FormLabel>Notizen</FormLabel>
+              <div className="space-y-2">
+                <FormControl>
+                  <Textarea rows={2} placeholder="Zusätzliche Hinweise" {...field} />
+                </FormControl>
+                <VoiceFieldControls value={field.value} onChange={field.onChange} />
+              </div>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <div className="md:col-span-2">
+          <MarketInsightsPanel
+            insights={insights}
+            isLoading={isLoadingInsights}
+            error={insightsError}
+            onGenerate={onGenerateInsights}
+            onApply={onApplyInsights}
+          />
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+function MarketInsightsPanel({
+  insights,
+  isLoading,
+  error,
+  onGenerate,
+  onApply,
+}: {
+  insights: MarketInsight[];
+  isLoading: boolean;
+  error: string | null;
+  onGenerate: () => void;
+  onApply: () => void;
+}) {
+  return (
+    <div className="space-y-4 rounded-2xl border bg-muted/40 p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="flex items-center gap-2 text-sm font-semibold">
+            <Sparkles className="h-4 w-4 text-primary" />
+            KI Markt-Insights
+          </p>
+          <p className="text-xs text-muted-foreground">KI Web Recherche</p>
+        </div>
+        <Button type="button" variant="secondary" onClick={onGenerate} disabled={isLoading}>
+          {isLoading ? "Analyse läuft …" : "Marktanalyse abrufen"}
+        </Button>
+      </div>
+      {error && <p className="text-sm text-destructive">{error}</p>}
+      {isLoading && <p className="text-sm text-muted-foreground">Die KI durchsucht gerade aktuelle Quellen …</p>}
+      {!isLoading && insights.length > 0 && (
+        <>
+          <div className="grid gap-3 md:grid-cols-2">
+            {insights.map((insight, index) => (
+              <div key={`${insight.aspekt}-${index}`} className="space-y-2 rounded-xl border bg-background p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <p className="text-sm font-medium leading-snug">{insight.aspekt}</p>
+                  <Badge variant="secondary" className={relevanceClassName(insight.relevanz)}>
+                    {insight.relevanz}
+                  </Badge>
+                </div>
+                {insight.quelle && (
+                  <a
+                    href={insight.quelle}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                  >
+                    Quelle öffnen
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                )}
+              </div>
+            ))}
+          </div>
+          <Button type="button" variant="outline" onClick={onApply}>
+            Insights in Briefing übernehmen
+          </Button>
+        </>
+      )}
+      {!isLoading && insights.length === 0 && !error && (
+        <p className="text-sm text-muted-foreground">
+          Keine Insights geladen. Nutzen Sie die Analyse, um Markttrends automatisch in Ihren Prompt zu übernehmen.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function relevanceClassName(relevanz: MarketInsight["relevanz"]) {
+  switch (relevanz) {
+    case "hoch":
+      return "bg-emerald-600 text-white";
+    case "mittel":
+      return "bg-amber-500 text-slate-900";
+    case "niedrig":
+    default:
+      return "bg-slate-600 text-white";
+  }
+}
+
+function CounterpartStep({ form }: { form: UseFormReturn<FormSchema> }) {
+  return (
+    <Section title="Verhandlungspartner" description="Wer sitzt auf der Gegenseite?">
+      <div className="grid gap-4 md:grid-cols-2">
+        <FormField control={form.control} name="counterpart.name" render={({ field }) => (
+          <FormItem>
+            <FormLabel>Name</FormLabel>
+            <FormControl>
+              <Input placeholder="Retailer AG" {...field} />
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )} />
+        <FormField control={form.control} name="counterpart.kind" render={({ field }) => (
+          <FormItem>
+            <FormLabel>Typ</FormLabel>
+            <Select onValueChange={field.onChange} value={field.value}>
+              <FormControl>
+                <SelectTrigger>
+                  <SelectValue placeholder="Auswählen" />
+                </SelectTrigger>
+              </FormControl>
+              <SelectContent>
+                <SelectItem value="retailer">Einzelhändler</SelectItem>
+                <SelectItem value="manufacturer">Hersteller</SelectItem>
+                <SelectItem value="distributor">Distributor</SelectItem>
+                <SelectItem value="other">Sonstiger</SelectItem>
+              </SelectContent>
+            </Select>
+            <FormMessage />
+          </FormItem>
+        )} />
+        <FormField control={form.control} name="counterpart.powerBalance" render={({ field }) => (
+          <FormItem className="md:col-span-2">
+            <FormLabel>Machtbalance ({field.value ?? 50})</FormLabel>
+            <FormControl>
+              <div className="space-y-2">
+                <Slider
+                  value={[field.value ?? 50]}
+                  min={0}
+                  max={100}
+                  step={5}
+                  onValueChange={([value]) => field.onChange(value)}
+                />
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>Wir stärker</span>
+                  <span>Ausgeglichen</span>
+                  <span>Partner stärker</span>
+                </div>
+              </div>
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )} />
+        <FormField control={form.control} name="counterpart.style" render={({ field }) => (
+          <FormItem>
+            <FormLabel>Verhandlungsstil</FormLabel>
+            <FormControl>
+              <Input placeholder="datenbasiert" {...field} />
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )} />
+        <FormField
+          control={form.control}
+          name="counterpart.notes"
+          render={({ field }) => (
+            <FormItem className="md:col-span-2">
+              <FormLabel>Notizen</FormLabel>
+              <div className="space-y-2">
+                <FormControl>
+                  <Textarea rows={3} placeholder="Historie, Eskalationen, rote Linien" {...field} />
+                </FormControl>
+                <VoiceFieldControls value={field.value} onChange={field.onChange} />
+              </div>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+      </div>
+    </Section>
+  );
+}
+
+// NEW: Combined Products & Dimensions Step with Tabs
+function ProductsDimensionsStep({
+  form,
+  productsArray,
+  dimensionsArray,
+}: {
+  form: UseFormReturn<FormSchema>;
+  productsArray: UseFieldArrayReturn<FormSchema, "products", "id">;
+  dimensionsArray: UseFieldArrayReturn<FormSchema, "dimensions", "id">;
+}) {
+  const watchedProducts = form.watch("products");
+  const watchedDimensions = form.watch("dimensions");
 
   return (
     <div className="space-y-6">
-      {/* Progress Steps */}
-      <div className="flex items-center justify-center space-x-4 mb-8">
-        {[1, 2, 3, 4, 5].map((stepNum) => {
-          const StepIcon = stepIcons[stepNum - 1];
-          return (
-            <div key={stepNum} className="flex items-center">
-              <div className="text-center">
-                <div
-                  className={`w-12 h-12 rounded-full flex items-center justify-center text-sm font-medium ${
-                    step >= stepNum
-                      ? "bg-blue-600 text-white"
-                      : "bg-gray-200 text-gray-600"
-                  }`}
-                >
-                  <StepIcon className="w-5 h-5" />
-                </div>
-                <p className="text-xs mt-2 text-gray-600">{stepTitles[stepNum - 1]}</p>
-              </div>
-              {stepNum < 5 && (
-                <div
-                  className={`w-16 h-1 mx-4 ${
-                    step > stepNum ? "bg-blue-600" : "bg-gray-200"
-                  }`}
-                />
-              )}
-            </div>
-          );
-        })}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-semibold">Produkte & Dimensionen</h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            Definieren Sie die Artikel und Verhandlungsdimensionen
+          </p>
+        </div>
+        <div className="flex gap-4 text-sm">
+          <Badge variant="outline" className="px-3 py-1">
+            {watchedProducts?.length ?? 0} Produkte
+          </Badge>
+          <Badge variant="outline" className="px-3 py-1">
+            {watchedDimensions?.length ?? 0} Dimensionen
+          </Badge>
+        </div>
       </div>
 
-      <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-          {/* Step 1: Basic Parameters */}
-          {step === 1 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <Settings className="w-5 h-5 mr-2" />
-                  Define Basic Parameters
-                </CardTitle>
-                <CardDescription>
-                  Choose the negotiation context and set basic parameters for your simulation.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="title"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Negotiation Title</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="Enter a title for this negotiation"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+      <Tabs defaultValue="products" className="w-full">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="products">
+            Produkte ({watchedProducts?.length ?? 0})
+          </TabsTrigger>
+          <TabsTrigger value="dimensions">
+            Dimensionen ({watchedDimensions?.length ?? 0})
+          </TabsTrigger>
+        </TabsList>
 
-                <FormField
-                  control={form.control}
-                  name="contextId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Negotiation Context</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select a negotiation context" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {contexts.map((context) => (
-                            <SelectItem key={context.id} value={context.id}>
-                              {context.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+        <TabsContent value="products" className="mt-6">
+          <ProductsContent form={form} array={productsArray} />
+        </TabsContent>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="negotiationType"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Negotiation Type</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="one-shot">One-Shot</SelectItem>
-                            <SelectItem value="multi-year">Multi-Year</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="relationshipType"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Relationship Type</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="first">First Time</SelectItem>
-                            <SelectItem value="long-standing">Long-Standing</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                <FormField
-                  control={form.control}
-                  name="maxRounds"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Maximum Rounds</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          min={1}
-                          max={100}
-                          {...field}
-                          onChange={(e) => field.onChange(parseInt(e.target.value))}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                {form.watch("contextId") && (
-                  <div className="p-4 bg-blue-50 rounded-lg">
-                    <h4 className="font-medium text-blue-900 mb-2">Selected Context</h4>
-                    <p className="text-blue-700 text-sm">
-                      {contexts.find(c => c.id === form.watch("contextId"))?.description}
-                    </p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Step 2: Select Agents */}
-          {step === 2 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <Users className="w-5 h-5 mr-2" />
-                  Select Negotiation Agents
-                </CardTitle>
-                <CardDescription>
-                  Choose the AI agents that will participate in the negotiation.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <FormField
-                    control={form.control}
-                    name="buyerAgentId"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Buyer Agent</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select buyer agent" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {agents.map((agent) => (
-                              <SelectItem key={agent.id} value={agent.id}>
-                                {agent.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="sellerAgentId"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Seller Agent</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select seller agent" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {agents.map((agent) => (
-                              <SelectItem key={agent.id} value={agent.id}>
-                                {agent.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                {/* Show selected agents info */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {form.watch("buyerAgentId") && (
-                    <div className="p-4 border rounded-lg">
-                      <h4 className="font-medium text-green-700 mb-2">Buyer Agent</h4>
-                      <p className="text-sm">{agents.find(a => a.id === form.watch("buyerAgentId"))?.name}</p>
-                      <Badge variant="secondary" className="mt-2">
-                        Power: {agents.find(a => a.id === form.watch("buyerAgentId"))?.powerLevel}/10
-                      </Badge>
-                    </div>
-                  )}
-
-                  {form.watch("sellerAgentId") && (
-                    <div className="p-4 border rounded-lg">
-                      <h4 className="font-medium text-blue-700 mb-2">Seller Agent</h4>
-                      <p className="text-sm">{agents.find(a => a.id === form.watch("sellerAgentId"))?.name}</p>
-                      <Badge variant="secondary" className="mt-2">
-                        Power: {agents.find(a => a.id === form.watch("sellerAgentId"))?.powerLevel}/10
-                      </Badge>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Step 3: Choose Negotiation Style */}
-          {step === 3 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <Brain className="w-5 h-5 mr-2" />
-                  Choose Negotiation Style
-                </CardTitle>
-                <CardDescription>
-                  Select the influencing techniques and negotiation tactics to test in this simulation.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {/* Influencing Techniques */}
-                <div>
-                  <FormField
-                    control={form.control}
-                    name="selectedTechniques"
-                    render={() => (
-                      <FormItem>
-                        <div className="mb-4">
-                          <FormLabel className="text-base">Influencing Techniques</FormLabel>
-                          <p className="text-sm text-gray-600">Select psychological techniques that agents should use</p>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {isLoadingTechniques ? <p>Loading techniques...</p> : techniques.map((technique: any) => (
-                            <FormField
-                              key={technique.id}
-                              control={form.control}
-                              name="selectedTechniques"
-                              render={({ field }) => (
-                                <FormItem
-                                  key={technique.id}
-                                  className="flex flex-row items-start space-x-3 space-y-0 border rounded-lg p-4"
-                                >
-                                  <FormControl>
-                                    <Checkbox
-                                      checked={field.value?.includes(technique.id)}
-                                      onCheckedChange={(checked) => {
-                                        const updatedValue = checked
-                                          ? [...field.value, technique.id]
-                                          : field.value?.filter((value: any) => value !== technique.id);
-                                        field.onChange(updatedValue);
-                                      }}
-                                    />
-                                  </FormControl>
-                                  <div className="space-y-1 leading-none">
-                                    <FormLabel className="text-sm font-medium flex items-center gap-2">
-                                      {technique.name}
-                                      <TooltipProvider>
-                                        <Tooltip>
-                                          <TooltipTrigger asChild>
-                                            <button type="button" onClick={(e) => e.preventDefault()}>
-                                              <Info className="w-4 h-4 text-gray-400" />
-                                            </button>
-                                          </TooltipTrigger>
-                                          <TooltipContent>
-                                            <p className="max-w-xs">{technique.description || technique.anwendung}</p>
-                                          </TooltipContent>
-                                        </Tooltip>
-                                      </TooltipProvider>
-                                    </FormLabel>
-                                    <p className="text-xs text-gray-600">
-                                      {technique.anwendung}
-                                    </p>
-                                  </div>
-                                </FormItem>
-                              )}
-                            />
-                          ))}
-                        </div>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                <Separator />
-
-                {/* Negotiation Tactics */}
-                <div>
-                  <FormField
-                    control={form.control}
-                    name="selectedTactics"
-                    render={() => (
-                      <FormItem>
-                        <div className="mb-4">
-                          <FormLabel className="text-base">Negotiation Tactics</FormLabel>
-                          <p className="text-sm text-gray-600">Select strategic approaches for the negotiation</p>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {isLoadingTactics ? <p>Loading tactics...</p> : tactics.map((tactic: any) => (
-                            <FormField
-                              key={tactic.id}
-                              control={form.control}
-                              name="selectedTactics"
-                              render={({ field }) => (
-                                <FormItem
-                                  key={tactic.id}
-                                  className="flex flex-row items-start space-x-3 space-y-0 border rounded-lg p-4"
-                                >
-                                  <FormControl>
-                                    <Checkbox
-                                      checked={field.value?.includes(tactic.id)}
-                                      onCheckedChange={(checked) => {
-                                        const updatedValue = checked
-                                          ? [...field.value, tactic.id]
-                                          : field.value?.filter((value: any) => value !== tactic.id);
-                                        field.onChange(updatedValue);
-                                      }}
-                                    />
-                                  </FormControl>
-                                  <div className="space-y-1 leading-none">
-                                    <FormLabel className="text-sm font-medium flex items-center gap-2">
-                                      {tactic.name}
-                                      <TooltipProvider>
-                                        <Tooltip>
-                                          <TooltipTrigger asChild>
-                                            <button type="button" onClick={(e) => e.preventDefault()}>
-                                              <Info className="w-4 h-4 text-gray-400" />
-                                            </button>
-                                          </TooltipTrigger>
-                                          <TooltipContent>
-                                            <p className="max-w-xs">{tactic.description || tactic.anwendung}</p>
-                                          </TooltipContent>
-                                        </Tooltip>
-                                      </TooltipProvider>
-                                    </FormLabel>
-                                    <p className="text-xs text-gray-600">
-                                      {tactic.anwendung}
-                                    </p>
-                                  </div>
-                                </FormItem>
-                              )}
-                            />
-                          ))}
-                        </div>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Step 4: Configure ZOPA */}
-          {step === 4 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <Target className="w-5 h-5 mr-2" />
-                  Configure ZOPA (Zone of Possible Agreement)
-                </CardTitle>
-                <CardDescription>
-                  Set your negotiation ranges visually and compare with counterpart positions.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-8">
-                {/* User Role Selection */}
-                <FormField
-                  control={form.control}
-                  name="userRole"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Your Role in Negotiation</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select your role" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="buyer">Buyer (Käufer)</SelectItem>
-                          <SelectItem value="seller">Seller (Verkäufer)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                {/* Visual ZOPA Configuration */}
-                <div className="space-y-8">
-                  {/* Volumen */}
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-lg font-semibold">Volumen (Volume)</h3>
-                      <Badge variant="outline">Units/Stück</Badge>
-                    </div>
-                    
-                    <div className="space-y-6">
-                      {/* Your Position */}
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                          <Label className="text-blue-600 font-medium">Your Position</Label>
-                          <div className="text-sm text-gray-600">
-                            {form.watch("userZopa.volumen")?.min || 100} - {form.watch("userZopa.volumen")?.max || 1000} 
-                            (Target: {form.watch("userZopa.volumen")?.target || 500})
-                          </div>
-                        </div>
-                        
-                        <div className="space-y-2">
-                          <div className="flex space-x-4">
-                            <FormField
-                              control={form.control}
-                              name="userZopa.volumen.min"
-                              render={({ field }) => (
-                                <FormItem className="flex-1">
-                                  <FormLabel className="text-xs">Min</FormLabel>
-                                  <FormControl>
-                                    <Input
-                                      type="number"
-                                      className="h-8"
-                                      {...field}
-                                      onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
-                                    />
-                                  </FormControl>
-                                </FormItem>
-                              )}
-                            />
-                            
-                            <FormField
-                              control={form.control}
-                              name="userZopa.volumen.target"
-                              render={({ field }) => (
-                                <FormItem className="flex-1">
-                                  <FormLabel className="text-xs">Target</FormLabel>
-                                  <FormControl>
-                                    <Input
-                                      type="number"
-                                      className="h-8 border-blue-300"
-                                      {...field}
-                                      onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
-                                    />
-                                  </FormControl>
-                                </FormItem>
-                              )}
-                            />
-                            
-                            <FormField
-                              control={form.control}
-                              name="userZopa.volumen.max"
-                              render={({ field }) => (
-                                <FormItem className="flex-1">
-                                  <FormLabel className="text-xs">Max</FormLabel>
-                                  <FormControl>
-                                    <Input
-                                      type="number"
-                                      className="h-8"
-                                      {...field}
-                                      onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
-                                    />
-                                  </FormControl>
-                                </FormItem>
-                              )}
-                            />
-                          </div>
-                          
-                          {/* Visual Spectrum */}
-                          <div className="relative h-4 bg-gray-100 rounded-full overflow-hidden">
-                            <div 
-                              className="absolute h-full bg-blue-200 rounded-full"
-                              style={{
-                                left: `${((form.watch("userZopa.volumen")?.min || 100) / 1000) * 100}%`,
-                                width: `${(((form.watch("userZopa.volumen")?.max || 1000) - (form.watch("userZopa.volumen")?.min || 100)) / 1000) * 100}%`
-                              }}
-                            />
-                            <div 
-                              className="absolute w-2 h-full bg-blue-600 rounded-full"
-                              style={{
-                                left: `${((form.watch("userZopa.volumen")?.target || 500) / 1000) * 100}%`
-                              }}
-                            />
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Counterpart Assessment */}
-                      <div className="space-y-3">
-                        <Label className="text-red-600 font-medium">Counterpart Assessment</Label>
-                        <FormField
-                          control={form.control}
-                          name="counterpartDistance.volumen"
-                          render={({ field }) => (
-                            <FormItem>
-                              <div className="flex items-center space-x-4">
-                                <Label className="text-sm min-w-[60px]">Position:</Label>
-                                <Select onValueChange={(value) => field.onChange(parseInt(value))} defaultValue={field.value?.toString()}>
-                                  <FormControl>
-                                    <SelectTrigger className="w-[200px]">
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                  </FormControl>
-                                  <SelectContent>
-                                    <SelectItem value="-1">Weit entfernt (far from your range)</SelectItem>
-                                    <SelectItem value="0">Neutral (overlapping)</SelectItem>
-                                    <SelectItem value="1">Nah (close to your range)</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        
-                        {/* Counterpart Visual Indicator */}
-                        <div className="relative h-4 bg-gray-100 rounded-full overflow-hidden">
-                          <div className="absolute h-full bg-red-200 rounded-full w-1/3"
-                               style={{
-                                 left: form.watch("counterpartDistance.volumen") === -1 ? "10%" : 
-                                       form.watch("counterpartDistance.volumen") === 0 ? "35%" : "60%"
-                               }} />
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <Separator />
-                  </div>
-
-                  {/* Preis */}
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-lg font-semibold">Preis (Price)</h3>
-                      <Badge variant="outline">EUR</Badge>
-                    </div>
-                    
-                    <div className="space-y-6">
-                      {/* Your Position */}
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                          <Label className="text-blue-600 font-medium">Your Position</Label>
-                          <div className="text-sm text-gray-600">
-                            €{form.watch("userZopa.preis")?.min || 10} - €{form.watch("userZopa.preis")?.max || 100} 
-                            (Target: €{form.watch("userZopa.preis")?.target || 50})
-                          </div>
-                        </div>
-                        
-                        <div className="space-y-2">
-                          <div className="flex space-x-4">
-                            <FormField
-                              control={form.control}
-                              name="userZopa.preis.min"
-                              render={({ field }) => (
-                                <FormItem className="flex-1">
-                                  <FormLabel className="text-xs">Min €</FormLabel>
-                                  <FormControl>
-                                    <Input
-                                      type="number"
-                                      step="0.01"
-                                      className="h-8"
-                                      {...field}
-                                      onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
-                                    />
-                                  </FormControl>
-                                </FormItem>
-                              )}
-                            />
-                            
-                            <FormField
-                              control={form.control}
-                              name="userZopa.preis.target"
-                              render={({ field }) => (
-                                <FormItem className="flex-1">
-                                  <FormLabel className="text-xs">Target €</FormLabel>
-                                  <FormControl>
-                                    <Input
-                                      type="number"
-                                      step="0.01"
-                                      className="h-8 border-blue-300"
-                                      {...field}
-                                      onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
-                                    />
-                                  </FormControl>
-                                </FormItem>
-                              )}
-                            />
-                            
-                            <FormField
-                              control={form.control}
-                              name="userZopa.preis.max"
-                              render={({ field }) => (
-                                <FormItem className="flex-1">
-                                  <FormLabel className="text-xs">Max €</FormLabel>
-                                  <FormControl>
-                                    <Input
-                                      type="number"
-                                      step="0.01"
-                                      className="h-8"
-                                      {...field}
-                                      onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
-                                    />
-                                  </FormControl>
-                                </FormItem>
-                              )}
-                            />
-                          </div>
-                          
-                          {/* Visual Spectrum */}
-                          <div className="relative h-4 bg-gray-100 rounded-full overflow-hidden">
-                            <div 
-                              className="absolute h-full bg-blue-200 rounded-full"
-                              style={{
-                                left: `${((form.watch("userZopa.preis")?.min || 10) / 100) * 100}%`,
-                                width: `${(((form.watch("userZopa.preis")?.max || 100) - (form.watch("userZopa.preis")?.min || 10)) / 100) * 100}%`
-                              }}
-                            />
-                            <div 
-                              className="absolute w-2 h-full bg-blue-600 rounded-full"
-                              style={{
-                                left: `${((form.watch("userZopa.preis")?.target || 50) / 100) * 100}%`
-                              }}
-                            />
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Counterpart Assessment */}
-                      <div className="space-y-3">
-                        <Label className="text-red-600 font-medium">Counterpart Assessment</Label>
-                        <FormField
-                          control={form.control}
-                          name="counterpartDistance.preis"
-                          render={({ field }) => (
-                            <FormItem>
-                              <div className="flex items-center space-x-4">
-                                <Label className="text-sm min-w-[60px]">Position:</Label>
-                                <Select onValueChange={(value) => field.onChange(parseInt(value))} defaultValue={field.value?.toString()}>
-                                  <FormControl>
-                                    <SelectTrigger className="w-[200px]">
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                  </FormControl>
-                                  <SelectContent>
-                                    <SelectItem value="-1">Weit entfernt (far from your range)</SelectItem>
-                                    <SelectItem value="0">Neutral (overlapping)</SelectItem>
-                                    <SelectItem value="1">Nah (close to your range)</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        
-                        {/* Counterpart Visual Indicator */}
-                        <div className="relative h-4 bg-gray-100 rounded-full overflow-hidden">
-                          <div className="absolute h-full bg-red-200 rounded-full w-1/3"
-                               style={{
-                                 left: form.watch("counterpartDistance.preis") === -1 ? "10%" : 
-                                       form.watch("counterpartDistance.preis") === 0 ? "35%" : "60%"
-                               }} />
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <Separator />
-                  </div>
-
-                  {/* Laufzeit */}
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-lg font-semibold">Laufzeit (Duration)</h3>
-                      <Badge variant="outline">Months</Badge>
-                    </div>
-                    
-                    <div className="space-y-6">
-                      {/* Your Position */}
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                          <Label className="text-blue-600 font-medium">Your Position</Label>
-                          <div className="text-sm text-gray-600">
-                            {form.watch("userZopa.laufzeit")?.min || 12} - {form.watch("userZopa.laufzeit")?.max || 36} months
-                            (Target: {form.watch("userZopa.laufzeit")?.target || 24})
-                          </div>
-                        </div>
-                        
-                        <div className="space-y-2">
-                          <div className="flex space-x-4">
-                            <FormField
-                              control={form.control}
-                              name="userZopa.laufzeit.min"
-                              render={({ field }) => (
-                                <FormItem className="flex-1">
-                                  <FormLabel className="text-xs">Min months</FormLabel>
-                                  <FormControl>
-                                    <Input
-                                      type="number"
-                                      className="h-8"
-                                      {...field}
-                                      onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
-                                    />
-                                  </FormControl>
-                                </FormItem>
-                              )}
-                            />
-                            
-                            <FormField
-                              control={form.control}
-                              name="userZopa.laufzeit.target"
-                              render={({ field }) => (
-                                <FormItem className="flex-1">
-                                  <FormLabel className="text-xs">Target months</FormLabel>
-                                  <FormControl>
-                                    <Input
-                                      type="number"
-                                      className="h-8 border-blue-300"
-                                      {...field}
-                                      onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
-                                    />
-                                  </FormControl>
-                                </FormItem>
-                              )}
-                            />
-                            
-                            <FormField
-                              control={form.control}
-                              name="userZopa.laufzeit.max"
-                              render={({ field }) => (
-                                <FormItem className="flex-1">
-                                  <FormLabel className="text-xs">Max months</FormLabel>
-                                  <FormControl>
-                                    <Input
-                                      type="number"
-                                      className="h-8"
-                                      {...field}
-                                      onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
-                                    />
-                                  </FormControl>
-                                </FormItem>
-                              )}
-                            />
-                          </div>
-                          
-                          {/* Visual Spectrum */}
-                          <div className="relative h-4 bg-gray-100 rounded-full overflow-hidden">
-                            <div 
-                              className="absolute h-full bg-blue-200 rounded-full"
-                              style={{
-                                left: `${((form.watch("userZopa.laufzeit")?.min || 12) / 36) * 100}%`,
-                                width: `${(((form.watch("userZopa.laufzeit")?.max || 36) - (form.watch("userZopa.laufzeit")?.min || 12)) / 36) * 100}%`
-                              }}
-                            />
-                            <div 
-                              className="absolute w-2 h-full bg-blue-600 rounded-full"
-                              style={{
-                                left: `${((form.watch("userZopa.laufzeit")?.target || 24) / 36) * 100}%`
-                              }}
-                            />
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Counterpart Assessment */}
-                      <div className="space-y-3">
-                        <Label className="text-red-600 font-medium">Counterpart Assessment</Label>
-                        <FormField
-                          control={form.control}
-                          name="counterpartDistance.laufzeit"
-                          render={({ field }) => (
-                            <FormItem>
-                              <div className="flex items-center space-x-4">
-                                <Label className="text-sm min-w-[60px]">Position:</Label>
-                                <Select onValueChange={(value) => field.onChange(parseInt(value))} defaultValue={field.value?.toString()}>
-                                  <FormControl>
-                                    <SelectTrigger className="w-[200px]">
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                  </FormControl>
-                                  <SelectContent>
-                                    <SelectItem value="-1">Weit entfernt (far from your range)</SelectItem>
-                                    <SelectItem value="0">Neutral (overlapping)</SelectItem>
-                                    <SelectItem value="1">Nah (close to your range)</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        
-                        {/* Counterpart Visual Indicator */}
-                        <div className="relative h-4 bg-gray-100 rounded-full overflow-hidden">
-                          <div className="absolute h-full bg-red-200 rounded-full w-1/3"
-                               style={{
-                                 left: form.watch("counterpartDistance.laufzeit") === -1 ? "10%" : 
-                                       form.watch("counterpartDistance.laufzeit") === 0 ? "35%" : "60%"
-                               }} />
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <Separator />
-                  </div>
-
-                  {/* Zahlungskonditionen */}
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-lg font-semibold">Zahlungskonditionen (Payment Terms)</h3>
-                      <Badge variant="outline">Days</Badge>
-                    </div>
-                    
-                    <div className="space-y-6">
-                      {/* Your Position */}
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                          <Label className="text-blue-600 font-medium">Your Position</Label>
-                          <div className="text-sm text-gray-600">
-                            {form.watch("userZopa.zahlungskonditionen")?.min || 30} - {form.watch("userZopa.zahlungskonditionen")?.max || 90} days
-                            (Target: {form.watch("userZopa.zahlungskonditionen")?.target || 60})
-                          </div>
-                        </div>
-                        
-                        <div className="space-y-2">
-                          <div className="flex space-x-4">
-                            <FormField
-                              control={form.control}
-                              name="userZopa.zahlungskonditionen.min"
-                              render={({ field }) => (
-                                <FormItem className="flex-1">
-                                  <FormLabel className="text-xs">Min days</FormLabel>
-                                  <FormControl>
-                                    <Input
-                                      type="number"
-                                      className="h-8"
-                                      {...field}
-                                      onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
-                                    />
-                                  </FormControl>
-                                </FormItem>
-                              )}
-                            />
-                            
-                            <FormField
-                              control={form.control}
-                              name="userZopa.zahlungskonditionen.target"
-                              render={({ field }) => (
-                                <FormItem className="flex-1">
-                                  <FormLabel className="text-xs">Target days</FormLabel>
-                                  <FormControl>
-                                    <Input
-                                      type="number"
-                                      className="h-8 border-blue-300"
-                                      {...field}
-                                      onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
-                                    />
-                                  </FormControl>
-                                </FormItem>
-                              )}
-                            />
-                            
-                            <FormField
-                              control={form.control}
-                              name="userZopa.zahlungskonditionen.max"
-                              render={({ field }) => (
-                                <FormItem className="flex-1">
-                                  <FormLabel className="text-xs">Max days</FormLabel>
-                                  <FormControl>
-                                    <Input
-                                      type="number"
-                                      className="h-8"
-                                      {...field}
-                                      onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
-                                    />
-                                  </FormControl>
-                                </FormItem>
-                              )}
-                            />
-                          </div>
-                          
-                          {/* Visual Spectrum */}
-                          <div className="relative h-4 bg-gray-100 rounded-full overflow-hidden">
-                            <div 
-                              className="absolute h-full bg-blue-200 rounded-full"
-                              style={{
-                                left: `${((form.watch("userZopa.zahlungskonditionen")?.min || 30) / 90) * 100}%`,
-                                width: `${(((form.watch("userZopa.zahlungskonditionen")?.max || 90) - (form.watch("userZopa.zahlungskonditionen")?.min || 30)) / 90) * 100}%`
-                              }}
-                            />
-                            <div 
-                              className="absolute w-2 h-full bg-blue-600 rounded-full"
-                              style={{
-                                left: `${((form.watch("userZopa.zahlungskonditionen")?.target || 60) / 90) * 100}%`
-                              }}
-                            />
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Counterpart Assessment */}
-                      <div className="space-y-3">
-                        <Label className="text-red-600 font-medium">Counterpart Assessment</Label>
-                        <FormField
-                          control={form.control}
-                          name="counterpartDistance.zahlungskonditionen"
-                          render={({ field }) => (
-                            <FormItem>
-                              <div className="flex items-center space-x-4">
-                                <Label className="text-sm min-w-[60px]">Position:</Label>
-                                <Select onValueChange={(value) => field.onChange(parseInt(value))} defaultValue={field.value?.toString()}>
-                                  <FormControl>
-                                    <SelectTrigger className="w-[200px]">
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                  </FormControl>
-                                  <SelectContent>
-                                    <SelectItem value="-1">Weit entfernt (far from your range)</SelectItem>
-                                    <SelectItem value="0">Neutral (overlapping)</SelectItem>
-                                    <SelectItem value="1">Nah (close to your range)</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        
-                        {/* Counterpart Visual Indicator */}
-                        <div className="relative h-4 bg-gray-100 rounded-full overflow-hidden">
-                          <div className="absolute h-full bg-red-200 rounded-full w-1/3"
-                               style={{
-                                 left: form.watch("counterpartDistance.zahlungskonditionen") === -1 ? "10%" : 
-                                       form.watch("counterpartDistance.zahlungskonditionen") === 0 ? "35%" : "60%"
-                               }} />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <Separator />
-
-                {/* Additional Context Fields */}
-                <div className="space-y-4">
-                  <h3 className="text-lg font-semibold">Additional Context</h3>
-                  
-                  <FormField
-                    control={form.control}
-                    name="productMarketDescription"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Product/Market Description</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="Describe the product or market context"
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="additionalComments"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Additional Comments</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="Any additional context or requirements"
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="counterpartPersonality"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Counterpart Personality</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="Describe the counterpart's personality or behavior"
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="zopaDistance"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>ZOPA Distance</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value || ""}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select ZOPA distance" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="close">Close</SelectItem>
-                            <SelectItem value="medium">Medium</SelectItem>
-                            <SelectItem value="far">Far</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="sonderinteressen"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Special Interests (Sonderinteressen)</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="e.g., Sustainability requirements, exclusive partnership terms..."
-                            {...field}
-                          />
-                        </FormControl>
-                        <p className="text-xs text-gray-600">
-                          Additional requirements or special interests that should be considered during negotiation
-                        </p>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Step 5: Review & Configure */}
-          {step === 5 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <Play className="w-5 h-5 mr-2" />
-                  Review & Configure Simulation
-                </CardTitle>
-                <CardDescription>
-                  Review your configuration and set simulation parameters.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {/* Configuration Summary */}
-                <div className="space-y-4">
-                  <div className="p-4 bg-gray-50 rounded-lg">
-                    <h4 className="font-medium mb-3">Simulation Summary</h4>
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <span className="text-gray-600">Context:</span>
-                        <p className="font-medium">{contexts.find(c => c.id === form.watch("contextId"))?.name}</p>
-                      </div>
-                      <div>
-                        <span className="text-gray-600">Max Rounds:</span>
-                        <p className="font-medium">{form.watch("maxRounds")}</p>
-                      </div>
-                      <div>
-                        <span className="text-gray-600">Buyer Agent:</span>
-                        <p className="font-medium">{agents.find(a => a.id === form.watch("buyerAgentId"))?.name}</p>
-                      </div>
-                      <div>
-                        <span className="text-gray-600">Seller Agent:</span>
-                        <p className="font-medium">{agents.find(a => a.id === form.watch("sellerAgentId"))?.name}</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="p-4 border rounded-lg">
-                      <h4 className="font-medium text-blue-700 mb-2">Selected Techniques</h4>
-                      <div className="flex flex-wrap gap-2">
-                        {form.watch("selectedTechniques")?.map((id: string) => {
-                          const technique = techniques.find((t: any) => t.id === id);
-                          return <Badge key={id} variant="secondary">{technique?.name}</Badge>;
-                        })}
-                      </div>
-                    </div>
-
-                    <div className="p-4 border rounded-lg">
-                      <h4 className="font-medium text-green-700 mb-2">Selected Tactics</h4>
-                      <div className="flex flex-wrap gap-2">
-                        {form.watch("selectedTactics")?.map((id: string) => {
-                          const tactic = tactics.find((t: any) => t.id === id);
-                          return <Badge key={id} variant="secondary">{tactic?.name}</Badge>;
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <Separator />
-
-                {/* Simulation Settings */}
-                <div className="space-y-4">
-                  <h4 className="font-medium">Simulation Settings</h4>
-                  
-
-                  <FormField
-                    control={form.control}
-                    name="autoStart"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-row items-start space-x-3 space-y-0">
-                        <FormControl>
-                          <Checkbox
-                            checked={field.value}
-                            onCheckedChange={field.onChange}
-                          />
-                        </FormControl>
-                        <div className="space-y-1 leading-none">
-                          <FormLabel>
-                            Auto-start simulation after creation
-                          </FormLabel>
-                          <p className="text-xs text-gray-600">
-                            Automatically begin negotiations once the setup is complete
-                          </p>
-                        </div>
-                      </FormItem>
-                    )}
-                  />
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Navigation Buttons */}
-          <div className="flex justify-between pt-6">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={prevStep}
-              disabled={step === 1}
-            >
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Previous
-            </Button>
-
-            {step < 5 ? (
-              <Button
-                type="button"
-                onClick={nextStep}
-                disabled={
-                  (step === 1 && !canProceedToStep2) ||
-                  (step === 2 && !canProceedToStep3) ||
-                  (step === 3 && !canProceedToStep4) ||
-                  (step === 4 && !canProceedToStep5)
-                }
-              >
-                Next
-                <ArrowRight className="w-4 h-4 ml-2" />
-              </Button>
-            ) : (
-              <Button
-                type="submit"
-                disabled={createMutation.isPending}
-                className="bg-blue-600 hover:bg-blue-700"
-              >
-                {createMutation.isPending ? (
-                  <div className="flex items-center">
-                    <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-2" />
-                    Creating...
-                  </div>
-                ) : (
-                  <div className="flex items-center">
-                    <Zap className="w-4 h-4 mr-2" />
-                    Create Simulation
-                  </div>
-                )}
-              </Button>
-            )}
-          </div>
-        </form>
-      </Form>
+        <TabsContent value="dimensions" className="mt-6">
+          <DimensionsContent form={form} array={dimensionsArray} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
+}
+
+// Products Content (extracted from ProductsStep)
+function ProductsContent({
+  form,
+  array,
+}: {
+  form: UseFormReturn<FormSchema>;
+  array: UseFieldArrayReturn<FormSchema, "products", "id">;
+}) {
+  const errorMessage = form.formState.errors.products?.root?.message || form.formState.errors.products?.message;
+  const userRole = form.watch("strategy.userRole");
+  const isBuyer = userRole === "buyer";
+  const boundaryLabel = isBuyer ? "Obergrenze" : "Untergrenze";
+  const boundaryAriaLabel = isBuyer ? "Maximaler Preis" : "Minimaler Preis";
+  const boundaryHint = isBuyer
+    ? "Als Einkäufer:in definieren Sie Ihre maximale Preisgrenze."
+    : "Als Verkäufer:in definieren Sie Ihre minimale Preisgrenze.";
+  const gridLayout = "grid grid-cols-[2fr_1fr_1fr_1fr_1fr_auto] gap-4";
+
+  const duplicateProduct = (index: number) => {
+    const values = form.getValues(`products.${index}`);
+    array.insert(index + 1, {
+      ...values,
+      name: `${values?.name ?? ""} (Kopie)`,
+    });
+  };
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardContent className="space-y-4 pt-6">
+          <div className={`${gridLayout} border-b pb-2 text-sm font-semibold text-muted-foreground`}>
+            <span>Produktname</span>
+            <span>Zielpreis</span>
+            <span>{boundaryLabel}</span>
+            <span>Volumen</span>
+            <span>Marke</span>
+            <span>Aktion</span>
+          </div>
+          <p className="text-xs text-muted-foreground">{boundaryHint}</p>
+
+          {array.fields.length > 0 ? (
+            array.fields.map((field, index) => (
+              <div key={field.id} className={`${gridLayout} items-center`}>
+                <FormField control={form.control} name={`products.${index}.name`} render={({ field }) => (
+                  <FormItem>
+                    <FormControl>
+                      <Input placeholder="Chocolate Bar 50g" aria-label="Produktname" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name={`products.${index}.targetPrice`} render={({ field }) => (
+                  <FormItem>
+                    <FormControl>
+                      <Input
+                        aria-label="Zielpreis"
+                        type="number"
+                        step="0.01"
+                        value={field.value ?? ""}
+                        onChange={(event) => field.onChange(event.target.value === "" ? undefined : Number(event.target.value))}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                {isBuyer ? (
+                  <FormField control={form.control} name={`products.${index}.maxPrice`} render={({ field }) => (
+                    <FormItem>
+                      <FormControl>
+                        <Input
+                          aria-label={boundaryAriaLabel}
+                          type="number"
+                          step="0.01"
+                          value={field.value ?? ""}
+                          onChange={(event) => field.onChange(event.target.value === "" ? undefined : Number(event.target.value))}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                ) : (
+                  <FormField control={form.control} name={`products.${index}.minPrice`} render={({ field }) => (
+                    <FormItem>
+                      <FormControl>
+                        <Input
+                          aria-label={boundaryAriaLabel}
+                          type="number"
+                          step="0.01"
+                          value={field.value ?? ""}
+                          onChange={(event) => field.onChange(event.target.value === "" ? undefined : Number(event.target.value))}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                )}
+                <FormField control={form.control} name={`products.${index}.estimatedVolume`} render={({ field }) => (
+                  <FormItem>
+                    <FormControl>
+                      <Input
+                        aria-label="Geschätztes Volumen"
+                        type="number"
+                        value={field.value ?? ""}
+                        onChange={(event) => field.onChange(event.target.value === "" ? undefined : Number(event.target.value))}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name={`products.${index}.brand`} render={({ field }) => (
+                  <FormItem>
+                    <FormControl>
+                      <Input placeholder="Marke (optional)" aria-label="Marke" {...field} />
+                    </FormControl>
+                  </FormItem>
+                )} />
+                <div className="flex gap-2 justify-end">
+                  <Button type="button" variant="ghost" size="icon" onClick={() => duplicateProduct(index)} title="Zeile duplizieren">
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => array.remove(index)}
+                    disabled={array.fields.length === 1}
+                    title="Entfernen"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="text-center py-8 text-muted-foreground border-2 border-dashed rounded-lg">
+              <p className="text-sm mb-4">Keine Produkte hinzugefügt</p>
+              <p className="text-xs">Klicken Sie auf "Produkt hinzufügen" um zu beginnen</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {errorMessage && <p className="text-sm text-destructive">{errorMessage}</p>}
+      <Button
+        type="button"
+        variant="outline"
+        onClick={() =>
+          array.append({
+            name: "",
+            brand: "",
+            targetPrice: 1,
+            minPrice: 0.9,
+            maxPrice: 1.4,
+            estimatedVolume: 50000,
+          })
+        }
+      >
+        <Plus className="mr-2 h-4 w-4" /> Produkt hinzufügen
+      </Button>
+    </div>
+  );
+}
+
+// Dimensions Content (extracted from DimensionsStep)
+function DimensionsContent({
+  form,
+  array,
+}: {
+  form: UseFormReturn<FormSchema>;
+  array: UseFieldArrayReturn<FormSchema, "dimensions", "id">;
+}) {
+  const errorMessage = form.formState.errors.dimensions?.root?.message || form.formState.errors.dimensions?.message;
+
+  return (
+    <div className="space-y-4">
+      {array.fields.map((field, index) => (
+        <Card key={field.id}>
+          <CardContent className="space-y-4 pt-6">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold">Dimension {index + 1}</h3>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => array.remove(index)}
+                disabled={array.fields.length === 1}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <FormField control={form.control} name={`dimensions.${index}.name`} render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Name</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Preis" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={form.control} name={`dimensions.${index}.unit`} render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Einheit (optional)</FormLabel>
+                  <FormControl>
+                    <Input placeholder="EUR" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={form.control} name={`dimensions.${index}.minValue`} render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Minimum</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={field.value ?? ""}
+                      onChange={(event) => field.onChange(event.target.value === "" ? undefined : Number(event.target.value))}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={form.control} name={`dimensions.${index}.maxValue`} render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Maximum</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={field.value ?? ""}
+                      onChange={(event) => field.onChange(event.target.value === "" ? undefined : Number(event.target.value))}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={form.control} name={`dimensions.${index}.targetValue`} render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Zielwert</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={field.value ?? ""}
+                      onChange={(event) => field.onChange(event.target.value === "" ? undefined : Number(event.target.value))}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={form.control} name={`dimensions.${index}.priority`} render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Priorität</FormLabel>
+                  <Select onValueChange={(value) => field.onChange(Number(value))} value={String(field.value)}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Priorität" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="1">1 – kritisch</SelectItem>
+                      <SelectItem value="2">2 – wichtig</SelectItem>
+                      <SelectItem value="3">3 – flexibel</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )} />
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+      {errorMessage && <p className="text-sm text-destructive">{errorMessage}</p>}
+      <Button
+        type="button"
+        variant="outline"
+        onClick={() =>
+          array.append({
+            name: "",
+            unit: "",
+            minValue: 0,
+            maxValue: 0,
+            targetValue: 0,
+            priority: 1,
+          })
+        }
+      >
+        <Plus className="mr-2 h-4 w-4" /> Dimension hinzufügen
+      </Button>
+    </div>
+  );
+}
+
+function ProductsStep({
+  form,
+  array,
+}: {
+  form: UseFormReturn<FormSchema>;
+  array: UseFieldArrayReturn<FormSchema, "products", "id">;
+}) {
+  return (
+    <Section title="Produkte" description="Welche Artikel verhandeln Sie?">
+      <ProductsContent form={form} array={array} />
+    </Section>
+  );
+}
+
+function DimensionsStep({
+  form,
+  array,
+}: {
+  form: UseFormReturn<FormSchema>;
+  array: UseFieldArrayReturn<FormSchema, "dimensions", "id">;
+}) {
+  const errorMessage = form.formState.errors.dimensions?.root?.message || form.formState.errors.dimensions?.message;
+
+  return (
+    <Section title="Dimensionen" description="Welche Hebel sollen verhandelt werden?">
+      <div className="space-y-4">
+        {array.fields.map((field, index) => (
+          <Card key={field.id}>
+            <CardContent className="space-y-4 pt-6">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold">Dimension {index + 1}</h3>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => array.remove(index)}
+                  disabled={array.fields.length === 1}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <FormField control={form.control} name={`dimensions.${index}.name`} render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Name</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Preis" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name={`dimensions.${index}.unit`} render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Einheit (optional)</FormLabel>
+                    <FormControl>
+                      <Input placeholder="EUR" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name={`dimensions.${index}.minValue`} render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Minimum</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={field.value ?? ""}
+                        onChange={(event) => field.onChange(event.target.value === "" ? undefined : Number(event.target.value))}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name={`dimensions.${index}.maxValue`} render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Maximum</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={field.value ?? ""}
+                        onChange={(event) => field.onChange(event.target.value === "" ? undefined : Number(event.target.value))}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name={`dimensions.${index}.targetValue`} render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Zielwert</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={field.value ?? ""}
+                        onChange={(event) => field.onChange(event.target.value === "" ? undefined : Number(event.target.value))}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name={`dimensions.${index}.priority`} render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Priorität</FormLabel>
+                    <Select onValueChange={(value) => field.onChange(Number(value))} value={String(field.value)}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Priorität" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="1">1 – kritisch</SelectItem>
+                        <SelectItem value="2">2 – wichtig</SelectItem>
+                        <SelectItem value="3">3 – flexibel</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+        {errorMessage && <p className="text-sm text-destructive">{errorMessage}</p>}
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() =>
+            array.append({
+              name: "",
+              unit: "",
+              minValue: 0,
+              maxValue: 0,
+              targetValue: 0,
+              priority: 1,
+            })
+          }
+        >
+          <Plus className="mr-2 h-4 w-4" /> Dimension hinzufügen
+        </Button>
+      </div>
+    </Section>
+  );
+}
+
+function StrategyStep({
+  form,
+  techniques,
+  tactics,
+}: {
+  form: UseFormReturn<FormSchema>;
+  techniques: Technique[];
+  tactics: Tactic[];
+}) {
+  const [expandedTechniques, setExpandedTechniques] = useState<Set<string>>(new Set());
+  const [expandedTactics, setExpandedTactics] = useState<Set<string>>(new Set());
+
+  const selectAllTechniques = (fieldOnChange: (value: string[]) => void) =>
+    fieldOnChange(techniques.map((tech) => tech.id));
+  const clearAllTechniques = (fieldOnChange: (value: string[]) => void) => fieldOnChange([]);
+  const selectAllTactics = (fieldOnChange: (value: string[]) => void) =>
+    fieldOnChange(tactics.map((tactic) => tactic.id));
+  const clearAllTactics = (fieldOnChange: (value: string[]) => void) => fieldOnChange([]);
+
+  return (
+    <Section title="Strategie" description="Rundenlimit und Taktikauswahl.">
+      <div className="space-y-6">
+        {/* Configuration Fields */}
+        <FormField control={form.control} name="strategy.maxRounds" render={({ field }) => (
+          <FormItem className="max-w-xs">
+            <FormLabel>Maximale Runden</FormLabel>
+            <FormControl>
+              <Input
+                type="number"
+                min={1}
+                max={50}
+                value={field.value}
+                onChange={(event) => field.onChange(Number(event.target.value))}
+              />
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )} />
+
+        {/* Techniques and Tactics in Two Columns */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Column 1: Techniques */}
+          <FormField control={form.control} name="strategy.selectedTechniques" render={({ field }) => (
+            <FormItem>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <FormLabel>Einfluss-Techniken</FormLabel>
+                  <p className="text-xs text-muted-foreground">{field.value?.length ?? 0} ausgewählt</p>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => selectAllTechniques(field.onChange)}
+                    disabled={field.value?.length === techniques.length}
+                  >
+                    Alle
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => clearAllTechniques(field.onChange)}
+                    disabled={!field.value || field.value.length === 0}
+                  >
+                    Keine
+                  </Button>
+                </div>
+              </div>
+              <div className="border rounded-md overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50">
+                    <tr>
+                      <th className="w-12 p-2"></th>
+                      <th className="text-left p-2 font-medium">Technik</th>
+                      <th className="w-12 p-2"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {techniques.map((technique) => {
+                      const checked = field.value?.includes(technique.id);
+                      const expanded = expandedTechniques.has(technique.id);
+                      return (
+                        <React.Fragment key={technique.id}>
+                          <tr className="border-t hover:bg-muted/30 transition-colors">
+                            <td className="p-2 text-center">
+                              <Checkbox
+                                checked={checked}
+                                onCheckedChange={() =>
+                                  checked
+                                    ? field.onChange(field.value.filter((id: string) => id !== technique.id))
+                                    : field.onChange([...(field.value ?? []), technique.id])
+                                }
+                              />
+                            </td>
+                            <td className="p-2 font-medium">{technique.name}</td>
+                            <td className="p-2 text-center">
+                              {technique.beschreibung && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0"
+                                  onClick={() => {
+                                    const newExpanded = new Set(expandedTechniques);
+                                    if (expanded) {
+                                      newExpanded.delete(technique.id);
+                                    } else {
+                                      newExpanded.add(technique.id);
+                                    }
+                                    setExpandedTechniques(newExpanded);
+                                  }}
+                                >
+                                  {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                                </Button>
+                              )}
+                            </td>
+                          </tr>
+                          {expanded && technique.beschreibung && (
+                            <tr className="border-t bg-muted/20">
+                              <td colSpan={3} className="p-3">
+                                <p className="text-sm text-muted-foreground">{technique.beschreibung}</p>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <FormMessage />
+          </FormItem>
+        )} />
+
+          {/* Column 2: Tactics */}
+          <FormField control={form.control} name="strategy.selectedTactics" render={({ field }) => (
+            <FormItem>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <FormLabel>Taktiken</FormLabel>
+                  <p className="text-xs text-muted-foreground">{field.value?.length ?? 0} ausgewählt</p>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => selectAllTactics(field.onChange)}
+                    disabled={field.value?.length === tactics.length}
+                  >
+                    Alle
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => clearAllTactics(field.onChange)}
+                    disabled={!field.value || field.value.length === 0}
+                  >
+                    Keine
+                  </Button>
+                </div>
+              </div>
+              <div className="border rounded-md overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50">
+                    <tr>
+                      <th className="w-12 p-2"></th>
+                      <th className="text-left p-2 font-medium">Taktik</th>
+                      <th className="w-12 p-2"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tactics.map((tactic) => {
+                      const checked = field.value?.includes(tactic.id);
+                      const expanded = expandedTactics.has(tactic.id);
+                      return (
+                        <React.Fragment key={tactic.id}>
+                          <tr className="border-t hover:bg-muted/30 transition-colors">
+                            <td className="p-2 text-center">
+                              <Checkbox
+                                checked={checked}
+                                onCheckedChange={() =>
+                                  checked
+                                    ? field.onChange(field.value.filter((id: string) => id !== tactic.id))
+                                    : field.onChange([...(field.value ?? []), tactic.id])
+                                }
+                              />
+                            </td>
+                            <td className="p-2 font-medium">{tactic.name}</td>
+                            <td className="p-2 text-center">
+                              {tactic.beschreibung && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0"
+                                  onClick={() => {
+                                    const newExpanded = new Set(expandedTactics);
+                                    if (expanded) {
+                                      newExpanded.delete(tactic.id);
+                                    } else {
+                                      newExpanded.add(tactic.id);
+                                    }
+                                    setExpandedTactics(newExpanded);
+                                  }}
+                                >
+                                  {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                                </Button>
+                              )}
+                            </td>
+                          </tr>
+                          {expanded && tactic.beschreibung && (
+                            <tr className="border-t bg-muted/20">
+                              <td colSpan={3} className="p-3">
+                                <p className="text-sm text-muted-foreground">{tactic.beschreibung}</p>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <FormMessage />
+          </FormItem>
+        )} />
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+function SummaryStep({
+  values,
+  techniques,
+  tactics,
+}: {
+  values: FormSchema;
+  techniques: Technique[];
+  tactics: Tactic[];
+}) {
+  const techniqueNames = mapNames(values.strategy.selectedTechniques, techniques);
+  const tacticNames = mapNames(values.strategy.selectedTactics, tactics);
+
+  return (
+    <Section title="Zusammenfassung" description="Bitte prüfen Sie Ihre Angaben vor dem Speichern.">
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card>
+          <CardContent className="space-y-2 pt-6 text-sm text-muted-foreground">
+            <p><strong>Unternehmen:</strong> {values.company.organization}</p>
+            {values.company.company && <p><strong>Marke:</strong> {values.company.company}</p>}
+            <p><strong>Land:</strong> {values.company.country}</p>
+            <p>
+              <strong>Beziehung:</strong> {values.company.relationshipType} · {values.company.negotiationType} · {values.company.negotiationFrequency}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="space-y-2 pt-6 text-sm text-muted-foreground">
+            <p><strong>Partner:</strong> {values.counterpart.name} ({values.counterpart.kind})</p>
+            <p><strong>Stil:</strong> {values.counterpart.style || "–"}</p>
+            <p><strong>Rolle:</strong> {values.strategy.userRole === "seller" ? "Verkäufer:in" : "Einkäufer:in"}</p>
+            <p><strong>Max. Runden:</strong> {values.strategy.maxRounds}</p>
+          </CardContent>
+        </Card>
+        <Card className="md:col-span-2">
+          <CardContent className="grid gap-4 pt-6 md:grid-cols-2">
+            <div>
+              <h3 className="font-semibold">Produkte</h3>
+              <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
+                {values.products.map((product, index) => (
+                  <li key={index}>
+                    {product.name} – Ziel: {product.targetPrice.toFixed(2)} €, Volumen: {product.estimatedVolume.toLocaleString("de-DE")} Stk.
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <h3 className="font-semibold">Dimensionen</h3>
+              <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
+                {values.dimensions.map((dimension, index) => (
+                  <li key={index}>
+                    {dimension.name}: {dimension.minValue} – {dimension.maxValue} {dimension.unit?.trim() || ""} (Ziel {dimension.targetValue}, Prio {dimension.priority})
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="md:col-span-2">
+          <CardContent className="grid gap-4 pt-6 md:grid-cols-2">
+            <div>
+              <h3 className="font-semibold">Techniken</h3>
+              <p className="mt-2 text-sm text-muted-foreground">{techniqueNames.join(", ")}</p>
+            </div>
+            <div>
+              <h3 className="font-semibold">Taktiken</h3>
+              <p className="mt-2 text-sm text-muted-foreground">{tacticNames.join(", ")}</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </Section>
+  );
+}
+
+function mapNames(ids: string[], items: Array<{ id: string; name: string }>) {
+  return ids.map(id => items.find(item => item.id === id)?.name ?? id);
 }

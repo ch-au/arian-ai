@@ -12,8 +12,8 @@ export default function Analysis() {
   const [, setLocation] = useLocation();
 
   useEffect(() => {
-    // Redirect to negotiations list where users can select an analysis
-    setLocation("/negotiations");
+    // Redirect to dashboard where users can select an analysis
+    setLocation("/");
   }, [setLocation]);
 
   return (

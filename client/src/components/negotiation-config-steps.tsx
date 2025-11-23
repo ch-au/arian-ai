@@ -640,10 +640,10 @@ export function CounterpartStep({ config, onChange }: CounterpartStepProps) {
     queryKey: ["/api/personality-types"],
   });
 
-  // Calculate simulation count including personality and ZOPA multipliers
+  // Calculate simulation count including personality multiplier
+  // Note: Distance is now modeled explicitly via counterpartDistance, so we skip distance variations
   const personalityCount = (config.counterpartPersonality && config.counterpartPersonality !== "all-personalities") ? 1 : personalities.length || 5;
-  const zopaCount = (config.zopaDistance && config.zopaDistance !== "all-distances") ? 1 : 3; // close, medium, far
-  const simulationCount = config.selectedTechniques.length * config.selectedTactics.length * personalityCount * zopaCount;
+  const simulationCount = config.selectedTechniques.length * config.selectedTactics.length * personalityCount;
 
   return (
     <div className="space-y-6">

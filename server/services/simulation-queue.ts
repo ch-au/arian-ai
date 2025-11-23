@@ -3,11 +3,14 @@
  * Handles creation, execution, and monitoring of simulation queues with crash recovery
  */
 
-import { db, storage } from '../storage';
-import { simulationQueue, simulationRuns, negotiations, influencingTechniques, negotiationTactics, personalityTypes, productResults } from '../../shared/schema';
-import { eq, and, or, lt, count, sum, desc, isNull } from 'drizzle-orm';
+import { db } from '../db';
+import { storage } from '../storage';
+import { simulationQueue, simulationRuns, negotiations, influencingTechniques, negotiationTactics, personalityTypes, dimensionResults, productResults } from '../../shared/schema';
+import { eq, and, or, lt, count, sum, desc, isNull, inArray } from 'drizzle-orm';
 import { PythonNegotiationService } from './python-negotiation-service';
 import { createRequestLogger } from './logger';
+import { buildSimulationResultArtifacts } from './simulation-result-processor';
+import { PlaybookGeneratorService } from './playbook-generator';
 
 // Import WebSocket functionality
 let negotiationEngine: any = null;
@@ -39,10 +42,10 @@ export interface SimulationCheckpoint {
 
 export interface CreateQueueRequest {
   negotiationId: string;
-  techniques: string[];        // Technique IDs
-  tactics: string[];          // Tactic IDs  
-  personalities: string[];    // Personality type IDs or ["all"] for all personalities
-  zopaDistances: string[];    // Distance types: ["close", "medium", "far"] or ["all"] for all distances
+  techniques?: string[];
+  tactics?: string[];
+  personalities?: string[];
+  // zopaDistances removed - distance is now modeled explicitly via counterpartDistance
 }
 
 export interface QueueStatus {
@@ -95,16 +98,61 @@ export class SimulationQueueService {
    * Create a simulation queue with all technique-tactic-personality-distance combinations
    */
   static async createQueue(request: CreateQueueRequest): Promise<string> {
-    const { negotiationId, techniques, tactics, personalities, zopaDistances } = request;
-    
-    this.log.info({ 
-      negotiationId, 
-      techniques: techniques.length, 
-      tactics: tactics.length, 
-      personalities: personalities.length, 
-      zopaDistances: zopaDistances.length 
-    }, `[SIMULATION-QUEUE] Creating queue for negotiation`);
-    
+    const { negotiationId } = request;
+    const negotiation = await storage.getNegotiation(negotiationId);
+    if (!negotiation) {
+      throw new Error(`Negotiation not found: ${negotiationId}`);
+    }
+
+    // Check if a queue already exists for this negotiation
+    const existingQueues = await db.select()
+      .from(simulationQueue)
+      .where(eq(simulationQueue.negotiationId, negotiationId));
+
+    if (existingQueues.length > 0) {
+      const activeQueue = existingQueues.find(q =>
+        q.status === 'pending' || q.status === 'running'
+      );
+
+      if (activeQueue) {
+        this.log.warn({ negotiationId, queueId: activeQueue.id },
+          '[SIMULATION-QUEUE] Queue already exists for this negotiation, returning existing queue');
+        return activeQueue.id;
+      }
+    }
+
+    const scenario = negotiation.scenario ?? {};
+    const techniques =
+      request.techniques?.length ? request.techniques : scenario.selectedTechniques ?? [];
+    const tactics =
+      request.tactics?.length ? request.tactics : scenario.selectedTactics ?? [];
+
+    if (!techniques.length || !tactics.length) {
+      throw new Error("Negotiation must have selected techniques and tactics before starting simulations");
+    }
+
+    let personalities = request.personalities?.length ? request.personalities : [];
+    if (!personalities.length) {
+      if (scenario.counterpartPersonality === "all-personalities") {
+        personalities = ["all"];
+      } else if (scenario.counterpartPersonality) {
+        personalities = [scenario.counterpartPersonality];
+      }
+    }
+    if (!personalities.length) {
+      personalities = ["default"];
+    }
+
+    this.log.info(
+      {
+        negotiationId,
+        techniques: techniques.length,
+        tactics: tactics.length,
+        personalities: personalities.length,
+      },
+      `[SIMULATION-QUEUE] Creating queue for negotiation`,
+    );
+
     // Resolve personality types
     let actualPersonalities = personalities;
     if (personalities.includes('all')) {
@@ -114,22 +162,14 @@ export class SimulationQueueService {
       actualPersonalities = allPersonalityTypes.map(p => p.id);
     }
     
-    // Resolve ZOPA distances
-    let actualDistances = zopaDistances;
-    if (zopaDistances.includes('all')) {
-      actualDistances = ['close', 'medium', 'far'];
-    }
-    
-    // Default to single values if empty arrays
+    // Default to single value if empty array
     if (actualPersonalities.length === 0) {
       actualPersonalities = ['default'];
     }
-    if (actualDistances.length === 0) {
-      actualDistances = ['medium'];
-    }
     
-    // Calculate total simulations (techniques × tactics × personalities × distances)
-    const totalSimulations = techniques.length * tactics.length * actualPersonalities.length * actualDistances.length;
+    // Calculate total simulations (techniques × tactics × personalities)
+    // Note: Distance is now modeled explicitly via counterpartDistance, so we skip distance variations
+    const totalSimulations = techniques.length * tactics.length * actualPersonalities.length;
     
     // Estimate cost (rough estimate: $0.15 per simulation)
     const estimatedCost = totalSimulations * 0.15;
@@ -142,28 +182,27 @@ export class SimulationQueueService {
       status: 'pending'
     }).returning();
     
-    // Create simulation run records for all combinations (techniques × tactics × personalities × distances)
+    // Create simulation run records for all combinations (techniques × tactics × personalities)
+    // Note: Distance is now modeled explicitly via counterpartDistance, so we skip distance variations
     const simulationRunData = [];
     let executionOrder = 1;
     
     for (const techniqueId of techniques) {
       for (const tacticId of tactics) {
         for (const personalityId of actualPersonalities) {
-          for (const distance of actualDistances) {
-            simulationRunData.push({
-              negotiationId,
-              queueId: queue.id,
-              runNumber: executionOrder,
-              executionOrder,
-              techniqueId,
-              tacticId,
-              personalityId, // Add personality to simulation run
-              zopaDistance: distance, // Add distance to simulation run
-              status: 'pending' as const,
-              estimatedDuration: 60 // 60 seconds default estimate
-            });
-            executionOrder++;
-          }
+          simulationRunData.push({
+            negotiationId,
+            queueId: queue.id,
+            runNumber: executionOrder,
+            executionOrder,
+            techniqueId,
+            tacticId,
+            personalityId,
+            zopaDistance: null, // No longer used - distance is modeled via counterpartDistance
+            status: 'pending' as const,
+            estimatedDuration: 60 // 60 seconds default estimate
+          });
+          executionOrder++;
         }
       }
     }
@@ -188,6 +227,15 @@ export class SimulationQueueService {
       .orderBy(desc(simulationQueue.createdAt));
     
     return queues;
+  }
+  
+  static async stopQueuesForNegotiation(negotiationId: string): Promise<void> {
+    const queues = await this.getQueuesByNegotiation(negotiationId);
+    await Promise.all(
+      queues.map((queue) =>
+        queue?.id ? this.stopQueue(queue.id).catch((error) => this.log.warn({ err: error, queueId: queue.id }, 'Failed to stop queue')) : Promise.resolve(),
+      ),
+    );
   }
   
   /**
@@ -306,6 +354,10 @@ export class SimulationQueueService {
       await db.update(simulationQueue)
         .set({ status: 'pending' })
         .where(eq(simulationQueue.id, queueId));
+
+      // Start the queue to ensure the background processor picks it up
+      this.log.info(`Starting queue ${queueId.slice(0, 8)} after restarting ${updatedRows.length} failed runs`);
+      await this.startQueue(queueId);
     }
 
     this.log.info(`Restarted ${updatedRows.length} failed simulations`);
@@ -333,8 +385,7 @@ export class SimulationQueueService {
         actualCost: '0',
         completedAt: null,
         conversationLog: [],
-        otherDimensions: {},
-        crashRecoveryData: null
+        otherDimensions: {}
       })
       .where(eq(simulationRuns.id, runId))
       .returning({ runNumber: simulationRuns.runNumber });
@@ -344,10 +395,19 @@ export class SimulationQueueService {
       await db.update(simulationQueue)
         .set({ status: 'pending' })
         .where(eq(simulationQueue.id, run.queueId));
+
+      // Start the queue to ensure the background processor picks it up
+      this.log.info(`Starting queue ${run.queueId.slice(0, 8)} after restarting run`);
+      await this.startQueue(run.queueId);
     }
 
-    this.log.info(`Restarted run #${updatedRun.runNumber}`);
-    return { runNumber: updatedRun.runNumber };
+    if (!updatedRun) {
+      throw new Error('Failed to restart simulation run');
+    }
+
+    const runNumber = Number(updatedRun.runNumber ?? 0);
+    this.log.info(`Restarted run #${runNumber}`);
+    return { runNumber };
   }
 
   /**
@@ -552,18 +612,28 @@ export class SimulationQueueService {
       .set({ 
         status: 'running', 
         startedAt: new Date(),
-        crashRecoveryData: JSON.stringify({
-          simulationId: nextSimulation.id,
-          queueId,
-          startTime: Date.now(),
-          round: 0
-        })
+        metadata: {
+          checkpoint: {
+            simulationId: nextSimulation.id,
+            queueId,
+            startTime: Date.now(),
+            round: 0,
+          }
+        }
       })
       .where(eq(simulationRuns.id, nextSimulation.id));
     
     // Update queue status to running
     await this.updateQueueStatus(queueId, 'running');
-    
+
+    this.log.info({
+      simulationId: nextSimulation.id,
+      runNumber: nextSimulation.runNumber,
+      techniqueId: nextSimulation.techniqueId,
+      tacticId: nextSimulation.tacticId,
+      retryCount: nextSimulation.retryCount || 0
+    }, `🚀 Starting Run #${nextSimulation.runNumber}${nextSimulation.retryCount ? ` (Retry ${nextSimulation.retryCount})` : ''}`);
+
     // Broadcast simulation started event
     this.broadcastEvent({
       type: 'simulation_started',
@@ -621,15 +691,59 @@ export class SimulationQueueService {
         queueId: queueId
       }, onRoundUpdate);
 
-      this.log.info(`[PYTHON] Negotiation completed! Outcome: ${result.outcome}, Rounds: ${result.totalRounds}`);
+      this.log.info({
+        simulationId: nextSimulation.id,
+        runNumber: nextSimulation.runNumber,
+        outcome: result.outcome,
+        rounds: result.totalRounds
+      }, `✅ [PYTHON] Negotiation completed! Outcome: ${result.outcome}, Rounds: ${result.totalRounds}`);
 
       // Guard against stop: if this run was marked non-running meanwhile, skip updating results
       const [latest] = await db.select({ status: simulationRuns.status })
         .from(simulationRuns)
         .where(eq(simulationRuns.id, nextSimulation.id));
-      if (!latest || latest.status !== 'running') {
-        this.log.info({ simulationId: nextSimulation.id, status: latest?.status }, 'Skipping result write; run was stopped externally');
+
+      this.log.debug({
+        simulationId: nextSimulation.id,
+        runNumber: nextSimulation.runNumber,
+        statusBeforeExecution: 'running',
+        statusAfterExecution: latest?.status,
+        outcome: result.outcome
+      }, `Status check after Python execution`);
+
+      // Guard against missing run
+      if (!latest) {
+        this.log.error({ simulationId: nextSimulation.id }, '⚠️ Simulation run disappeared from database!');
+        return false;
+      }
+
+      // IMPORTANT: Only skip if explicitly aborted by user
+      // If status is 'failed' but we got a successful result from Python, proceed anyway
+      // This handles race conditions where retry logic marks run as 'failed' while Python is still completing
+      if (latest.status === 'aborted') {
+        this.log.warn(
+          { simulationId: nextSimulation.id, status: latest.status, outcome: result.outcome },
+          'Skipping result write; run was aborted by user'
+        );
         return true; // Continue processing other simulations
+      }
+
+      // If status is 'failed' but Python succeeded with valid outcome, log warning but proceed
+      if (latest.status === 'failed' && ['DEAL_ACCEPTED', 'WALK_AWAY', 'TERMINATED', 'MAX_ROUNDS_REACHED'].includes(result.outcome)) {
+        this.log.warn(
+          { simulationId: nextSimulation.id, status: latest.status, outcome: result.outcome },
+          '⚠️ Run marked as failed but Python succeeded - likely retry race condition, proceeding with result write'
+        );
+      }
+
+      // For any other status (including 'running', 'pending', 'completed', 'timeout', 'paused'),
+      // proceed with writing results - the status will be updated correctly below
+      if (latest.status !== 'running') {
+        this.log.info({
+          simulationId: nextSimulation.id,
+          currentStatus: latest.status,
+          outcome: result.outcome
+        }, `Run status changed during execution (${latest.status}), but proceeding with result write`);
       }
       
       // Calculate actual cost based on rounds (more accurate than fixed estimate)
@@ -654,183 +768,122 @@ export class SimulationQueueService {
         : [];
 
       const dimensionValues = result.finalOffer?.dimension_values ?? {};
+      const negotiationIdForRun = nextSimulation.negotiationId || '';
 
-      // Calculate deal value: SUM of (agreed price × geschätztesVolumen) for ALL products
-      // NOTE: Volume is NOT negotiated - only prices are negotiated
-      const calculateDealValue = async (dimensions: any, negotiationId: string, simulationRunId: string): Promise<number | null> => {
-        if (!dimensions || typeof dimensions !== 'object') return null;
-
-        // Fetch product configuration to get geschätztesVolumen (fixed estimated volume)
-        const products = await storage.getProductsByNegotiation(negotiationId);
-
-        if (!products || products.length === 0) {
-          this.log.warn(`No products found for negotiation ${negotiationId}, cannot calculate deal value`);
-          return null;
-        }
-
-        // Match each product with its price dimension and calculate total deal value
-        let totalDealValue = 0;
-        let productsMatched = 0;
-        const productResultsToSave = [];
-
-        for (const product of products) {
-          const productId = product.id;
-          const productName = product.produktName;
-          const targetPrice = product.zielPreis;
-          const minMaxPrice = product.minMaxPreis;
-          const volume = product.geschätztesVolumen;
-
-          if (!volume || volume === 0) {
-            this.log.warn(`Product ${productName} has no geschätztesVolumen, skipping`);
-            continue;
-          }
-
-          // Find the price dimension for this product
-          // Dimension key formats: "Preis_ProductName" (exact from schema), or legacy formats
-          let productPrice: number | null = null;
-
-          // First try exact match: "Preis_ProductName"
-          const exactKey = `Preis_${productName}`;
-          if (dimensions[exactKey] !== undefined) {
-            const numValue = typeof dimensions[exactKey] === 'number'
-              ? dimensions[exactKey]
-              : parseFloat(String(dimensions[exactKey]));
-            if (!isNaN(numValue)) {
-              productPrice = numValue;
-              this.log.info(`Exact match: dimension "${exactKey}" = €${numValue}`);
-            }
-          }
-
-          // Fallback: fuzzy matching for legacy formats
-          if (productPrice === null) {
-            for (const [key, value] of Object.entries(dimensions)) {
-              const keyLower = key.toLowerCase().replace(/[_\s]/g, '');
-              const productNameLower = productName.toLowerCase().replace(/[_\s]/g, '');
-
-              // Match if dimension key contains both "preis"/"price" AND the product name
-              if ((keyLower.includes('preis') || keyLower.includes('price')) &&
-                  keyLower.includes(productNameLower)) {
-                const numValue = typeof value === 'number' ? value : parseFloat(String(value));
-                if (!isNaN(numValue)) {
-                  productPrice = numValue;
-                  this.log.info(`Fuzzy match: dimension "${key}" to product "${productName}" = €${numValue}`);
-                  break;
-                }
-              }
-            }
-          }
-
-          if (productPrice !== null && productPrice > 0) {
-            const productDealValue = productPrice * volume;
-            totalDealValue += productDealValue;
-            productsMatched++;
-            this.log.info(`Product "${productName}": €${productPrice} × ${volume} units = €${productDealValue}`);
-
-            // Calculate performance metrics based on target and min/max prices
-            const targetPriceNum = parseFloat(targetPrice?.toString() || '0');
-            const minMaxPriceNum = parseFloat(minMaxPrice?.toString() || '0');
-
-            let priceVsTarget: string | null = null;
-            let withinZopa: boolean | null = null;
-            let performanceScore: number | null = null;
-
-            if (targetPriceNum > 0) {
-              const diff = ((productPrice - targetPriceNum) / targetPriceNum) * 100;
-              priceVsTarget = `${diff > 0 ? '+' : ''}${diff.toFixed(1)}%`;
-            }
-
-            if (minMaxPriceNum > 0) {
-              withinZopa = productPrice >= minMaxPriceNum;
-
-              // Performance score: 100 if at target, decreases as it moves toward min/max
-              if (targetPriceNum > 0) {
-                const range = Math.abs(targetPriceNum - minMaxPriceNum);
-                const distance = Math.abs(productPrice - targetPriceNum);
-                performanceScore = range > 0 ? Math.max(0, Math.min(100, 100 - (distance / range * 100))) : 100;
-              }
-            }
-
-            // Prepare product result for saving (linked to products table via productId)
-            productResultsToSave.push({
-              simulationRunId: simulationRunId,
-              productId: productId, // Foreign key to products table
-              productName: productName,
-              agreedPrice: productPrice.toString(),
-              estimatedVolume: volume,
-              subtotal: productDealValue.toString(),
-              priceVsTarget: priceVsTarget,
-              withinZopa: withinZopa,
-              performanceScore: performanceScore?.toString() || null
-            });
-          } else {
-            this.log.warn(`No price found for product "${productName}" in dimensions. Available dimensions: ${Object.keys(dimensions).join(', ')}`);
-          }
-        }
-
-        // Save product results to database
-        if (productResultsToSave.length > 0) {
-          try {
-            await db.insert(productResults).values(productResultsToSave);
-            this.log.info(`Saved ${productResultsToSave.length} product results to database`);
-          } catch (error) {
-            this.log.error(`Failed to save product results: ${error}`);
-          }
-        }
-
-        if (productsMatched === 0) {
-          this.log.warn(`No products could be matched with price dimensions`);
-          return null;
-        }
-
-        this.log.info(`Total deal value: €${totalDealValue} (${productsMatched}/${products.length} products)`);
-        return totalDealValue;
-      };
-
-      const dealValue = await calculateDealValue(dimensionValues, nextSimulation.negotiationId || '', nextSimulation.id);
-
-      // Separate product-related dimensions from other dimensions
-      // otherDimensions should NOT include product prices/volumes (those are in productResults table)
-      const products = await storage.getProductsByNegotiation(nextSimulation.negotiationId || '');
-      const productNamesNormalized = new Set(
-        products.map(p => p.produktName.toLowerCase().replace(/[_\s]/g, ''))
-      );
-      const otherDimensions: Record<string, any> = {};
-
-      for (const [key, value] of Object.entries(dimensionValues)) {
-        const keyLower = key.toLowerCase();
-        const keyNormalized = keyLower.replace(/[_\s]/g, ''); // Remove spaces and underscores
-        let isProductDimension = false;
-
-        // Check if this dimension is product-related (price OR volume)
-        for (const productNameNormalized of productNamesNormalized) {
-          const isPrice = keyNormalized.includes('preis') || keyNormalized.includes('price');
-          const isVolume = keyNormalized.includes('volumen') || keyNormalized.includes('volume') || keyNormalized.includes('menge');
-
-          if ((isPrice || isVolume) && keyNormalized.includes(productNameNormalized)) {
-            isProductDimension = true;
-            break;
-          }
-        }
-
-        // Only include non-product dimensions (e.g., Lieferzeit, Zahlungsbedingungen)
-        if (!isProductDimension) {
-          otherDimensions[key] = value;
-        }
-      }
-
+      // CRITICAL: Mark simulation as completed FIRST, before any analytics processing
+      // This ensures Python execution success is persisted even if post-processing fails
+      //
+      // Design Decision: We intentionally do NOT use a transaction here because:
+      // 1. Simulation completion must be committed immediately (Python succeeded)
+      // 2. Analytics failures are non-critical and should not rollback the simulation
+      // 3. Operators need to distinguish "negotiation failed" from "analytics failed"
       await db.update(simulationRuns)
         .set({
           status: status,
           completedAt: new Date(),
           conversationLog: normalizedConversationLog,
           totalRounds: result.totalRounds,
-          otherDimensions: otherDimensions, // Only non-product dimensions
-          dealValue: dealValue?.toString() ?? null,
           actualCost: actualCost.toString(),
-          outcome: result.outcome, // Store the detailed outcome
-          crashRecoveryData: null // Clear recovery data
+          outcome: result.outcome,
+          metadata: {
+            ...(nextSimulation.metadata ?? {}),
+            checkpoint: null,
+          },
         })
         .where(eq(simulationRuns.id, nextSimulation.id));
+
+      this.log.info({
+        simulationId: nextSimulation.id,
+        runNumber: nextSimulation.runNumber,
+        outcome: result.outcome,
+        totalRounds: result.totalRounds,
+        actualCost
+      }, `✅ Simulation Run #${nextSimulation.runNumber} completed: ${result.outcome}, ${result.totalRounds} rounds`);
+
+      // Post-processing: Build and persist analytics (wrapped in try/catch)
+      // Failures here should NOT flip the simulation back to failed status
+      try {
+        const negotiationRecord = (negotiationIdForRun ? await storage.getNegotiation(negotiationIdForRun) : null) ?? null;
+        const products = negotiationIdForRun ? await storage.getProductsByNegotiation(negotiationIdForRun) : [];
+
+        this.log.info({
+          simulationId: nextSimulation.id.slice(0, 8),
+          hasFinalOffer: !!result.finalOffer,
+          dimensionValuesKeys: Object.keys(dimensionValues).join(', '),
+          productsCount: products.length
+        }, "[DEAL_VALUE] Calling buildSimulationResultArtifacts");
+
+        const artifacts = buildSimulationResultArtifacts({
+          runId: nextSimulation.id,
+          negotiation: negotiationRecord,
+          products,
+          dimensionValues,
+          conversationLog: normalizedConversationLog,
+        });
+
+        this.log.debug(
+          {
+            simulationId: nextSimulation.id,
+            dealValue: artifacts.dealValue,
+            dimensionsCaptured: artifacts.dimensionRows.length,
+            productsCaptured: artifacts.productRows.length,
+          },
+          "[RESULTS] Processed simulation artifacts",
+        );
+
+        // Update deal value and dimensions (separate from critical status update)
+        await db.update(simulationRuns)
+          .set({
+            otherDimensions: artifacts.otherDimensions,
+            dealValue: artifacts.dealValue,
+          })
+          .where(eq(simulationRuns.id, nextSimulation.id));
+
+        // Persist structured dimension + product results for analytics
+        await db.delete(dimensionResults).where(eq(dimensionResults.simulationRunId, nextSimulation.id));
+        if (artifacts.dimensionRows.length) {
+          await db.insert(dimensionResults).values(artifacts.dimensionRows);
+          this.log.debug(
+            { simulationId: nextSimulation.id, count: artifacts.dimensionRows.length },
+            "[RESULTS] Stored dimension results",
+          );
+        }
+
+        await db.delete(productResults).where(eq(productResults.simulationRunId, nextSimulation.id));
+        if (artifacts.productRows.length) {
+          await db.insert(productResults).values(artifacts.productRows);
+          this.log.debug(
+            { simulationId: nextSimulation.id, count: artifacts.productRows.length, dealValue: artifacts.dealValue },
+            "[RESULTS] Stored product results",
+          );
+        }
+
+        this.log.info({
+          simulationId: nextSimulation.id.slice(0, 8),
+          dealValue: artifacts.dealValue
+        }, `[RESULTS] Analytics persisted successfully, Deal: €${artifacts.dealValue || 0}`);
+
+      } catch (analyticsError) {
+        // Post-processing failure should NOT affect simulation success
+        const errMsg = analyticsError instanceof Error ? analyticsError.message : String(analyticsError);
+        this.log.error({
+          err: analyticsError,
+          simulationId: nextSimulation.id,
+          runNumber: nextSimulation.runNumber,
+        }, `⚠️  Analytics post-processing failed for Run #${nextSimulation.runNumber}: ${errMsg}`);
+
+        // Store the analytics error in metadata for debugging, but keep status as completed
+        await db.update(simulationRuns)
+          .set({
+            metadata: {
+              ...(nextSimulation.metadata ?? {}),
+              checkpoint: null,
+              analyticsError: errMsg,
+              analyticsErrorAt: new Date().toISOString(),
+            },
+          })
+          .where(eq(simulationRuns.id, nextSimulation.id));
+      }
       
       // Update queue completed count
       const [completedCount] = await db
@@ -847,12 +900,12 @@ export class SimulationQueueService {
         .where(eq(simulationRuns.queueId, queueId));
         
       await db.update(simulationQueue)
-        .set({ 
+        .set({
           completedCount: completedCount.count || 0,
           actualTotalCost: (totalCost.total || 0).toString()
         })
         .where(eq(simulationQueue.id, queueId));
-      
+
       // Broadcast simulation completed event
       this.broadcastEvent({
         type: 'simulation_completed',
@@ -869,11 +922,21 @@ export class SimulationQueueService {
         }
       });
 
-      // Hook: Trigger AI evaluation after successful completion
-      if (result.outcome === 'DEAL_ACCEPTED' || result.outcome === 'WALK_AWAY') {
-        this.log.info(`[EVALUATION] Triggering AI evaluation for simulation ${nextSimulation.id.slice(0, 8)}`);
-        this.triggerEvaluation(nextSimulation.id, nextSimulation.negotiationId || '').catch(err => {
-          this.log.error(`[EVALUATION] Failed to evaluate simulation ${nextSimulation.id.slice(0, 8)}:`, err);
+      // Hook: Trigger AI evaluation after completion (successful or not)
+      // Trigger for all completed outcomes except PAUSED or ERROR
+      const completedOutcomes = ['DEAL_ACCEPTED', 'TERMINATED', 'WALK_AWAY', 'MAX_ROUNDS_REACHED'];
+      if (completedOutcomes.includes(result.outcome)) {
+        console.log(`[EVALUATION] 🚀 Starting evaluation for ${nextSimulation.id.slice(0, 8)} (outcome: ${result.outcome})`);
+        this.triggerEvaluation(nextSimulation.id, nextSimulation.negotiationId || '', result.outcome).catch(err => {
+          console.log(`[EVALUATION] ❌ Error: ${err.message}`);
+          this.log.error(
+            {
+              simulationId: nextSimulation.id.slice(0, 8),
+              error: err instanceof Error ? err.message : String(err),
+              stack: err instanceof Error ? err.stack : undefined
+            },
+            `[EVALUATION] Failed to evaluate simulation`
+          );
         });
       }
 
@@ -881,7 +944,7 @@ export class SimulationQueueService {
       const queueStatus = await this.getQueueStatus(queueId);
       if (queueStatus.completedCount + queueStatus.failedCount >= queueStatus.totalSimulations) {
         await this.updateQueueStatus(queueId, 'completed');
-        
+
         this.broadcastEvent({
           type: 'queue_completed',
           queueId,
@@ -893,6 +956,45 @@ export class SimulationQueueService {
             totalCost: queueStatus.actualCost
           }
         });
+
+        // Trigger playbook generation after all simulations are complete
+        if (nextSimulation.negotiationId) {
+          this.log.info(
+            { negotiationId: nextSimulation.negotiationId.slice(0, 8), queueId: queueId.slice(0, 8) },
+            '[QUEUE] All simulations complete - triggering playbook generation'
+          );
+
+          // Generate playbook asynchronously (don't block queue completion)
+          PlaybookGeneratorService.generatePlaybook(nextSimulation.negotiationId)
+            .then((result) => {
+              if (result.success) {
+                this.log.info(
+                  {
+                    negotiationId: nextSimulation.negotiationId?.slice(0, 8),
+                    playbookLength: result.playbook?.length
+                  },
+                  '[QUEUE] Playbook generated successfully'
+                );
+              } else {
+                this.log.error(
+                  {
+                    negotiationId: nextSimulation.negotiationId?.slice(0, 8),
+                    error: result.error
+                  },
+                  '[QUEUE] Playbook generation failed'
+                );
+              }
+            })
+            .catch((err) => {
+              this.log.error(
+                {
+                  negotiationId: nextSimulation.negotiationId?.slice(0, 8),
+                  err
+                },
+                '[QUEUE] Playbook generation error'
+              );
+            });
+        }
       } else {
         // Broadcast progress update
         this.broadcastEvent({
@@ -911,22 +1013,51 @@ export class SimulationQueueService {
       return true;
       
     } catch (error) {
-      this.log.error({ err: error, simulationId: nextSimulation.id }, `Simulation ${nextSimulation.id} failed`);
-      
+      // Extract detailed error information
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : undefined;
+
+      this.log.error({
+        err: error,
+        simulationId: nextSimulation.id,
+        runNumber: nextSimulation.runNumber,
+        techniqueId: nextSimulation.techniqueId,
+        tacticId: nextSimulation.tacticId,
+        errorMessage,
+        errorStack
+      }, `❌ Simulation Run #${nextSimulation.runNumber} failed: ${errorMessage}`);
+
+      // Log to console for visibility
+      console.error(`\n========== SIMULATION FAILED ==========`);
+      console.error(`Run #${nextSimulation.runNumber} (${nextSimulation.id.slice(0, 8)})`);
+      console.error(`Error: ${errorMessage}`);
+      console.error(`Stack: ${errorStack?.substring(0, 500)}`);
+      console.error(`=======================================\n`);
+
       // Increment retry count
       const newRetryCount = (nextSimulation.retryCount || 0) + 1;
-      
+
       if (newRetryCount >= (nextSimulation.maxRetries || 3)) {
+        this.log.warn({
+          simulationId: nextSimulation.id,
+          runNumber: nextSimulation.runNumber,
+          retryCount: newRetryCount,
+          maxRetries: nextSimulation.maxRetries || 3
+        }, `🔴 Max retries reached for Run #${nextSimulation.runNumber}, marking as failed`);
+
         // Max retries reached, mark as failed
         await db.update(simulationRuns)
-          .set({ 
+          .set({
             status: 'failed',
             retryCount: newRetryCount,
             conversationLog: JSON.stringify([]), // Ensure conversationLog is not null
-            crashRecoveryData: JSON.stringify({
-              error: error instanceof Error ? error.message : 'Unknown error',
-              finalRetry: true
-            })
+            metadata: {
+              ...(nextSimulation.metadata ?? {}),
+              lastError: errorMessage,
+              errorStack: errorStack?.substring(0, 500), // Truncate stack trace
+              finalRetry: true,
+              failedAt: new Date().toISOString(),
+            },
           })
           .where(eq(simulationRuns.id, nextSimulation.id));
         
@@ -958,16 +1089,26 @@ export class SimulationQueueService {
         });
         
       } else {
+        this.log.info({
+          simulationId: nextSimulation.id,
+          runNumber: nextSimulation.runNumber,
+          retryCount: newRetryCount,
+          maxRetries: nextSimulation.maxRetries || 3
+        }, `🔄 Retrying Run #${nextSimulation.runNumber} (Attempt ${newRetryCount}/${nextSimulation.maxRetries || 3})`);
+
         // Reset to pending for retry
         await db.update(simulationRuns)
-          .set({ 
+          .set({
             status: 'pending',
             retryCount: newRetryCount,
             startedAt: null,
-            crashRecoveryData: JSON.stringify({
-              error: error instanceof Error ? error.message : 'Unknown error',
-              retryAttempt: newRetryCount
-            })
+            metadata: {
+              ...(nextSimulation.metadata ?? {}),
+              lastError: errorMessage,
+              errorStack: errorStack?.substring(0, 500),
+              retryAttempt: newRetryCount,
+              lastRetryAt: new Date().toISOString(),
+            },
           })
           .where(eq(simulationRuns.id, nextSimulation.id));
       }
@@ -1142,15 +1283,16 @@ export class SimulationQueueService {
    */
   static async recoverOrphanedSimulations(simulationIds: string[]): Promise<void> {
     // Reset orphaned simulations to pending
+    const recoveryMetadata = {
+      recovered: true,
+      recoveredAt: new Date().toISOString(),
+    };
+
     await db.update(simulationRuns)
       .set({ 
         status: 'pending',
         startedAt: null,
-        // Note: retryCount will be incremented by the recovery logic
-        crashRecoveryData: JSON.stringify({
-          recovered: true,
-          recoveredAt: new Date().toISOString()
-        })
+        metadata: recoveryMetadata,
       })
       .where(or(...simulationIds.map(id => eq(simulationRuns.id, id))));
   }
@@ -1171,7 +1313,9 @@ export class SimulationQueueService {
       dealValue: simulationRuns.dealValue,
       actualCost: simulationRuns.actualCost,
       startedAt: simulationRuns.startedAt,
-      completedAt: simulationRuns.completedAt
+      completedAt: simulationRuns.completedAt,
+      metadata: simulationRuns.metadata,
+      outcome: simulationRuns.outcome
     })
     .from(simulationRuns)
     .where(eq(simulationRuns.queueId, queueId))
@@ -1202,14 +1346,64 @@ export class SimulationQueueService {
         }
       }
 
+      // Extract error message from metadata
+      let errorMessage = null;
+      if (result.metadata && typeof result.metadata === 'object') {
+        const metadata = result.metadata as any;
+        errorMessage = metadata.lastError || null;
+      }
+
       return {
         ...result,
         conversationLog: parsedConversationLog || [],
         otherDimensions: parsedOtherDimensions || {},
         dealValue: result.dealValue ? parseFloat(result.dealValue) : null,
-        actualCost: result.actualCost ? parseFloat(result.actualCost) : 0
+        actualCost: result.actualCost ? parseFloat(result.actualCost) : 0,
+        errorMessage
       };
     });
+  }
+
+  static async getSimulationStats(negotiationId: string) {
+    const runs = await db
+      .select({
+        status: simulationRuns.status,
+      })
+      .from(simulationRuns)
+      .where(eq(simulationRuns.negotiationId, negotiationId));
+
+    const stats = {
+      totalRuns: runs.length,
+      completedRuns: 0,
+      runningRuns: 0,
+      failedRuns: 0,
+      pendingRuns: 0,
+      successRate: 0,
+      isPlanned: false,
+    };
+
+    for (const run of runs) {
+      if (run.status === "completed") stats.completedRuns++;
+      else if (run.status === "running") stats.runningRuns++;
+      else if (run.status === "failed" || run.status === "timeout") stats.failedRuns++;
+      else if (run.status === "pending") stats.pendingRuns++;
+    }
+
+    if (stats.totalRuns > 0) {
+      stats.successRate = Math.round((stats.completedRuns / stats.totalRuns) * 100);
+    } else {
+      const negotiation = await storage.getNegotiation(negotiationId);
+      const scenario = negotiation?.scenario ?? {};
+      const planned =
+        (scenario.selectedTechniques?.length || 0) *
+        (scenario.selectedTactics?.length || 0);
+      stats.isPlanned = planned > 0;
+      if (stats.isPlanned) {
+        stats.pendingRuns = planned;
+      }
+    }
+
+    return stats;
   }
 
   /**
@@ -1224,6 +1418,7 @@ export class SimulationQueueService {
         techniqueId: simulationRuns.techniqueId,
         tacticId: simulationRuns.tacticId,
         personalityId: simulationRuns.personalityId,
+        zopaDistance: simulationRuns.zopaDistance,
         dealValue: simulationRuns.dealValue,
         outcome: simulationRuns.outcome,
         totalRounds: simulationRuns.totalRounds,
@@ -1232,6 +1427,7 @@ export class SimulationQueueService {
         actualCost: simulationRuns.actualCost,
         startedAt: simulationRuns.startedAt,
         completedAt: simulationRuns.completedAt,
+        metadata: simulationRuns.metadata,
         // AI Evaluation fields
         tacticalSummary: simulationRuns.tacticalSummary,
         techniqueEffectivenessScore: simulationRuns.techniqueEffectivenessScore,
@@ -1241,6 +1437,48 @@ export class SimulationQueueService {
       .where(eq(simulationRuns.negotiationId, negotiationId))
       .orderBy(simulationRuns.executionOrder);
       
+      const runIds = results.map(r => r.id).filter(Boolean) as string[];
+      let dimensionMap = new Map<string, Array<any>>();
+      let productMap = new Map<string, Array<any>>();
+
+      if (runIds.length) {
+        const dimensionRows = await db
+          .select({
+            simulationRunId: dimensionResults.simulationRunId,
+            dimensionName: dimensionResults.dimensionName,
+            finalValue: dimensionResults.finalValue,
+            targetValue: dimensionResults.targetValue,
+            achievedTarget: dimensionResults.achievedTarget,
+            priorityScore: dimensionResults.priorityScore,
+          })
+          .from(dimensionResults)
+          .where(inArray(dimensionResults.simulationRunId, runIds));
+
+        for (const row of dimensionRows) {
+          const existing = dimensionMap.get(row.simulationRunId) ?? [];
+          existing.push(row);
+          dimensionMap.set(row.simulationRunId, existing);
+        }
+
+        const productRows = await db
+          .select({
+            simulationRunId: productResults.simulationRunId,
+            productName: productResults.productName,
+            agreedPrice: productResults.agreedPrice,
+            subtotal: productResults.subtotal,
+            withinZopa: productResults.withinZopa,
+            performanceScore: productResults.performanceScore,
+          })
+          .from(productResults)
+          .where(inArray(productResults.simulationRunId, runIds));
+
+        for (const row of productRows) {
+          const existing = productMap.get(row.simulationRunId) ?? [];
+          existing.push(row);
+          productMap.set(row.simulationRunId, existing);
+        }
+      }
+
       return results.map(result => {
         let parsedConversationLog: any = result.conversationLog;
         if (typeof parsedConversationLog === 'string') {
@@ -1260,10 +1498,20 @@ export class SimulationQueueService {
           }
         }
 
+        // Extract error message from metadata
+        let errorMessage = null;
+        if (result.metadata && typeof result.metadata === 'object') {
+          const metadata = result.metadata as any;
+          errorMessage = metadata.lastError || null;
+        }
+
         return {
           ...result,
           conversationLog: parsedConversationLog || [],
-          otherDimensions: parsedOtherDimensions || {}
+          otherDimensions: parsedOtherDimensions || {},
+          dimensionResults: dimensionMap.get(result.id) ?? [],
+          productResults: productMap.get(result.id) ?? [],
+          errorMessage
         };
       });
     } catch (error) {
@@ -1328,11 +1576,10 @@ export class SimulationQueueService {
     // Best-effort sync of parent negotiation.status for dashboard consistency
     try {
       if (updatedQueue?.negotiationId) {
-        let negotiationStatus: 'running' | 'completed' | 'pending' | 'failed' | 'configured' = 'pending';
-        if (status === 'running') negotiationStatus = 'running';
+        let negotiationStatus: 'planned' | 'running' | 'completed' | 'aborted' = 'planned';
+        if (status === 'running' || status === 'paused') negotiationStatus = 'running';
         else if (status === 'completed') negotiationStatus = 'completed';
-        else if (status === 'failed') negotiationStatus = 'failed';
-        else if (status === 'paused') negotiationStatus = 'running'; // treat paused as running for overview
+        else if (status === 'failed' || status === 'timeout') negotiationStatus = 'aborted';
 
         await db.update(negotiations)
           .set({ status: negotiationStatus })
@@ -1437,8 +1684,10 @@ export class SimulationQueueService {
   /**
    * Trigger AI evaluation for a completed simulation (post-processing hook)
    */
-  private static async triggerEvaluation(simulationRunId: string, negotiationId: string): Promise<void> {
+  private static async triggerEvaluation(simulationRunId: string, negotiationId: string, outcome?: string): Promise<void> {
     try {
+      console.log(`[EVALUATION] → triggerEvaluation called for ${simulationRunId.slice(0, 8)}`);
+
       const { SimulationEvaluationService } = await import('./simulation-evaluation');
 
       // Get simulation run data
@@ -1448,11 +1697,28 @@ export class SimulationQueueService {
         .limit(1);
 
       if (run.length === 0) {
-        this.log.warn(`[EVALUATION] Simulation run ${simulationRunId} not found`);
+        this.log.warn(
+          { simulationId: simulationRunId.slice(0, 8) },
+          `[EVALUATION] Simulation run not found in database`
+        );
         return;
       }
 
       const simulationRun = run[0];
+
+      // Use provided outcome or fallback to DB value
+      const finalOutcome = outcome || simulationRun.outcome || 'UNKNOWN';
+
+      this.log.debug(
+        {
+          simulationId: simulationRunId.slice(0, 8),
+          conversationLogLength: (simulationRun.conversationLog as any[])?.length || 0,
+          techniqueId: simulationRun.techniqueId?.slice(0, 8),
+          tacticId: simulationRun.tacticId?.slice(0, 8),
+          personalityId: simulationRun.personalityId
+        },
+        "[EVALUATION] Fetching negotiation details"
+      );
 
       // Get negotiation details
       const { storage: storageModule } = await import('../storage');
@@ -1464,7 +1730,13 @@ export class SimulationQueueService {
       ]);
 
       if (!negotiation) {
-        this.log.warn(`[EVALUATION] Negotiation ${negotiationId} not found`);
+        this.log.warn(
+          {
+            simulationId: simulationRunId.slice(0, 8),
+            negotiationId: negotiationId.slice(0, 8)
+          },
+          `[EVALUATION] Negotiation not found in database`
+        );
         return;
       }
 
@@ -1473,27 +1745,74 @@ export class SimulationQueueService {
       const personality = personalities.find((p: any) => p.id === simulationRun.personalityId);
 
       if (!technique || !tactic) {
-        this.log.warn(`[EVALUATION] Technique or tactic not found for simulation ${simulationRunId}`);
+        this.log.warn(
+          {
+            simulationId: simulationRunId.slice(0, 8),
+            hasTechnique: !!technique,
+            hasTactic: !!tactic,
+            techniqueId: simulationRun.techniqueId,
+            tacticId: simulationRun.tacticId,
+            availableTechniques: techniques.length,
+            availableTactics: tactics.length
+          },
+          `[EVALUATION] Required technique or tactic not found in database`
+        );
         return;
       }
 
-      // Determine counterpart attitude
-      const counterpartRole = negotiation.userRole === 'BUYER' ? 'SELLER' : 'BUYER';
+      this.log.debug(
+        {
+          simulationId: simulationRunId.slice(0, 8),
+          technique: technique.name,
+          tactic: tactic.name,
+          hasPersonality: !!personality
+        },
+        "[EVALUATION] Found technique and tactic data"
+      );
+
+      // Determine the role being evaluated
+      // scenario.userRole = the role explicitly set by user in UI ("Ihre Rolle")
+      // This is the SELF/USER agent role that we want to evaluate
+      // Example: If user selects "Verkäufer:in" → userRole = "seller" → evaluate SELLER
+      const selfAgentRole = (negotiation.scenario.userRole ?? 'buyer').toUpperCase() === 'SELLER' ? 'SELLER' : 'BUYER';
       const counterpartAttitude = personality?.archetype || 'Standard';
+
+      this.log.info(
+        {
+          simulationId: simulationRunId.slice(0, 8),
+          selfAgentRole,
+          technique: technique.name,
+          tactic: tactic.name,
+          counterpartAttitude,
+          outcome: finalOutcome
+        },
+        "[EVALUATION] Calling evaluateAndSave - evaluating SELF agent (scenario.userRole)"
+      );
 
       // Run evaluation asynchronously (don't block)
       await SimulationEvaluationService.evaluateAndSave(
         simulationRunId,
         simulationRun.conversationLog as any[],
-        negotiation.userRole,
+        selfAgentRole, // Evaluate the SELF agent (the role set in "Ihre Rolle")
         technique.name,
+        technique.beschreibung, // Pass description
         tactic.name,
+        tactic.beschreibung, // Pass description
         counterpartAttitude,
+        finalOutcome
       );
 
-      this.log.info(`[EVALUATION] ✓ Evaluation completed for simulation ${simulationRunId.slice(0, 8)}`);
+      console.log(`[EVALUATION] ✓ Evaluation complete for ${simulationRunId.slice(0, 8)}`);
     } catch (error) {
-      this.log.error({ error }, `[EVALUATION] Failed to trigger evaluation`);
+      console.log(`[EVALUATION] ❌ FAILED for ${simulationRunId.slice(0, 8)}: ${error instanceof Error ? error.message : String(error)}`);
+      this.log.error(
+        {
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+          simulationId: simulationRunId.slice(0, 8)
+        },
+        `[EVALUATION] Failed to trigger evaluation`
+      );
       // Don't throw - evaluation failure shouldn't break the simulation flow
     }
   }
@@ -1557,7 +1876,7 @@ export class SimulationQueueService {
         const counterpartAttitude = personality?.archetype || 'Standard';
 
         // Run evaluation
-        await this.triggerEvaluation(run.id, negotiation.id);
+        await this.triggerEvaluation(run.id, negotiation.id, run.outcome);
         
         successCount++;
         this.log.info(`[EVALUATION_BACKFILL] ✓ Evaluated ${run.id.slice(0, 8)} (${successCount}/${runs.length})`);
@@ -1612,7 +1931,7 @@ export class SimulationQueueService {
     for (const run of runs) {
       try {
         // Run evaluation
-        await this.triggerEvaluation(run.id, negotiationId);
+        await this.triggerEvaluation(run.id, negotiationId, run.outcome ?? undefined);
         
         successCount++;
         this.log.info(`[EVALUATION_BACKFILL] ✓ Evaluated ${run.id.slice(0, 8)} (${successCount}/${runs.length})`);
@@ -1664,5 +1983,147 @@ export class SimulationQueueService {
       needingEvaluation,
       evaluationRate,
     };
+  }
+
+  /**
+   * Retry failed or timed-out simulation runs
+   * @param queueId - Queue ID to retry runs for
+   * @param runIds - Optional array of specific run IDs to retry (if empty, retries all failed/timed-out runs)
+   * @returns Number of runs marked for retry
+   */
+  static async retryFailedRuns(queueId: string, runIds?: string[]): Promise<{
+    retriedCount: number;
+    runIds: string[];
+  }> {
+    this.log.info({
+      queueId: queueId.slice(0, 8),
+      specificRuns: runIds?.length
+    }, `[RETRY] Retrying ${runIds ? `${runIds.length} specific` : 'all failed/timed-out'} runs`);
+
+    try {
+      // Build query conditions
+      let query;
+      if (runIds && runIds.length > 0) {
+        // Retry specific runs (failed or timed-out)
+        query = db.update(simulationRuns)
+          .set({
+            status: 'pending',
+            startedAt: null,
+            completedAt: null,
+            // Keep existing results but allow re-run
+            metadata: {
+              retried: true,
+              retriedAt: new Date().toISOString(),
+            }
+          })
+          .where(
+            and(
+              eq(simulationRuns.queueId, queueId),
+              inArray(simulationRuns.id, runIds),
+              or(
+                eq(simulationRuns.status, 'failed'),
+                eq(simulationRuns.status, 'timeout')
+              )
+            )
+          );
+      } else {
+        // Retry all failed/timed-out runs in queue
+        query = db.update(simulationRuns)
+          .set({
+            status: 'pending',
+            startedAt: null,
+            completedAt: null,
+            metadata: {
+              retried: true,
+              retriedAt: new Date().toISOString(),
+            }
+          })
+          .where(
+            and(
+              eq(simulationRuns.queueId, queueId),
+              or(
+                eq(simulationRuns.status, 'failed'),
+                eq(simulationRuns.status, 'timeout')
+              )
+            )
+          );
+      }
+
+      // Execute update
+      await query;
+
+      // Get updated runs to return their IDs
+      let retriedRuns;
+      if (runIds && runIds.length > 0) {
+        retriedRuns = await db.select({ id: simulationRuns.id })
+          .from(simulationRuns)
+          .where(
+            and(
+              eq(simulationRuns.queueId, queueId),
+              inArray(simulationRuns.id, runIds)
+            )
+          );
+      } else {
+        retriedRuns = await db.select({ id: simulationRuns.id })
+          .from(simulationRuns)
+          .where(
+            and(
+              eq(simulationRuns.queueId, queueId),
+              eq(simulationRuns.status, 'pending')
+            )
+          );
+      }
+
+      const retriedIds = retriedRuns.map(r => r.id);
+
+      // Reset queue status to pending if it was failed or completed
+      const [queue] = await db.select()
+        .from(simulationQueue)
+        .where(eq(simulationQueue.id, queueId))
+        .limit(1);
+
+      if (queue && (queue.status === 'failed' || queue.status === 'completed')) {
+        await db.update(simulationQueue)
+          .set({ status: 'pending' })
+          .where(eq(simulationQueue.id, queueId));
+      }
+
+      this.log.info({
+        queueId: queueId.slice(0, 8),
+        retriedCount: retriedIds.length
+      }, `[RETRY] Marked ${retriedIds.length} runs for retry`);
+
+      // Start the queue to trigger background processor
+      if (retriedIds.length > 0) {
+        this.log.info(`Starting queue ${queueId.slice(0, 8)} after retrying ${retriedIds.length} runs`);
+        await this.startQueue(queueId);
+      }
+
+      // Broadcast retry event
+      const [firstRun] = await db.select()
+        .from(simulationRuns)
+        .where(eq(simulationRuns.queueId, queueId))
+        .limit(1);
+
+      if (firstRun) {
+        this.broadcastEvent({
+          type: 'queue_progress',
+          queueId,
+          negotiationId: firstRun.negotiationId || '',
+          data: {
+            retriedCount: retriedIds.length,
+            message: `Retrying ${retriedIds.length} failed runs`
+          }
+        });
+      }
+
+      return {
+        retriedCount: retriedIds.length,
+        runIds: retriedIds,
+      };
+    } catch (error) {
+      this.log.error({ error, queueId: queueId.slice(0, 8) }, `[RETRY] Failed to retry runs`);
+      throw error;
+    }
   }
 }

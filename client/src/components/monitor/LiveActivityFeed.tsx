@@ -3,6 +3,7 @@
  * Shows recent events from WebSocket in real-time
  */
 
+import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -46,27 +47,27 @@ function getEventIcon(type: ActivityEvent["type"]) {
 function getEventLabel(type: ActivityEvent["type"]) {
   switch (type) {
     case "simulation_started":
-      return "Started";
+      return "Gestartet";
     case "round_completed":
-      return "Round";
+      return "Runde";
     case "simulation_completed":
-      return "Completed";
+      return "Abgeschlossen";
     case "simulation_failed":
-      return "Failed";
+      return "Fehlgeschlagen";
   }
 }
 
 function formatTimestamp(date: Date): string {
-  const now = new Date();
-  const diff = now.getTime() - date.getTime();
-  const seconds = Math.floor(diff / 1000);
+  const now = Date.now();
+  const diffSeconds = Math.round((date.getTime() - now) / 1000);
+  const rtf = new Intl.RelativeTimeFormat("de", { numeric: "auto" });
 
-  if (seconds < 60) return `${seconds}s ago`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return date.toLocaleTimeString();
+  if (Math.abs(diffSeconds) < 60) return rtf.format(diffSeconds, "second");
+  const diffMinutes = Math.round(diffSeconds / 60);
+  if (Math.abs(diffMinutes) < 60) return rtf.format(diffMinutes, "minute");
+  const diffHours = Math.round(diffMinutes / 60);
+  if (Math.abs(diffHours) < 24) return rtf.format(diffHours, "hour");
+  return date.toLocaleString("de-DE");
 }
 
 export function LiveActivityFeed({ events, maxEvents = 50 }: LiveActivityFeedProps) {
@@ -76,7 +77,7 @@ export function LiveActivityFeed({ events, maxEvents = 50 }: LiveActivityFeedPro
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
-          <span>Live Activity Feed</span>
+          <span>Live-Aktivität</span>
           <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
             <span className="relative flex h-2 w-2 mr-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
@@ -114,7 +115,7 @@ export function LiveActivityFeed({ events, maxEvents = 50 }: LiveActivityFeedPro
                         </>
                       )}
                       {event.round && (
-                        <span className="text-gray-600"> - Round {event.round}</span>
+                        <span className="text-gray-600"> · Runde {event.round}</span>
                       )}
                     </p>
                     {event.message && (
@@ -132,9 +133,9 @@ export function LiveActivityFeed({ events, maxEvents = 50 }: LiveActivityFeedPro
             ) : (
               <div className="text-center py-12 text-gray-500">
                 <MessageSquare className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-                <p className="text-sm">No activity yet</p>
+                <p className="text-sm">Noch keine Ereignisse</p>
                 <p className="text-xs text-gray-400 mt-1">
-                  Events will appear here as simulations run
+                  Sobald Simulationen laufen, erscheinen hier Updates.
                 </p>
               </div>
             )}

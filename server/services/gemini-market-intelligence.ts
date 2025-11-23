@@ -42,8 +42,8 @@ export interface MarketIntelligenceResult {
 export async function generateMarketIntelligence(
   context: MarketIntelligenceContext
 ): Promise<MarketIntelligenceItem[]> {
-  // Python Script Path
-  const scriptPath = path.join(__dirname, '../../scripts/gemini_market_intelligence.py');
+  // Python Script Path - use process.cwd() for reliable path resolution
+  const scriptPath = path.join(process.cwd(), 'scripts/gemini_market_intelligence.py');
 
   // Context als JSON
   const contextJson = JSON.stringify(context);
@@ -68,8 +68,12 @@ export async function generateMarketIntelligence(
 
     log.debug({ stdout }, '[gemini-intelligence] Python stdout');
 
-    // Parse JSON Response
-    const result: MarketIntelligenceResult = JSON.parse(stdout);
+    const trimmedStdout = stdout.trim();
+    if (!trimmedStdout) {
+      throw new Error('Market Intelligence Script returned empty response');
+    }
+
+    const result: MarketIntelligenceResult = JSON.parse(trimmedStdout);
 
     return result.intelligence || [];
   } catch (error: any) {

@@ -446,7 +446,7 @@ python scripts/evaluate_simulation.py \
 
 **Database:**
 - `products` table: Per-product price boundaries
-- `negotiation_dimensions` table: Flexible non-price terms
+- Negotiation dimensions now live inside `negotiations.scenario.dimensions` (array). No standalone `negotiation_dimensions` table.
 - `product_results` table: Per-product outcomes with ZOPA validation
 
 **Analysis:** System calculates ZOPA achievement, utilization percentage, price vs target.
