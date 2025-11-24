@@ -25,12 +25,7 @@ export default defineConfig({
     port: 5000,
     strictPort: true,
     allowedHosts: true,
-    hmr: {
-      // Use the dev server port for HMR to avoid browser attempts to connect to :443 on local IPs
-      clientPort: 5000,
-      protocol: "ws",
-      host: "localhost",
-    },
+    hmr: false,  // Disable HMR in Replit (HTTPS issue with WS/WSS)
     proxy: {
       "/api": {
         target: "http://localhost:3000",
