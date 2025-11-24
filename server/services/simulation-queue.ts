@@ -6,7 +6,7 @@
 import { db } from '../db';
 import { storage } from '../storage';
 import { simulationQueue, simulationRuns, negotiations, influencingTechniques, negotiationTactics, personalityTypes, dimensionResults, productResults } from '../../shared/schema';
-import { eq, and, or, lt, count, sum, desc, isNull, inArray } from 'drizzle-orm';
+import { eq, and, or, lt, count, sum, desc, isNull, inArray, sql } from 'drizzle-orm';
 import { PythonNegotiationService } from './python-negotiation-service';
 import { createRequestLogger } from './logger';
 import { buildSimulationResultArtifacts } from './simulation-result-processor';
@@ -72,6 +72,10 @@ export class SimulationQueueService {
   private static processingInterval: NodeJS.Timeout | null = null;
   // Consider a running simulation stale if no completion after this duration
   private static readonly STALE_RUNNING_MS = 10 * 60 * 1000; // 10 minutes
+  // Structured audit helper for log searchability
+  private static audit(event: string, data: Record<string, any>) {
+    this.log.info({ audit: event, ...data }, `[AUDIT] ${event}`);
+  }
   
   /**
    * Broadcast simulation event via WebSocket
@@ -367,7 +371,7 @@ export class SimulationQueueService {
   /**
    * Restart a single simulation run
    */
-  static async restartSingleRun(runId: string): Promise<{ runNumber: number }> {
+  static async restartSingleRun(runId: string): Promise<{ runNumber: number; newRunId: string }> {
     this.log.info(`Restarting single simulation run ${runId}`);
 
     const [run] = await db.select()
@@ -378,36 +382,71 @@ export class SimulationQueueService {
       throw new Error('Simulation run not found');
     }
 
-    // Reset the run to pending state
-    const [updatedRun] = await db.update(simulationRuns)
+    if (!run.queueId) {
+      throw new Error('Simulation run is not associated with a queue');
+    }
+
+    // Delete the old run (cascades remove dimension/product results)
+    await db.delete(simulationRuns)
+      .where(eq(simulationRuns.id, runId));
+
+    // Recreate a fresh pending run with the same position in the queue
+    const [newRun] = await db.insert(simulationRuns)
+      .values({
+        negotiationId: run.negotiationId,
+        queueId: run.queueId,
+        techniqueId: run.techniqueId,
+        tacticId: run.tacticId,
+        personalityId: run.personalityId,
+        zopaDistance: run.zopaDistance,
+        status: 'pending',
+        runNumber: run.runNumber,
+        executionOrder: run.executionOrder,
+        actualCost: '0',
+        otherDimensions: {},
+        conversationLog: [],
+        retryCount: 0,
+        completedAt: null,
+        startedAt: null,
+        outcome: null,
+        totalRounds: null,
+        metadata: {},
+        dealValue: null
+      })
+      .returning({ id: simulationRuns.id, runNumber: simulationRuns.runNumber });
+
+    if (!newRun) {
+      throw new Error('Failed to recreate simulation run');
+    }
+
+    // Ensure queue is set to pending/running and picked up again
+    const [completedCount] = await db
+      .select({ count: count(simulationRuns.id) })
+      .from(simulationRuns)
+      .where(and(
+        eq(simulationRuns.queueId, run.queueId),
+        eq(simulationRuns.status, 'completed')
+      ));
+
+    const [totalCost] = await db
+      .select({ total: sum(simulationRuns.actualCost) })
+      .from(simulationRuns)
+      .where(eq(simulationRuns.queueId, run.queueId));
+
+    await db.update(simulationQueue)
       .set({
         status: 'pending',
-        actualCost: '0',
-        completedAt: null,
-        conversationLog: [],
-        otherDimensions: {}
+        completedCount: completedCount.count || 0,
+        actualTotalCost: (totalCost.total || 0).toString()
       })
-      .where(eq(simulationRuns.id, runId))
-      .returning({ runNumber: simulationRuns.runNumber });
+      .where(eq(simulationQueue.id, run.queueId));
 
-    // Update queue status to pending if it was completed and queue exists
-    if (run.queueId) {
-      await db.update(simulationQueue)
-        .set({ status: 'pending' })
-        .where(eq(simulationQueue.id, run.queueId));
+    this.log.info(`Starting queue ${run.queueId.slice(0, 8)} after recreating run`);
+    await this.startQueue(run.queueId);
 
-      // Start the queue to ensure the background processor picks it up
-      this.log.info(`Starting queue ${run.queueId.slice(0, 8)} after restarting run`);
-      await this.startQueue(run.queueId);
-    }
-
-    if (!updatedRun) {
-      throw new Error('Failed to restart simulation run');
-    }
-
-    const runNumber = Number(updatedRun.runNumber ?? 0);
-    this.log.info(`Restarted run #${runNumber}`);
-    return { runNumber };
+    const runNumber = Number(newRun.runNumber ?? 0);
+    this.log.info({ oldRunId: runId, newRunId: newRun.id, runNumber }, `Restarted run #${runNumber} by recreating record`);
+    return { runNumber, newRunId: newRun.id };
   }
 
   /**
@@ -582,47 +621,109 @@ export class SimulationQueueService {
   static async executeNext(queueId: string): Promise<boolean> {
     this.log.info(`[EXECUTE] Checking for next simulation in queue ${queueId.slice(0, 8)}`);
 
-    // Get next pending simulation
-    let [nextSimulation] = await db.select()
-      .from(simulationRuns)
-      .where(
-        and(
-          eq(simulationRuns.queueId, queueId),
-          eq(simulationRuns.status, 'pending')
+    // Lock queue row and select/claim next run atomically to avoid multi-instance races
+    const claimResult = await db.transaction(async (tx) => {
+      // Lock queue row to serialize per-queue picks
+      await tx.execute(sql`SELECT id FROM simulation_queue WHERE id = ${queueId} FOR UPDATE`);
+
+      const [queueConfig] = await tx
+        .select({ maxConcurrent: simulationQueue.maxConcurrent })
+        .from(simulationQueue)
+        .where(eq(simulationQueue.id, queueId));
+
+      const maxConcurrent = queueConfig?.maxConcurrent && queueConfig.maxConcurrent > 0 ? queueConfig.maxConcurrent : 1;
+
+      const [runningCountRow] = await tx
+        .select({ count: count(simulationRuns.id) })
+        .from(simulationRuns)
+        .where(and(eq(simulationRuns.queueId, queueId), eq(simulationRuns.status, 'running')));
+
+      const runningCount = runningCountRow?.count || 0;
+      if (runningCount >= maxConcurrent) {
+        return { status: 'at_capacity' as const };
+      }
+
+      // Find next pending run with row lock to prevent double-claim
+      const pendingResult = await tx.execute(sql`
+        SELECT id, negotiation_id, run_number, technique_id, tactic_id, personality_id, retry_count
+        FROM simulation_runs
+        WHERE queue_id = ${queueId} AND status = 'pending'
+        ORDER BY execution_order
+        FOR UPDATE SKIP LOCKED
+        LIMIT 1
+      `);
+
+      const next = pendingResult.rows?.[0] as any;
+      if (!next) {
+        return { status: 'none' as const };
+      }
+
+      const startedAt = new Date();
+      const [claimedRun] = await tx.update(simulationRuns)
+        .set({
+          status: 'running',
+          startedAt,
+          metadata: {
+            checkpoint: {
+              simulationId: next.id,
+              queueId,
+              startTime: Date.now(),
+              round: 0,
+            }
+          }
+        })
+        .where(
+          and(
+            eq(simulationRuns.id, next.id),
+            eq(simulationRuns.status, 'pending')
+          )
         )
-      )
-      .orderBy(simulationRuns.executionOrder)
-      .limit(1);
+        .returning({
+          id: simulationRuns.id,
+          negotiationId: simulationRuns.negotiationId,
+          runNumber: simulationRuns.runNumber,
+          techniqueId: simulationRuns.techniqueId,
+          tacticId: simulationRuns.tacticId,
+          personalityId: simulationRuns.personalityId,
+          retryCount: simulationRuns.retryCount,
+        });
 
-    // Do NOT auto-retry failed simulations. They are only retried via the restart-failed endpoint.
+      if (!claimedRun) {
+        return { status: 'contested' as const };
+      }
 
-    if (!nextSimulation) {
-      // No more simulations to run (no pending, no retryable failed)
+      return { status: 'claimed' as const, run: claimedRun };
+    });
+
+    if (claimResult.status === 'at_capacity') {
+      this.log.info(`[EXECUTE] Max concurrency reached for queue ${queueId.slice(0, 8)}, skipping this tick`);
+      return true;
+    }
+
+    if (claimResult.status === 'none') {
       this.log.info(`[EXECUTE] No more pending simulations in queue ${queueId.slice(0, 8)}, marking as completed`);
       await this.updateQueueStatus(queueId, 'completed');
       return false;
     }
 
+    if (claimResult.status !== 'claimed' || !claimResult.run) {
+      this.log.warn(`[EXECUTE] Could not claim simulation (status=${claimResult.status}) for queue ${queueId.slice(0, 8)}`);
+      return true;
+    }
+
+    let nextSimulation = claimResult.run;
+
     this.log.info(`[EXECUTE] Found simulation to execute: ${nextSimulation.id.slice(0, 8)} (Run #${nextSimulation.runNumber})`);
     this.log.info(`[EXECUTE] Technique: ${nextSimulation.techniqueId?.slice(0, 8)}, Tactic: ${nextSimulation.tacticId?.slice(0, 8)}`);
-    
-    
-    // Mark simulation as running (reset if it was failed)
-    await db.update(simulationRuns)
-      .set({ 
-        status: 'running', 
-        startedAt: new Date(),
-        metadata: {
-          checkpoint: {
-            simulationId: nextSimulation.id,
-            queueId,
-            startTime: Date.now(),
-            round: 0,
-          }
-        }
-      })
-      .where(eq(simulationRuns.id, nextSimulation.id));
-    
+    this.audit('run_claimed', {
+      queueId,
+      simulationId: nextSimulation.id,
+      runNumber: nextSimulation.runNumber,
+      negotiationId: nextSimulation.negotiationId,
+      techniqueId: nextSimulation.techniqueId,
+      tacticId: nextSimulation.tacticId,
+    });
+
     // Update queue status to running
     await this.updateQueueStatus(queueId, 'running');
 
@@ -635,11 +736,11 @@ export class SimulationQueueService {
     }, `🚀 Starting Run #${nextSimulation.runNumber}${nextSimulation.retryCount ? ` (Retry ${nextSimulation.retryCount})` : ''}`);
 
     // Broadcast simulation started event
-    this.broadcastEvent({
-      type: 'simulation_started',
-      queueId,
-      negotiationId: nextSimulation.negotiationId || '',
-      data: {
+      this.broadcastEvent({
+        type: 'simulation_started',
+        queueId,
+        negotiationId: nextSimulation.negotiationId || '',
+        data: {
         simulationId: nextSimulation.id,
         runNumber: nextSimulation.runNumber,
         techniqueId: nextSimulation.techniqueId,
@@ -799,6 +900,15 @@ export class SimulationQueueService {
         totalRounds: result.totalRounds,
         actualCost
       }, `✅ Simulation Run #${nextSimulation.runNumber} completed: ${result.outcome}, ${result.totalRounds} rounds`);
+      this.audit('run_completed', {
+        queueId,
+        simulationId: nextSimulation.id,
+        runNumber: nextSimulation.runNumber,
+        negotiationId: nextSimulation.negotiationId,
+        outcome: result.outcome,
+        totalRounds: result.totalRounds,
+        actualCost,
+      });
 
       // Post-processing: Build and persist analytics (wrapped in try/catch)
       // Failures here should NOT flip the simulation back to failed status
@@ -1074,6 +1184,16 @@ export class SimulationQueueService {
           .set({ failedCount: failedCount.count || 0 })
           .where(eq(simulationQueue.id, queueId));
         
+        this.audit('run_failed', {
+          queueId,
+          simulationId: nextSimulation.id,
+          runNumber: nextSimulation.runNumber,
+          negotiationId: nextSimulation.negotiationId,
+          retryCount: newRetryCount,
+          maxRetries: nextSimulation.maxRetries || 3,
+          error: errorMessage,
+        });
+
         // Broadcast simulation failed event
         this.broadcastEvent({
           type: 'simulation_failed',
@@ -1095,6 +1215,14 @@ export class SimulationQueueService {
           retryCount: newRetryCount,
           maxRetries: nextSimulation.maxRetries || 3
         }, `🔄 Retrying Run #${nextSimulation.runNumber} (Attempt ${newRetryCount}/${nextSimulation.maxRetries || 3})`);
+        this.audit('run_retry', {
+          queueId,
+          simulationId: nextSimulation.id,
+          runNumber: nextSimulation.runNumber,
+          negotiationId: nextSimulation.negotiationId,
+          retryCount: newRetryCount,
+          error: errorMessage,
+        });
 
         // Reset to pending for retry
         await db.update(simulationRuns)
@@ -1628,6 +1756,12 @@ export class SimulationQueueService {
         const list = (byQueue.get(key) || []) as any;
         (list as any).push(run);
         byQueue.set(key, list as any);
+        this.audit('run_timeout', {
+          queueId: run.queueId,
+          simulationId: run.id,
+          runNumber: run.runNumber,
+          negotiationId: run.negotiationId,
+        });
       }
 
       for (const entry of Array.from(byQueue.entries())) {
@@ -1689,6 +1823,11 @@ export class SimulationQueueService {
       console.log(`[EVALUATION] → triggerEvaluation called for ${simulationRunId.slice(0, 8)}`);
 
       const { SimulationEvaluationService } = await import('./simulation-evaluation');
+      this.audit('evaluation_triggered', {
+        simulationId: simulationRunId,
+        negotiationId,
+        outcome,
+      });
 
       // Get simulation run data
       const run = await db.select()
@@ -1813,6 +1952,11 @@ export class SimulationQueueService {
         },
         `[EVALUATION] Failed to trigger evaluation`
       );
+      this.audit('evaluation_failed', {
+        simulationId: simulationRunId,
+        negotiationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
       // Don't throw - evaluation failure shouldn't break the simulation flow
     }
   }

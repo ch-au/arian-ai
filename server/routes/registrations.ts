@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { storage } from "../storage";
 import { createRequestLogger } from "../services/logger";
+import { requireAuth } from "../middleware/auth";
 
 const registrationSchema = z.object({
   organization: z.string().min(1),
@@ -50,6 +51,9 @@ const dimensionSchema = z.object({
 export function createRegistrationRouter(): Router {
   const router = Router();
   const log = createRequestLogger("routes:registrations");
+
+  // All registration/market/counterpart/product/dimension routes require authentication
+  router.use(requireAuth);
 
   router.get("/", async (_req, res) => {
     try {

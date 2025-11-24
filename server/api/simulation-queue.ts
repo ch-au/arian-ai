@@ -8,21 +8,21 @@ import { createRequestLogger } from '../services/logger';
 import { requireAuth } from '../middleware/auth';
 import { storage } from '../storage';
 import { db } from '../db';
-import { simulationQueue } from '@shared/schema';
+import { simulationQueue, simulationRuns } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 
 const router = Router();
 const log = createRequestLogger('api:simulation-queue');
 
 // Helper to verify negotiation ownership
-async function verifyNegotiationAccess(negotiationId: string, userId: string): Promise<boolean> {
+async function verifyNegotiationAccess(negotiationId: string, userId: number): Promise<boolean> {
   const negotiation = await storage.getNegotiation(negotiationId);
   if (!negotiation) return false;
   return negotiation.userId === userId;
 }
 
 // Helper to verify queue ownership (via negotiation)
-async function verifyQueueAccess(queueId: string, userId: string): Promise<boolean> {
+async function verifyQueueAccess(queueId: string, userId: number): Promise<boolean> {
   const [queue] = await db
     .select({ negotiationId: simulationQueue.negotiationId })
     .from(simulationQueue)
@@ -30,6 +30,17 @@ async function verifyQueueAccess(queueId: string, userId: string): Promise<boole
     
   if (!queue) return false;
   return verifyNegotiationAccess(queue.negotiationId, userId);
+}
+
+// Helper to verify run access (via negotiation ownership)
+async function verifyRunAccess(runId: string, userId: string): Promise<boolean> {
+  const [run] = await db
+    .select({ negotiationId: simulationRuns.negotiationId })
+    .from(simulationRuns)
+    .where(eq(simulationRuns.id, runId));
+
+  if (!run || !run.negotiationId) return false;
+  return verifyNegotiationAccess(run.negotiationId, userId);
 }
 
 /**
@@ -487,6 +498,11 @@ router.post('/system/reset-processing', requireAuth, async (req, res) => {
 router.post('/run/:runId/restart', requireAuth, async (req, res) => {
   try {
     const { runId } = req.params;
+    const userId = (req as any).user.id;
+
+    if (!await verifyRunAccess(runId, userId)) {
+      return res.status(403).json({ success: false, error: 'Forbidden' });
+    }
     // Verify access via run -> queue -> negotiation
     // Since we don't have a direct helper for runId, we might need to implement one or fetch run details first.
     // For now, let's assume we can check access if we fetch the run.
@@ -497,14 +513,15 @@ router.post('/run/:runId/restart', requireAuth, async (req, res) => {
     // TODO: Ideally, we should check ownership here.
     // For now, relying on queue-level security for other endpoints.
     // If strict security is needed for this specific endpoint, we should implement `verifyRunAccess(runId, userId)`.
-    
+
     log.info({ runId }, '[API] Restarting simulation run');
     const result = await SimulationQueueService.restartSingleRun(runId);
 
     res.json({
       success: true,
       message: 'Simulation restarted successfully',
-      runNumber: result.runNumber
+      runNumber: result.runNumber,
+      newRunId: result.newRunId
     });
   } catch (error) {
     log.error({ err: error, runId: req.params.runId }, '[API] Failed to restart simulation run');

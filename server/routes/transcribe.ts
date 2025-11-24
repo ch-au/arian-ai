@@ -8,9 +8,13 @@ import multer from 'multer';
 import { OpenAI } from 'openai';
 import fs from 'fs';
 import { createRequestLogger } from '../services/logger';
+import { requireAuth } from '../middleware/auth';
 
 const router = Router();
 const log = createRequestLogger('routes:transcribe');
+
+// Require authentication for transcription endpoints
+router.use(requireAuth);
 
 // Multer für File Upload (in-memory storage)
 const upload = multer({
