@@ -130,6 +130,7 @@ export default function MonitorPage() {
   const [liveRuns, setLiveRuns] = useState<SimulationRun[]>([]);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const { toast } = useToast();
+  const [restartingRuns, setRestartingRuns] = useState<Record<string, boolean>>({});
 
   const {
     data: negotiationDetail,
@@ -421,6 +422,40 @@ export default function MonitorPage() {
     retryMutation.mutate();
   }, [queueId, retryMutation, toast]);
 
+  const handleRestartRun = useCallback(
+    async (runId: string) => {
+      if (!runId) return;
+      setRestartingRuns((prev) => ({ ...prev, [runId]: true }));
+      try {
+        const res = await apiRequest("POST", `/api/simulations/run/${runId}/restart`);
+        const data = await res.json();
+        if (!data?.success) {
+          throw new Error(data?.error || "Simulation konnte nicht neu gestartet werden.");
+        }
+        toast({
+          title: "Run neu gestartet",
+          description: data?.runNumber
+            ? `Run #${data.runNumber} wurde gelöscht und neu gestartet.`
+            : "Simulation wurde gelöscht und neu gestartet.",
+        });
+        handleManualRefresh();
+      } catch (error) {
+        toast({
+          title: "Wiederholung fehlgeschlagen",
+          description: error instanceof Error ? error.message : "Unbekannter Fehler",
+          variant: "destructive",
+        });
+      } finally {
+        setRestartingRuns((prev) => {
+          const next = { ...prev };
+          delete next[runId];
+          return next;
+        });
+      }
+    },
+    [handleManualRefresh, toast]
+  );
+
   if (!matchWithId || !negotiationId) {
     return (
       <div className="p-6">
@@ -556,7 +591,11 @@ export default function MonitorPage() {
         {isLoading ? (
           <ActiveRunsTableSkeleton />
         ) : (
-          <ActiveRunsTable runs={enrichedRuns} />
+          <ActiveRunsTable
+            runs={enrichedRuns}
+            onRestartRun={handleRestartRun}
+            restarting={restartingRuns}
+          />
         )}
       </div>
 

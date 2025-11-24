@@ -385,35 +385,36 @@ class DatabaseStorage implements IStorage {
   }
 
   async getAllNegotiations(userId?: string): Promise<NegotiationRecord[]> {
-    const query = db.select().from(negotiations).orderBy(desc(negotiations.startedAt));
-    if (userId) {
-      // @ts-ignore - userId column is added but type might not be updated yet in IDE cache
-      query.where(eq(negotiations.userId, userId));
+    const userFilter = userId ? eq(negotiations.userId, Number(userId)) : null;
+    let query = db.select().from(negotiations).orderBy(desc(negotiations.startedAt));
+    if (userFilter) {
+      query = query.where(userFilter);
     }
+
     const rows = await query;
+
     return rows.map(mapNegotiationRow);
   }
 
   async getActiveNegotiations(userId?: string): Promise<NegotiationRecord[]> {
-    const conditions = [eq(negotiations.status, "running")];
-    if (userId) {
-      // @ts-ignore
-      conditions.push(eq(negotiations.userId, userId));
-    }
+    const statusFilter = eq(negotiations.status, "running");
+    const userFilter = userId ? eq(negotiations.userId, Number(userId)) : null;
+    const whereClause = userFilter ? and(statusFilter, userFilter) : statusFilter;
     
     const rows = await db
       .select()
       .from(negotiations)
-      .where(and(...conditions));
+      .where(whereClause);
     return rows.map(mapNegotiationRow);
   }
 
   async getRecentNegotiations(limit = 10, userId?: string): Promise<NegotiationRecord[]> {
-    const query = db.select().from(negotiations).orderBy(desc(negotiations.startedAt)).limit(limit);
-    if (userId) {
-      // @ts-ignore
-      query.where(eq(negotiations.userId, userId));
+    const userFilter = userId ? eq(negotiations.userId, Number(userId)) : null;
+    let query = db.select().from(negotiations).orderBy(desc(negotiations.startedAt)).limit(limit);
+    if (userFilter) {
+      query = query.where(userFilter);
     }
+
     const rows = await query;
     return rows.map(mapNegotiationRow);
   }
@@ -622,67 +623,48 @@ class DatabaseStorage implements IStorage {
     apiCostToday: number;
     totalSimulationRuns: number;
   }> {
-    const activeNegotiationsQuery = db
+    const userFilter = userId ? eq(negotiations.userId, Number(userId)) : null;
+
+    const [activeNegotiationCount] = await db
       .select({ value: count() })
       .from(negotiations)
-      .where(eq(negotiations.status, "running"));
-
-    if (userId) {
-      // @ts-ignore
-      activeNegotiationsQuery.where(eq(negotiations.userId, userId));
-    }
-    const [activeNegotiationCount] = await activeNegotiationsQuery;
+      .where(userFilter ? and(eq(negotiations.status, "running"), userFilter) : eq(negotiations.status, "running"));
 
     // For simulation runs, we need to join with negotiations to filter by user
-    const successRateQuery = db
+    const completedFilter = eq(simulationRuns.status, "completed");
+    const completedWhere = userFilter ? and(completedFilter, userFilter) : completedFilter;
+
+    const [successRateRow] = await db
       .select({ success: count() })
       .from(simulationRuns)
       .innerJoin(negotiations, eq(simulationRuns.negotiationId, negotiations.id))
-      .where(eq(simulationRuns.status, "completed"));
-      
-    if (userId) {
-      // @ts-ignore
-      successRateQuery.where(eq(negotiations.userId, userId));
-    }
-    const [successRateRow] = await successRateQuery;
+      .where(completedWhere);
 
-    const avgDurationQuery = db
+    const [avgDurationRow] = await db
       .select({ duration: avg(simulationRuns.totalRounds) })
       .from(simulationRuns)
       .innerJoin(negotiations, eq(simulationRuns.negotiationId, negotiations.id))
-      .where(eq(simulationRuns.status, "completed"));
-
-    if (userId) {
-      // @ts-ignore
-      avgDurationQuery.where(eq(negotiations.userId, userId));
-    }
-    const [avgDurationRow] = await avgDurationQuery;
+      .where(completedWhere);
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const apiCostQuery = db
+    const startedToday = gte(simulationRuns.startedAt, today);
+    const apiCostWhere = userFilter ? and(startedToday, userFilter) : startedToday;
+
+    const [apiCostRow] = await db
       .select({ cost: sum(simulationRuns.actualCost) })
       .from(simulationRuns)
       .innerJoin(negotiations, eq(simulationRuns.negotiationId, negotiations.id))
-      .where(gte(simulationRuns.startedAt, today));
+      .where(apiCostWhere);
 
-    if (userId) {
-      // @ts-ignore
-      apiCostQuery.where(eq(negotiations.userId, userId));
-    }
-    const [apiCostRow] = await apiCostQuery;
-
+    const totalRunsWhere = userFilter ? userFilter : undefined;
     const totalRunsQuery = db
       .select({ count: count() })
       .from(simulationRuns)
       .innerJoin(negotiations, eq(simulationRuns.negotiationId, negotiations.id));
 
-    if (userId) {
-      // @ts-ignore
-      totalRunsQuery.where(eq(negotiations.userId, userId));
-    }
-    const [totalRunsRow] = await totalRunsQuery;
+    const [totalRunsRow] = await (totalRunsWhere ? totalRunsQuery.where(totalRunsWhere) : totalRunsQuery);
 
     return {
       activeNegotiations: Number(activeNegotiationCount?.value || 0),

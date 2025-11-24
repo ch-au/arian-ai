@@ -3,35 +3,21 @@ import { drizzle } from "drizzle-orm/neon-http";
 import { neon } from "@neondatabase/serverless";
 import * as schema from "@shared/schema";
 import {
+  users,
   registrations,
   markets,
   counterparts,
   dimensions,
   products,
-  productDimensionValues,
   negotiations,
   negotiationProducts,
-  negotiationRounds,
-  roundStates,
-  simulations,
   simulationQueue,
   simulationRuns,
   dimensionResults,
   productResults,
-  offers,
-  events,
-  agents,
-  policies,
   influencingTechniques,
   negotiationTactics,
-  agentMetrics,
-  interactions,
-  analyticsSessions,
-  experimentRuns,
-  experiments,
-  benchmarks,
-  concessions,
-  performanceMetrics,
+  agents,
   personalityTypes,
 } from "@shared/schema";
 import { eq } from "drizzle-orm";
@@ -41,7 +27,7 @@ const connectionString = process.env.TEST_DATABASE_URL || process.env.DATABASE_U
 const runDbTests = Boolean(connectionString) && process.env.RUN_DB_TESTS === "true";
 
 if (!runDbTests) {
-  describe.skip("Enhanced schema", () => {
+  describe.skip("Schema validation", () => {
     it("skipped because RUN_DB_TESTS is not enabled", () => {
       expect(true).toBe(true);
     });
@@ -50,52 +36,30 @@ if (!runDbTests) {
   const sql = neon(connectionString!);
   const db = drizzle(sql, { schema });
 
-  describe("Enhanced schema", () => {
+  describe("Schema validation", () => {
     let registrationId: string;
     let negotiationId: string;
-    let dimensionId: string;
     let productId: string;
-    let roundId: string;
-
-    beforeEach(async () => {
-      await cleanup();
-      await seedCoreEntities();
-    });
-
-    afterEach(async () => {
-      await cleanup();
-    });
+    let userId: number;
+    let techniqueId: string;
+    let tacticId: string;
 
     const cleanupOrder = [
-      agentMetrics,
-      interactions,
-      events,
-      offers,
       dimensionResults,
       productResults,
       simulationRuns,
       simulationQueue,
-      simulations,
-      roundStates,
-      negotiationRounds,
       negotiationProducts,
       negotiations,
-      productDimensionValues,
+      agents,
       products,
       dimensions,
       counterparts,
       markets,
       registrations,
-      agents,
-      policies,
+      users,
       influencingTechniques,
       negotiationTactics,
-      analyticsSessions,
-      experimentRuns,
-      experiments,
-      benchmarks,
-      concessions,
-      performanceMetrics,
       personalityTypes,
     ];
 
@@ -110,6 +74,16 @@ if (!runDbTests) {
     }
 
     async function seedCoreEntities() {
+      const [user] = await db
+        .insert(users)
+        .values({
+          username: "schema-user",
+          password: "secret",
+        })
+        .returning();
+      userId = user.id;
+      debugLog("schema-test:seed:user", { userId });
+
       const [registration] = await db
         .insert(registrations)
         .values({
@@ -144,6 +118,8 @@ if (!runDbTests) {
           name: "Retailer AG",
           kind: "retailer",
           powerBalance: "55.00",
+          dominance: "55.00",
+          affiliation: "55.00",
           style: "cooperative",
           constraintsMeta: { payment: "Net 30" },
         })
@@ -156,13 +132,11 @@ if (!runDbTests) {
           registrationId,
           code: "price",
           name: "Price per unit",
-          valueType: "numeric",
           unit: "EUR",
           spec: { min: 1, max: 5 },
         })
         .returning();
-      dimensionId = dimension.id;
-      debugLog("schema-test:seed:dimension", { dimensionId });
+      debugLog("schema-test:seed:dimension", { dimensionId: dimension.id });
 
       const [product] = await db
         .insert(products)
@@ -178,19 +152,35 @@ if (!runDbTests) {
       productId = product.id;
       debugLog("schema-test:seed:product", { productId });
 
-      await db.insert(productDimensionValues).values({
-        productId,
-        dimensionId,
-        value: { currency: "EUR", amount: 1.1 },
-        source: "list_price",
-        isCurrent: true,
-      });
-      debugLog("schema-test:seed:product-dimension", { productId, dimensionId });
+      const [technique] = await db
+        .insert(influencingTechniques)
+        .values({
+          name: "Anchoring",
+          beschreibung: "Setze den ersten Anker",
+          anwendung: "Im ersten Angebot",
+          wichtigeAspekte: {},
+          keyPhrases: {},
+        })
+        .returning();
+      techniqueId = technique.id;
+
+      const [tactic] = await db
+        .insert(negotiationTactics)
+        .values({
+          name: "Direct ask",
+          beschreibung: "Direkt nachfragen",
+          anwendung: "Im Kickoff",
+          wichtigeAspekte: {},
+          keyPhrases: {},
+        })
+        .returning();
+      tacticId = tactic.id;
 
       const [negotiation] = await db
         .insert(negotiations)
         .values({
           registrationId,
+          userId,
           marketId: market.id,
           counterpartId: counterpart.id,
           title: "Q1 Shelf Reset",
@@ -198,6 +188,8 @@ if (!runDbTests) {
           scenario: {
             zopa: { price: { min: 1, max: 2 } },
             companyKnown: true,
+            selectedTechniques: [techniqueId],
+            selectedTactics: [tacticId],
           },
           status: "planned",
         })
@@ -210,101 +202,57 @@ if (!runDbTests) {
         productId,
       });
       debugLog("schema-test:seed:negotiation-product");
-
-      const [round] = await db
-        .insert(negotiationRounds)
-        .values({
-          negotiationId,
-          roundNumber: 1,
-          state: { transcript: [] },
-        })
-        .returning();
-      roundId = round.id;
     }
 
-    it("scopes master data to registrations and cascades on delete", async () => {
+    beforeEach(async () => {
+      await cleanup();
+      await seedCoreEntities();
+    });
+
+    afterEach(async () => {
+      await cleanup();
+    });
+
+    it("cascades registration deletes to dependents", async () => {
       const marketsBefore = await db.select().from(markets).where(eq(markets.registrationId, registrationId));
+      const negotiationsBefore = await db.select().from(negotiations).where(eq(negotiations.registrationId, registrationId));
       expect(marketsBefore).toHaveLength(1);
+      expect(negotiationsBefore).toHaveLength(1);
 
       await db.delete(registrations).where(eq(registrations.id, registrationId));
 
       const marketsAfter = await db.select().from(markets).where(eq(markets.registrationId, registrationId));
+      const negotiationsAfter = await db.select().from(negotiations).where(eq(negotiations.registrationId, registrationId));
       expect(marketsAfter).toHaveLength(0);
+      expect(negotiationsAfter).toHaveLength(0);
     });
 
-    it("enforces unique dimension code per registration", async () => {
+    it("enforces unique codes and gtins per registration", async () => {
       await expect(
         db.insert(dimensions).values({
           registrationId,
           code: "price",
           name: "Duplicate price",
-          valueType: "numeric",
           unit: "EUR",
           spec: {},
         }),
       ).rejects.toThrow();
-    });
 
-    it("tracks historical product dimension values", async () => {
-      await db.insert(productDimensionValues).values({
-        productId,
-        dimensionId,
-        value: { currency: "EUR", amount: 0.95 },
-        source: "promo_price",
-        isCurrent: false,
-        measuredAt: new Date(Date.now() - 86_400_000),
-      });
-
-      const history = await db
-        .select()
-        .from(productDimensionValues)
-        .where(eq(productDimensionValues.productId, productId));
-
-      expect(history).toHaveLength(2);
-      const currentEntry = history.find((entry) => entry.isCurrent);
-      expect(currentEntry?.value).toMatchObject({ amount: 1.1 });
-    });
-
-    it("persists BDI state via round_states", async () => {
-      const [state] = await db
-        .insert(roundStates)
-        .values({
-          roundId,
-          beliefs: { powerBalance: "even" },
-          intentions: "Probe payment terms",
-          internalAnalysis: "Opponent cautious",
-          batnaAssessment: "0.65",
-          walkAwayThreshold: "0.30",
-        })
-        .returning();
-
-      expect(state.roundId).toBe(roundId);
       await expect(
-        db.insert(roundStates).values({
-          roundId,
-          beliefs: {},
+        db.insert(products).values({
+          registrationId,
+          name: "Duplicate GTIN",
+          gtin: "1234567890123",
         }),
       ).rejects.toThrow();
     });
 
-    it("stores simulation outputs for dimension and product results", async () => {
-      const [simulation] = await db
-        .insert(simulations)
-        .values({
-          registrationId,
-          negotiationId,
-          name: "Baseline Simulation",
-          numRounds: 6,
-          settings: { seed: 42 },
-        })
-        .returning();
-
+    it("stores simulation queue, runs and results linked to a negotiation", async () => {
       const [queue] = await db
         .insert(simulationQueue)
         .values({
           negotiationId,
-          simulationId: simulation.id,
-          totalSimulations: 1,
+          totalSimulations: 2,
         })
         .returning();
 
@@ -312,13 +260,14 @@ if (!runDbTests) {
         .insert(simulationRuns)
         .values({
           negotiationId,
-          simulationId: simulation.id,
           queueId: queue.id,
+          techniqueId,
+          tacticId,
           status: "completed",
           runNumber: 1,
           totalRounds: 4,
           dealValue: "125000.00",
-          otherDimensions: {},
+          otherDimensions: { payment_terms: "Net 30" },
         })
         .returning();
 
@@ -348,60 +297,8 @@ if (!runDbTests) {
         .select()
         .from(productResults)
         .where(eq(productResults.simulationRunId, run.id));
-      debugLog("schema-test:product-results:fetched", { runId: run.id, count: results.length });
-
       expect(results).toHaveLength(1);
       expect(results[0].agreedPrice).toBe("1.20");
-    });
-
-    it("records offers and events per round", async () => {
-      const [policy] = await db.insert(policies).values({ name: "Default", kind: "llm" }).returning();
-      const [agent] = await db
-        .insert(agents)
-        .values({
-          registrationId,
-          role: "buyer",
-          agentKind: "llm",
-          policyId: policy.id,
-          modelName: "gpt-4o-mini",
-          tools: [],
-        })
-        .returning();
-
-      const [offer] = await db
-        .insert(offers)
-        .values({
-          roundId,
-          side: "buyer",
-          agentId: agent.id,
-          price: "1.15",
-          quantity: "100000",
-          currencyCode: "EUR",
-          unit: "unit",
-          terms: { payment: "Net 45" },
-        })
-        .returning();
-
-      await db.insert(events).values({
-        roundId,
-        eventKind: "message",
-        role: "assistant",
-        agentId: agent.id,
-        name: "counter_offer",
-        parameters: { offerId: offer.id },
-        observations: { sentiment: "neutral" },
-      });
-
-      await db.insert(agentMetrics).values({
-        agentId: agent.id,
-        metricName: "latency_ms",
-        metricValue: "1200",
-        details: { run: "baseline" },
-      });
-
-      const [offerRow] = await db.select().from(offers).where(eq(offers.id, offer.id));
-      debugLog("schema-test:offers:fetched", { offerId: offer.id, roundId });
-      expect(offerRow?.terms).toMatchObject({ payment: "Net 45" });
     });
   });
 }

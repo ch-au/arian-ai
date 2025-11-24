@@ -281,7 +281,11 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
         return res.status(403).json({ error: "Forbidden" });
       }
 
-      await storage.startNegotiation(negotiation.id);
+      const ensureRunning = async () => {
+        if (negotiation.status !== "running") {
+          await storage.startNegotiation(negotiation.id);
+        }
+      };
 
       // Check for existing queue to resume
       const existingQueueId = await SimulationQueueService.findQueueByNegotiation(negotiation.id);
@@ -290,6 +294,7 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
 
         // Resume if pending, paused, or running
         if (["pending", "paused", "running"].includes(status.status)) {
+          await ensureRunning();
           if (status.status === "paused") {
             await SimulationQueueService.resumeQueue(existingQueueId);
           } else {
@@ -300,18 +305,29 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
 
         // If completed/failed with outstanding work (pending, failed, or timeout runs), resume
         const outstandingCount = status.totalSimulations - status.completedCount;
+        if (outstandingCount <= 0 && status.failedCount === 0) {
+          return res.json({
+            negotiationId: negotiation.id,
+            queueId: existingQueueId,
+            action: "already_completed",
+            message: "Alle Simulationen durchgeführt",
+          });
+        }
+
         if (outstandingCount > 0) {
           // If there are failed runs, restart them
           if (status.failedCount > 0) {
             await SimulationQueueService.restartFailedSimulations(existingQueueId);
           }
           // Start the queue to process pending/restarted runs
+          await ensureRunning();
           await SimulationQueueService.startQueue(existingQueueId);
           return res.json({ negotiationId: negotiation.id, queueId: existingQueueId, action: "resumed_pending" });
         }
       }
 
       // Create new queue ONLY if none exists OR previous is fully complete (all runs finished)
+      await ensureRunning();
       const queueId = await SimulationQueueService.createQueue({ negotiationId: negotiation.id });
       await SimulationQueueService.startQueue(queueId);
 

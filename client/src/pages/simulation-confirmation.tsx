@@ -10,6 +10,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import type { NegotiationScenario } from "@/hooks/use-negotiations";
 import { translateNegotiationStatus } from "@/hooks/use-negotiations";
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
+import { useToast } from "@/hooks/use-toast";
 
 type NegotiationDetailResponse = {
   negotiation: {
@@ -46,6 +47,7 @@ export default function SimulationConfirmation() {
   const urlParams = new URLSearchParams(window.location.search);
   const negotiationId = urlParams.get("id");
   const [isStarting, setIsStarting] = useState(false);
+  const { toast } = useToast();
 
   const { data, isLoading } = useQuery<NegotiationDetailResponse>({
     queryKey: negotiationId ? [`/api/negotiations/${negotiationId}`] : [],
@@ -66,11 +68,32 @@ export default function SimulationConfirmation() {
       const response = await fetchWithAuth(`/api/negotiations/${negotiationId}/start`, {
         method: "POST",
       });
-      if (response.ok) {
-        setLocation(`/monitor/${negotiationId}`);
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text || "Fehler beim Starten der Simulation");
       }
+      const payload = await response.json();
+
+      if (payload?.action === "already_completed") {
+        toast({
+          title: "Alle Simulationen durchgeführt",
+          description: payload.message ?? "Es gibt keine offenen Simulationen mehr.",
+        });
+        return;
+      }
+
+      toast({
+        title: "Simulation gestartet",
+        description: "Die Verhandlung läuft jetzt in der Queue.",
+      });
+      setLocation(`/monitor/${negotiationId}`);
     } catch (error) {
       console.error("Failed to start simulations:", error);
+      toast({
+        title: "Start fehlgeschlagen",
+        description: error instanceof Error ? error.message : "Unbekannter Fehler",
+        variant: "destructive",
+      });
     } finally {
       setIsStarting(false);
     }

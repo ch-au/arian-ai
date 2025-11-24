@@ -3,10 +3,14 @@ import { z } from "zod";
 import { storage } from "../storage";
 import { insertAgentSchema, personalityProfileSchema } from "@shared/schema";
 import { createRequestLogger } from "../services/logger";
+import { requireAuth } from "../middleware/auth";
 
 export function createAgentRouter(): Router {
   const router = Router();
   const log = createRequestLogger("routes:agents");
+
+  // All agent management endpoints require authentication
+  router.use(requireAuth);
 
   router.get("/", async (_req, res) => {
     try {

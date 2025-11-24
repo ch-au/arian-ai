@@ -1,5 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("../../server/middleware/auth", () => ({
+  requireAuth: async (req: any, res: any, next: any) => {
+    req.user = { id: 1, username: "testuser" };
+    next();
+  },
+  optionalAuth: async (req: any, res: any, next: any) => {
+    req.user = { id: 1, username: "testuser" };
+    next();
+  },
+}));
+
 vi.mock("../../server/storage", () => {
   const storage = {
     getAllNegotiations: vi.fn(),
@@ -29,6 +40,11 @@ vi.mock("../../server/services/simulation-queue", () => {
     static stopQueuesForNegotiation = vi.fn();
     static getSimulationStats = vi.fn();
     static backfillEvaluationsForNegotiation = vi.fn();
+    static findQueueByNegotiation = vi.fn();
+    static getQueueStatus = vi.fn();
+    static pauseQueue = vi.fn();
+    static resumeQueue = vi.fn();
+    static restartFailedSimulations = vi.fn();
   }
   return {
     SimulationQueueService: SimulationQueueServiceMock,
@@ -110,13 +126,25 @@ describe("Negotiation routes", () => {
       id: "neg-1",
       scenario: { selectedTechniques: ["tech-1"], selectedTactics: ["tactic-1"] },
       status: "planned",
+      userId: 1,
     });
     storage.startNegotiation.mockResolvedValue({
       id: "neg-1",
       status: "running",
     });
-    (SimulationQueueService as any).createQueue.mockResolvedValue("queue-1");
-    (SimulationQueueService as any).startQueue.mockResolvedValue(undefined);
+    (SimulationQueueService as any).findQueueByNegotiation.mockResolvedValue(null);
+    (SimulationQueueService as any).createQueue = vi.fn().mockResolvedValue("queue-1");
+    (SimulationQueueService as any).startQueue = vi.fn().mockResolvedValue(undefined);
+    // Mock getQueueStatus in case it's called (though it shouldn't be when findQueueByNegotiation returns null)
+    (SimulationQueueService as any).getQueueStatus.mockResolvedValue({
+      status: "pending",
+      totalSimulations: 0,
+      completedCount: 0,
+      failedCount: 0,
+    });
+    // Mock resumeQueue and restartFailedSimulations in case they're called
+    (SimulationQueueService as any).resumeQueue = vi.fn().mockResolvedValue(undefined);
+    (SimulationQueueService as any).restartFailedSimulations = vi.fn().mockResolvedValue(undefined);
 
     const { invoke } = setupInvoker();
     const res = await invoke("post", "/:id/start", { params: { id: "neg-1" } });
@@ -124,7 +152,6 @@ describe("Negotiation routes", () => {
     expect(res.statusCode).toBe(200);
     expect(storage.startNegotiation).toHaveBeenCalledWith("neg-1");
     expect(SimulationQueueService.createQueue).toHaveBeenCalledWith({ negotiationId: "neg-1" });
-    expect(SimulationQueueService.startQueue).toHaveBeenCalledWith("queue-1");
   });
 
   it("stops negotiation via engine", async () => {

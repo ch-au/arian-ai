@@ -6,9 +6,13 @@
 import { Router } from 'express';
 import { generateMarketIntelligence, isGeminiConfigured } from '../services/gemini-market-intelligence';
 import { createRequestLogger } from '../services/logger';
+import { requireAuth } from '../middleware/auth';
 
 const router = Router();
 const log = createRequestLogger('routes:market-intelligence');
+
+// Require authentication for all market intelligence endpoints
+router.use(requireAuth);
 
 /**
  * POST /api/market-intelligence

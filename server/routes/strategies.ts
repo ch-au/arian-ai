@@ -6,10 +6,14 @@ import {
   insertNegotiationTacticSchema,
 } from "@shared/schema";
 import { createRequestLogger } from "../services/logger";
+import { requireAuth } from "../middleware/auth";
 
 export function createStrategyRouter(): Router {
   const router = Router();
   const log = createRequestLogger("routes:strategies");
+
+  // All strategy CRUD endpoints require authentication
+  router.use(requireAuth);
 
   router.post("/tactics", async (req, res) => {
     try {

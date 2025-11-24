@@ -5,6 +5,7 @@ interface InvokeOptions {
   params?: Record<string, any>;
   query?: Record<string, any>;
   body?: any;
+  headers?: Record<string, string>;
 }
 
 function createMockResponse() {
@@ -30,11 +31,20 @@ function getHandler(router: any, method: string, path: string): Handler {
   if (!layer) {
     throw new Error(`Route ${method.toUpperCase()} ${path} not found`);
   }
-  const routeLayer = layer.route.stack.find(() => true);
-  if (!routeLayer) {
-    throw new Error(`Handler not found for ${method.toUpperCase()} ${path}`);
-  }
-  return routeLayer.handle as Handler;
+  // Execute all handlers in sequence (middleware + final handler)
+  const handlers = layer.route.stack.map((h: any) => h.handle);
+  return async (req: any, res: any, next: any) => {
+    let index = 0;
+    const runNext = async () => {
+      if (index < handlers.length) {
+        const handler = handlers[index++];
+        await handler(req, res, runNext);
+      } else if (next) {
+        await next();
+      }
+    };
+    await runNext();
+  };
 }
 
 export function createRouterInvoker<T extends (...args: any[]) => any>(routerFactory: T) {
@@ -47,6 +57,9 @@ export function createRouterInvoker<T extends (...args: any[]) => any>(routerFac
       body: options.body || {},
       method: method.toUpperCase(),
       path,
+      headers: options.headers || { authorization: "Bearer test-token" },
+      // Add mock user for requireAuth middleware
+      user: { id: 1, username: "testuser" },
     };
     const res = createMockResponse();
     await handler(req, res, () => undefined);
@@ -54,3 +67,4 @@ export function createRouterInvoker<T extends (...args: any[]) => any>(routerFac
   }
   return { router, invoke };
 }
+

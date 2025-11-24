@@ -13,7 +13,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { ChevronDown, ChevronRight, MessageSquare, CheckCircle2, XCircle, Loader2, Clock } from "lucide-react";
+import { ChevronDown, ChevronRight, MessageSquare, CheckCircle2, XCircle, Loader2, Clock, RotateCcw } from "lucide-react";
 import { OutcomeBadgeMini } from "@/components/ui/outcome-badge";
 
 interface SimulationRun {
@@ -48,6 +48,8 @@ interface ConversationMessage {
 interface ActiveRunsTableProps {
   runs: SimulationRun[];
   onViewConversation?: (runId: string) => void;
+  onRestartRun?: (runId: string) => void;
+  restarting?: Record<string, boolean>;
 }
 
 function getStatusBadge(status: SimulationRun["status"]) {
@@ -80,10 +82,25 @@ function getStatusBadge(status: SimulationRun["status"]) {
           Wartend
         </Badge>
       );
+    case "timeout":
+      return (
+        <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
+          <Clock className="w-3 h-3 mr-1" />
+          Timeout
+        </Badge>
+      );
   }
 }
 
-function SimulationRunCard({ run }: { run: SimulationRun }) {
+function SimulationRunCard({
+  run,
+  onRestart,
+  isRestarting,
+}: {
+  run: SimulationRun;
+  onRestart?: (runId: string) => void;
+  isRestarting?: boolean;
+}) {
   const [isOpen, setIsOpen] = useState(false);
 
   const formatDealValue = (value: number | string | null | undefined) => {
@@ -230,6 +247,18 @@ function SimulationRunCard({ run }: { run: SimulationRun }) {
                 <span className="text-xs font-medium">{run.conversationLog.length}</span>
               </div>
             )}
+            {onRestart && (run.status === "completed" || run.status === "failed" || run.status === "timeout") && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => onRestart(run.id)}
+                disabled={isRestarting}
+                title="Run neu starten"
+                className="text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+              >
+                <RotateCcw className={`h-4 w-4 ${isRestarting ? "animate-spin" : ""}`} />
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -343,7 +372,7 @@ function SimulationRunCard({ run }: { run: SimulationRun }) {
   );
 }
 
-export function ActiveRunsTable({ runs }: ActiveRunsTableProps) {
+export function ActiveRunsTable({ runs, onRestartRun, restarting = {} }: ActiveRunsTableProps) {
   const sortedRuns = [...runs].sort((a, b) => {
     // Sort by status: running > pending > completed > failed/timeout
     const statusOrder = { running: 0, pending: 1, completed: 2, failed: 3, timeout: 3 };
@@ -360,7 +389,12 @@ export function ActiveRunsTable({ runs }: ActiveRunsTableProps) {
       {sortedRuns.length > 0 ? (
         <div className="grid grid-cols-1 gap-4">
           {sortedRuns.map((run) => (
-            <SimulationRunCard key={run.id} run={run} />
+            <SimulationRunCard
+              key={run.id}
+              run={run}
+              onRestart={onRestartRun}
+              isRestarting={Boolean(restarting[run.id])}
+            />
           ))}
         </div>
       ) : (

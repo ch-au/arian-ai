@@ -1,5 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("../../server/middleware/auth", () => ({
+  requireAuth: async (req: any, res: any, next: any) => {
+    req.user = { id: 1, username: "testuser" };
+    next();
+  },
+  optionalAuth: async (req: any, res: any, next: any) => {
+    req.user = { id: 1, username: "testuser" };
+    next();
+  },
+}));
+
 vi.mock("../../server/services/analytics", () => ({
   analyticsService: {
     generatePerformanceReport: vi.fn(),

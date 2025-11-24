@@ -1,10 +1,14 @@
 import { Router } from "express";
 import type { NegotiationEngine } from "../services/negotiation-engine";
 import { createRequestLogger } from "../services/logger";
+import { requireAuth } from "../middleware/auth";
 
 export function createSystemRouter(negotiationEngine: NegotiationEngine): Router {
   const router = Router();
   const log = createRequestLogger("routes:system");
+
+  // Restrict system endpoints to authenticated users (admin role could be added here later)
+  router.use(requireAuth);
 
   router.get("/prompts/reload", async (_req, res) => {
     try {

@@ -558,3 +558,4 @@ grep "Adjusted to" logs
 
 **Fazit:** Die Preis-Anpassung funktioniert in 2 von 3 Methoden. `_build_pricing_strings()` wurde vergessen zu aktualisieren, obwohl die Parameter hinzugefügt wurden! 🎯
 
+
