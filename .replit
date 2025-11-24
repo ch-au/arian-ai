@@ -42,7 +42,16 @@ externalPort = 80
 localPort = 34109
 externalPort = 3001
 
+[[ports]]
+localPort = 37455
+externalPort = 3002
+
 [deployment]
 deploymentTarget = "autoscale"
 run = ["npm", "start"]
 build = ["npm", "run", "build"]
+
+[userenv]
+
+[userenv.shared]
+JWT_SECRET = "dev-secret-key-change-in-production"
