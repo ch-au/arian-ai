@@ -27,9 +27,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Set negotiation engine for simulation queue WebSocket broadcasts
   setNegotiationEngine(negotiationEngine);
   // setTestNegotiationEngine(negotiationEngine);
-  
-  // Start the background queue processor
-  SimulationQueueService.startBackgroundProcessor();
 
   // Auth routes (no auth required for login/register)
   app.use("/api/auth", authRouter);
