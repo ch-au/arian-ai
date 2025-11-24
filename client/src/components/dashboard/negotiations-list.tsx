@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import {
@@ -61,16 +61,30 @@ export default function NegotiationsList() {
   const { data: negotiations, isLoading } = useNegotiations();
   const { setSelectedNegotiationId } = useNegotiationContext();
 
+  type StartNegotiationResponse = {
+    negotiationId: string;
+    queueId?: string;
+    action: "created" | "resumed" | "resumed_pending" | "already_completed" | "restarted_failed" | string;
+    message?: string;
+  };
+
   const startNegotiationMutation = useMutation({
     mutationFn: async (negotiationId: string) => {
       const response = await apiRequest("POST", `/api/negotiations/${negotiationId}/start`);
-      return response.json();
+      return response.json() as Promise<StartNegotiationResponse>;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/negotiations"] });
+      if (data?.action === "already_completed") {
+        toast({
+          title: "Alle Simulationen durchgeführt",
+          description: data.message ?? "Es gibt keine offenen Simulationen für diese Verhandlung.",
+        });
+        return;
+      }
       toast({
         title: "Simulation gestartet",
-        description: "Die Verhandlung läuft jetzt in der Queue.",
+        description: data?.action === "resumed" ? "Die vorhandene Queue wurde fortgesetzt." : "Die Verhandlung läuft jetzt in der Queue.",
       });
     },
     onError: (error) => {

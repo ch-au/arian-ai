@@ -513,14 +513,15 @@ router.post('/run/:runId/restart', requireAuth, async (req, res) => {
     // TODO: Ideally, we should check ownership here.
     // For now, relying on queue-level security for other endpoints.
     // If strict security is needed for this specific endpoint, we should implement `verifyRunAccess(runId, userId)`.
-    
+
     log.info({ runId }, '[API] Restarting simulation run');
     const result = await SimulationQueueService.restartSingleRun(runId);
 
     res.json({
       success: true,
       message: 'Simulation restarted successfully',
-      runNumber: result.runNumber
+      runNumber: result.runNumber,
+      newRunId: result.newRunId
     });
   } catch (error) {
     log.error({ err: error, runId: req.params.runId }, '[API] Failed to restart simulation run');

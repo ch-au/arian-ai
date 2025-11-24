@@ -371,7 +371,7 @@ export class SimulationQueueService {
   /**
    * Restart a single simulation run
    */
-  static async restartSingleRun(runId: string): Promise<{ runNumber: number }> {
+  static async restartSingleRun(runId: string): Promise<{ runNumber: number; newRunId: string }> {
     this.log.info(`Restarting single simulation run ${runId}`);
 
     const [run] = await db.select()
@@ -382,36 +382,71 @@ export class SimulationQueueService {
       throw new Error('Simulation run not found');
     }
 
-    // Reset the run to pending state
-    const [updatedRun] = await db.update(simulationRuns)
+    if (!run.queueId) {
+      throw new Error('Simulation run is not associated with a queue');
+    }
+
+    // Delete the old run (cascades remove dimension/product results)
+    await db.delete(simulationRuns)
+      .where(eq(simulationRuns.id, runId));
+
+    // Recreate a fresh pending run with the same position in the queue
+    const [newRun] = await db.insert(simulationRuns)
+      .values({
+        negotiationId: run.negotiationId,
+        queueId: run.queueId,
+        techniqueId: run.techniqueId,
+        tacticId: run.tacticId,
+        personalityId: run.personalityId,
+        zopaDistance: run.zopaDistance,
+        status: 'pending',
+        runNumber: run.runNumber,
+        executionOrder: run.executionOrder,
+        actualCost: '0',
+        otherDimensions: {},
+        conversationLog: [],
+        retryCount: 0,
+        completedAt: null,
+        startedAt: null,
+        outcome: null,
+        totalRounds: null,
+        metadata: {},
+        dealValue: null
+      })
+      .returning({ id: simulationRuns.id, runNumber: simulationRuns.runNumber });
+
+    if (!newRun) {
+      throw new Error('Failed to recreate simulation run');
+    }
+
+    // Ensure queue is set to pending/running and picked up again
+    const [completedCount] = await db
+      .select({ count: count(simulationRuns.id) })
+      .from(simulationRuns)
+      .where(and(
+        eq(simulationRuns.queueId, run.queueId),
+        eq(simulationRuns.status, 'completed')
+      ));
+
+    const [totalCost] = await db
+      .select({ total: sum(simulationRuns.actualCost) })
+      .from(simulationRuns)
+      .where(eq(simulationRuns.queueId, run.queueId));
+
+    await db.update(simulationQueue)
       .set({
         status: 'pending',
-        actualCost: '0',
-        completedAt: null,
-        conversationLog: [],
-        otherDimensions: {}
+        completedCount: completedCount.count || 0,
+        actualTotalCost: (totalCost.total || 0).toString()
       })
-      .where(eq(simulationRuns.id, runId))
-      .returning({ runNumber: simulationRuns.runNumber });
+      .where(eq(simulationQueue.id, run.queueId));
 
-    // Update queue status to pending if it was completed and queue exists
-    if (run.queueId) {
-      await db.update(simulationQueue)
-        .set({ status: 'pending' })
-        .where(eq(simulationQueue.id, run.queueId));
+    this.log.info(`Starting queue ${run.queueId.slice(0, 8)} after recreating run`);
+    await this.startQueue(run.queueId);
 
-      // Start the queue to ensure the background processor picks it up
-      this.log.info(`Starting queue ${run.queueId.slice(0, 8)} after restarting run`);
-      await this.startQueue(run.queueId);
-    }
-
-    if (!updatedRun) {
-      throw new Error('Failed to restart simulation run');
-    }
-
-    const runNumber = Number(updatedRun.runNumber ?? 0);
-    this.log.info(`Restarted run #${runNumber}`);
-    return { runNumber };
+    const runNumber = Number(newRun.runNumber ?? 0);
+    this.log.info({ oldRunId: runId, newRunId: newRun.id, runNumber }, `Restarted run #${runNumber} by recreating record`);
+    return { runNumber, newRunId: newRun.id };
   }
 
   /**
