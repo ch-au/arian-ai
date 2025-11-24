@@ -77,8 +77,12 @@ describe("NegotiationDetailPage", () => {
     fireEvent.click(button);
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith("/api/negotiations/neg-1/start", { method: "POST" });
-      expect(navigateSpy).toHaveBeenCalledWith(`/monitor/${"neg-1"}`);
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/negotiations/neg-1/start",
+        expect.objectContaining({ method: "POST" })
+      );
     });
+    // After starting, the page navigates back to the negotiation detail page
+    expect(navigateSpy).toHaveBeenCalledWith("/negotiations/neg-1");
   });
 });

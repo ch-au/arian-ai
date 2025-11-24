@@ -45,7 +45,7 @@ const baseNegotiation: NegotiationRecord = {
 };
 
 const baseProduct: Product = {
-  id: "prod-1",
+  id: "550e8400-e29b-41d4-a716-446655440000", // Valid UUID
   registrationId: "reg-1",
   name: "Schoko Riegel",
   gtin: null,
@@ -101,7 +101,7 @@ describe("simulation-result-processor", () => {
         ...baseNegotiation.scenario,
         products: [
           {
-            productId: "prod-de",
+            productId: "550e8400-e29b-41d4-a716-446655440001", // Valid UUID
             name: "Pombär Chips",
             targetPrice: 1.08,
             minPrice: 1.0,
@@ -112,10 +112,25 @@ describe("simulation-result-processor", () => {
       },
     } as NegotiationRecord;
 
+    const product: Product = {
+      id: "550e8400-e29b-41d4-a716-446655440001", // Valid UUID
+      registrationId: "reg-1",
+      name: "Pombär Chips",
+      gtin: null,
+      brand: null,
+      categoryPath: null,
+      attrs: {
+        targetPrice: 1.08,
+        minPrice: 1.0,
+        maxPrice: 1.2,
+        estimatedVolume: 50000,
+      },
+    };
+
     const artifacts = buildSimulationResultArtifacts({
       runId: "run-de",
       negotiation,
-      products: [],
+      products: [product],
       dimensionValues: {
         "Pombär Chips": 1.1,
       },

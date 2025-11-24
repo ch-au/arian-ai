@@ -231,3 +231,4 @@ grep -n "logger.debug.*variables" scripts/run_production_negotiation.py
 Die Variablen werden jetzt korrekt vom Python-Service bereitgestellt.
 Das Problem liegt NUR im Langfuse Prompt-Template.
 
+

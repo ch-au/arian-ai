@@ -4,6 +4,8 @@ import Module from 'module';
 import path from 'path';
 import url from 'url';
 
+process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret';
+
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const objectAssignMockPath = path.resolve(__dirname, './mocks/object-assign.cjs');
 
