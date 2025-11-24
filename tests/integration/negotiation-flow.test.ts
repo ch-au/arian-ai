@@ -4,28 +4,20 @@ import { drizzle } from "drizzle-orm/neon-http";
 import { neon } from "@neondatabase/serverless";
 import * as schema from "@shared/schema";
 import {
+  users,
   registrations,
   markets,
   counterparts,
   dimensions,
   products,
-  productDimensionValues,
   negotiations,
   negotiationProducts,
-  negotiationRounds,
-  roundStates,
-  simulations,
   simulationQueue,
   simulationRuns,
   productResults,
   dimensionResults,
-  offers,
-  events,
-  agents,
-  policies,
   influencingTechniques,
   negotiationTactics,
-  agentMetrics,
 } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { debugLog, getTableName } from "../helpers/debug";
@@ -43,46 +35,40 @@ if (!runDbTests) {
   const sql = neon(connectionString!);
   const db = drizzle(sql, { schema });
 
-  describe("Negotiation flow integration", () => {
-    const cleanupTables = [
-      agentMetrics,
-      events,
-      offers,
-      dimensionResults,
-      productResults,
-      simulationRuns,
-      simulationQueue,
-      simulations,
-      roundStates,
-      negotiationRounds,
-      negotiationProducts,
-      negotiations,
-      productDimensionValues,
-      products,
-      dimensions,
-      counterparts,
-      markets,
-      registrations,
-      agents,
-      policies,
-      influencingTechniques,
-      negotiationTactics,
-    ];
+  const cleanupTables = [
+    dimensionResults,
+    productResults,
+    simulationRuns,
+    simulationQueue,
+    negotiationProducts,
+    negotiations,
+    products,
+    dimensions,
+    counterparts,
+    markets,
+    registrations,
+    users,
+    influencingTechniques,
+    negotiationTactics,
+  ];
 
-    async function cleanupIntegrationDb() {
-      debugLog("integration-test:cleanup:start");
-      for (const table of cleanupTables) {
-        // eslint-disable-next-line no-await-in-loop
-        await db.delete(table);
-        debugLog("integration-test:cleanup:table", { table: getTableName(table) });
-      }
-      debugLog("integration-test:cleanup:complete");
+  async function cleanupIntegrationDb() {
+    debugLog("integration-test:cleanup:start");
+    for (const table of cleanupTables) {
+      // eslint-disable-next-line no-await-in-loop
+      await db.delete(table);
+      debugLog("integration-test:cleanup:table", { table: getTableName(table) });
     }
+    debugLog("integration-test:cleanup:complete");
+  }
 
+  describe("Negotiation flow integration", () => {
     beforeAll(cleanupIntegrationDb);
     afterAll(cleanupIntegrationDb);
 
-    it("creates a full negotiation with simulation outputs", async () => {
+    it("creates a negotiation, schedules a run and stores results", async () => {
+      const [user] = await db.insert(users).values({ username: "integration-user", password: "secret" }).returning();
+
       const [registration] = await db
         .insert(registrations)
         .values({
@@ -101,7 +87,6 @@ if (!runDbTests) {
           currencyCode: "EUR",
         })
         .returning();
-      debugLog("integration-test:create:market", { marketId: market.id });
 
       const [counterpart] = await db
         .insert(counterparts)
@@ -111,7 +96,6 @@ if (!runDbTests) {
           kind: "retailer",
         })
         .returning();
-      debugLog("integration-test:create:counterpart", { counterpartId: counterpart.id });
 
       const [priceDimension] = await db
         .insert(dimensions)
@@ -119,7 +103,6 @@ if (!runDbTests) {
           registrationId: registration.id,
           code: "price_per_unit",
           name: "Price per Unit",
-          valueType: "numeric",
           unit: "EUR",
         })
         .returning();
@@ -131,7 +114,6 @@ if (!runDbTests) {
           registrationId: registration.id,
           code: "volume",
           name: "Volume per Month",
-          valueType: "integer",
           unit: "cases",
         })
         .returning();
@@ -144,7 +126,6 @@ if (!runDbTests) {
           name: "Integration Product A",
         })
         .returning();
-      debugLog("integration-test:create:product", { productId: productA.id, label: "A" });
 
       const [productB] = await db
         .insert(products)
@@ -153,76 +134,6 @@ if (!runDbTests) {
           name: "Integration Product B",
         })
         .returning();
-      debugLog("integration-test:create:product", { productId: productB.id, label: "B" });
-
-      await db.insert(productDimensionValues).values([
-        {
-          productId: productA.id,
-          dimensionId: priceDimension.id,
-          value: { amount: 1.4 },
-        },
-        {
-          productId: productB.id,
-          dimensionId: volumeDimension.id,
-          value: { units: 2000 },
-        },
-      ]);
-      debugLog("integration-test:create:product-dimensions", { pairs: 2 });
-
-      const [negotiation] = await db
-        .insert(negotiations)
-        .values({
-          registrationId: registration.id,
-          marketId: market.id,
-          counterpartId: counterpart.id,
-          title: "Integration Test Negotiation",
-        })
-        .returning();
-      debugLog("integration-test:create:negotiation", { negotiationId: negotiation.id });
-
-      await db.insert(negotiationProducts).values([
-        { negotiationId: negotiation.id, productId: productA.id },
-        { negotiationId: negotiation.id, productId: productB.id },
-      ]);
-      debugLog("integration-test:create:negotiation-products", { negotiationId: negotiation.id, productCount: 2 });
-
-      const [round] = await db
-        .insert(negotiationRounds)
-        .values({
-          negotiationId: negotiation.id,
-          roundNumber: 1,
-          state: { transcript: [] },
-        })
-        .returning();
-      debugLog("integration-test:create:round", { roundId: round.id });
-
-      await db.insert(roundStates).values({
-        roundId: round.id,
-        beliefs: { leverage: "balanced" },
-        intentions: "Anchor high",
-      });
-      debugLog("integration-test:create:round-state", { roundId: round.id });
-
-      const [simulation] = await db
-        .insert(simulations)
-        .values({
-          registrationId: registration.id,
-          negotiationId: negotiation.id,
-          name: "Integration Simulation",
-          numRounds: 6,
-        })
-        .returning();
-      debugLog("integration-test:create:simulation", { simulationId: simulation.id });
-
-      const [queue] = await db
-        .insert(simulationQueue)
-        .values({
-          negotiationId: negotiation.id,
-          simulationId: simulation.id,
-          totalSimulations: 1,
-        })
-        .returning();
-      debugLog("integration-test:create:queue", { queueId: queue.id });
 
       const [technique] = await db
         .insert(influencingTechniques)
@@ -234,7 +145,6 @@ if (!runDbTests) {
           keyPhrases: {},
         })
         .returning();
-      debugLog("integration-test:create:technique", { techniqueId: technique.id });
 
       const [tactic] = await db
         .insert(negotiationTactics)
@@ -246,7 +156,39 @@ if (!runDbTests) {
           keyPhrases: {},
         })
         .returning();
-      debugLog("integration-test:create:tactic", { tacticId: tactic.id });
+
+      const [negotiation] = await db
+        .insert(negotiations)
+        .values({
+          registrationId: registration.id,
+          userId: user.id,
+          marketId: market.id,
+          counterpartId: counterpart.id,
+          title: "Integration Test Negotiation",
+          scenario: {
+            maxRounds: 6,
+            selectedTechniques: [technique.id],
+            selectedTactics: [tactic.id],
+            dimensions: [
+              { id: priceDimension.id, name: "Price per Unit" },
+              { id: volumeDimension.id, name: "Volume per Month" },
+            ],
+          },
+        })
+        .returning();
+
+      await db.insert(negotiationProducts).values([
+        { negotiationId: negotiation.id, productId: productA.id },
+        { negotiationId: negotiation.id, productId: productB.id },
+      ]);
+
+      const [queue] = await db
+        .insert(simulationQueue)
+        .values({
+          negotiationId: negotiation.id,
+          totalSimulations: 1,
+        })
+        .returning();
 
       const runId = randomUUID();
       const [run] = await db
@@ -254,7 +196,6 @@ if (!runDbTests) {
         .values({
           id: runId,
           negotiationId: negotiation.id,
-          simulationId: simulation.id,
           queueId: queue.id,
           techniqueId: technique.id,
           tacticId: tactic.id,
@@ -263,7 +204,6 @@ if (!runDbTests) {
           totalRounds: 6,
         })
         .returning();
-      debugLog("integration-test:create:simulation-run", { runId });
 
       await db.insert(dimensionResults).values([
         {
@@ -283,7 +223,6 @@ if (!runDbTests) {
           priorityScore: 2,
         },
       ]);
-      debugLog("integration-test:create:dimension-results", { runId, count: 2 });
 
       const insertedProducts = await db
         .insert(productResults)
@@ -312,64 +251,13 @@ if (!runDbTests) {
           },
         ])
         .returning({ id: productResults.id });
-      debugLog("integration-test:create:product-results", { runId, insertedCount: insertedProducts.length });
-
-      expect(insertedProducts).toHaveLength(2);
-
-      const [policy] = await db.insert(policies).values({ name: "Integration Policy" }).returning();
-      debugLog("integration-test:create:policy", { policyId: policy.id });
-      const [agent] = await db
-        .insert(agents)
-        .values({
-          registrationId: registration.id,
-          role: "buyer",
-          agentKind: "llm",
-          policyId: policy.id,
-          tools: [],
-        })
-        .returning();
-      debugLog("integration-test:create:agent", { agentId: agent.id });
-
-      const [offer] = await db
-        .insert(offers)
-        .values({
-          roundId: round.id,
-          side: "buyer",
-          agentId: agent.id,
-          price: "1.18",
-          quantity: "1000",
-          currencyCode: "EUR",
-          terms: { payment: "Net 45" },
-        })
-        .returning();
-      debugLog("integration-test:create:offer", { offerId: offer.id });
-
-      await db.insert(events).values({
-        roundId: round.id,
-        eventKind: "message",
-        agentId: agent.id,
-        name: "offer_submitted",
-        parameters: { offerId: offer.id },
-        observations: { tone: "neutral" },
-      });
-      debugLog("integration-test:create:event", { roundId: round.id });
-
-      await db.insert(agentMetrics).values({
-        agentId: agent.id,
-        metricName: "latency_ms",
-        metricValue: "800",
-        details: { runId },
-      });
-      debugLog("integration-test:create:agent-metric", { agentId: agent.id });
 
       const linkedProducts = await db
         .select()
         .from(negotiationProducts)
         .where(eq(negotiationProducts.negotiationId, negotiation.id));
-      debugLog("integration-test:query:negotiation-products", { negotiationId: negotiation.id, count: linkedProducts.length });
-
       expect(linkedProducts).toHaveLength(2);
-
+      expect(insertedProducts).toHaveLength(2);
     });
   });
 }

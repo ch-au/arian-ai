@@ -268,3 +268,4 @@ The helper methods (`_build_pricing_strings()`, `_build_dimension_strings()`, `_
 **Method:** `_build_static_prompt_variables()` (lines 645-758 → now 645-706)  
 **Lines Removed:** 4 variable assignments + obsolete comment block
 
+

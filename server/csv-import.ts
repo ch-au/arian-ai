@@ -246,8 +246,9 @@ export async function validateImportedData(): Promise<boolean> {
     log.info(`📊 Personality types in DB: ${personalityCount}`);
     
     // Validate expected counts (based on CSV files)
-    const expectedTechniques = 11;
-    const expectedTactics = 45;
+    // Expected counts based on current CSV files
+    const expectedTechniques = 10;
+    const expectedTactics = 44;
     const expectedPersonalities = 5;
     
     const isValid = 

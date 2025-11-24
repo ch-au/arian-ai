@@ -26,7 +26,10 @@ export default defineConfig({
     strictPort: true,
     allowedHosts: true,
     hmr: {
-      clientPort: 443,
+      // Use the dev server port for HMR to avoid browser attempts to connect to :443 on local IPs
+      clientPort: 5000,
+      protocol: "ws",
+      host: "localhost",
     },
     proxy: {
       "/api": {

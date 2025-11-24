@@ -1,5 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("../../server/middleware/auth", () => ({
+  requireAuth: async (req: any, res: any, next: any) => {
+    req.user = { id: 1, username: "testuser" };
+    next();
+  },
+  optionalAuth: async (req: any, res: any, next: any) => {
+    req.user = { id: 1, username: "testuser" };
+    next();
+  },
+}));
+
 vi.mock("../../server/storage", () => {
   const storage = {
     getAllNegotiations: vi.fn(),
@@ -29,6 +40,9 @@ vi.mock("../../server/services/simulation-queue", () => {
     static stopQueuesForNegotiation = vi.fn();
     static getSimulationStats = vi.fn();
     static backfillEvaluationsForNegotiation = vi.fn();
+    static findQueueByNegotiation = vi.fn();
+    static getQueueStatus = vi.fn();
+    static pauseQueue = vi.fn();
   }
   return {
     SimulationQueueService: SimulationQueueServiceMock,
@@ -115,6 +129,7 @@ describe("Negotiation routes", () => {
       id: "neg-1",
       status: "running",
     });
+    (SimulationQueueService as any).findQueueByNegotiation.mockResolvedValue(null);
     (SimulationQueueService as any).createQueue.mockResolvedValue("queue-1");
     (SimulationQueueService as any).startQueue.mockResolvedValue(undefined);
 

@@ -215,3 +215,4 @@ SELECT COUNT(*) FROM product_results;
 4. ✅ Verifiziere, dass Monitoring/Analyse funktioniert
 5. ⏳ Erstelle Schema-Cleanup Migration
 
+
