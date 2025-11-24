@@ -7,19 +7,47 @@ import { ArrowLeft, BarChart2, Monitor, Play } from "lucide-react";
 import { useNegotiationDetail } from "@/hooks/use-negotiation-detail";
 import { translateNegotiationStatus } from "@/hooks/use-negotiations";
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
+import { useToast } from "@/hooks/use-toast";
 
 export default function NegotiationDetailPage() {
   const [, params] = useRoute("/negotiations/:id");
   const [, setLocation] = useLocation();
   const negotiationId = params?.id ?? null;
   const { data, isLoading } = useNegotiationDetail(negotiationId);
+  const { toast } = useToast();
 
   const scenario = data?.negotiation.scenario;
 
   const handleStart = async () => {
     if (!negotiationId) return;
-    await fetchWithAuth(`/api/negotiations/${negotiationId}/start`, { method: "POST" });
-    setLocation(`/negotiations/${negotiationId}`);
+    try {
+      const response = await fetchWithAuth(`/api/negotiations/${negotiationId}/start`, { method: "POST" });
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text || "Fehler beim Starten der Simulation");
+      }
+      const payload = await response.json();
+
+      if (payload?.action === "already_completed") {
+        toast({
+          title: "Alle Simulationen durchgeführt",
+          description: payload.message ?? "Keine offenen Simulationen mehr.",
+        });
+        return;
+      }
+
+      toast({
+        title: "Simulation gestartet",
+        description: "Die Verhandlung läuft jetzt in der Queue.",
+      });
+      setLocation(`/negotiations/${negotiationId}`);
+    } catch (error) {
+      toast({
+        title: "Start fehlgeschlagen",
+        description: error instanceof Error ? error.message : "Unbekannter Fehler",
+        variant: "destructive",
+      });
+    }
   };
 
   if (isLoading) {
