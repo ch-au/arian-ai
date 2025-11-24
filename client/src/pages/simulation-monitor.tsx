@@ -376,7 +376,7 @@ export default function OptimizedSimulationMonitor() {
         await fetchQueueStatus(queueStatus!.id);
         await fetchResults(queueStatus!.id);
         setError(null);
-        setCurrentActivity(`🔄 Restarted run #${data.runNumber || runId.slice(0, 8)}`);
+        setCurrentActivity(`🔄 Run #${data.runNumber || runId.slice(0, 8)} gelöscht und neu gestartet`);
       } else {
         setError(data.error || "Failed to restart simulation");
       }
