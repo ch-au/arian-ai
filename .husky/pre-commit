@@ -1,0 +1,24 @@
+#!/bin/sh
+
+# Check for .env files being committed
+if git diff --cached --name-only | grep -E '^\.env$|^\.env\.[^e]'; then
+    echo "ERROR: Attempting to commit .env file!"
+    echo "Remove it from staging: git reset HEAD .env"
+    exit 1
+fi
+
+# Check for potential secrets in staged files
+# Patterns: OpenAI keys, OpenRouter keys, Google AI keys, Langfuse keys, Stack Auth keys, Neon keys
+SECRETS_PATTERN='(sk-proj-[a-zA-Z0-9]{20,}|sk-or-[a-zA-Z0-9]{20,}|AIzaSy[a-zA-Z0-9_-]{33}|sk-lf-[a-zA-Z0-9]{20,}|ssk_[a-zA-Z0-9]{20,}|npg_[a-zA-Z0-9]{20,})'
+if git diff --cached | grep -E "$SECRETS_PATTERN"; then
+    echo ""
+    echo "WARNING: Potential secrets detected in staged changes!"
+    echo "Please review your changes carefully."
+    echo ""
+    echo "If these are example/placeholder values, you can proceed."
+    echo "If these are real secrets, remove them before committing!"
+    # Uncomment to block commit on secret detection:
+    # exit 1
+fi
+
+exit 0

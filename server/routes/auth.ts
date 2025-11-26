@@ -24,14 +24,14 @@ router.post("/register", async (req: Request, res: Response) => {
     const { username, password } = registerSchema.parse(req.body);
 
     const user = await AuthService.register(username, password);
-    const { token } = await AuthService.login(username, password);
+    const { token, refreshToken } = await AuthService.login(username, password, res);
 
     res.json({
       user: {
         id: user.id,
         username: user.username,
       },
-      token,
+      token, // Still return token for backward compatibility
     });
   } catch (error: any) {
     if (error.message === "Username already exists") {
@@ -52,14 +52,14 @@ router.post("/login", async (req: Request, res: Response) => {
   try {
     const { username, password } = loginSchema.parse(req.body);
 
-    const { user, token } = await AuthService.login(username, password);
+    const { user, token } = await AuthService.login(username, password, res);
 
     res.json({
       user: {
         id: user.id,
         username: user.username,
       },
-      token,
+      token, // Still return token for backward compatibility
     });
   } catch (error: any) {
     if (error.message === "Invalid credentials") {
@@ -69,6 +69,34 @@ router.post("/login", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Invalid input", details: error.errors });
     }
     res.status(500).json({ error: "Login failed" });
+  }
+});
+
+/**
+ * POST /api/auth/refresh
+ * Refresh access token using refresh token
+ */
+router.post("/refresh", async (req: Request, res: Response) => {
+  try {
+    const refreshToken = req.cookies?.refresh_token;
+
+    if (!refreshToken) {
+      return res.status(401).json({ error: "No refresh token provided" });
+    }
+
+    const result = await AuthService.refreshAccessToken(refreshToken, res);
+
+    if (!result) {
+      AuthService.clearAuthCookies(res);
+      return res.status(401).json({ error: "Invalid or expired refresh token" });
+    }
+
+    res.json({
+      user: result.user,
+      token: result.token,
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Token refresh failed" });
   }
 });
 
@@ -97,10 +125,26 @@ router.get("/me", async (req: Request, res: Response) => {
 
 /**
  * POST /api/auth/logout
- * Logout (client-side token removal, no server action needed)
+ * Logout - clear cookies and revoke refresh token
  */
-router.post("/logout", (req: Request, res: Response) => {
-  res.json({ message: "Logged out successfully" });
+router.post("/logout", async (req: Request, res: Response) => {
+  try {
+    const refreshToken = req.cookies?.refresh_token;
+
+    // Revoke refresh token if present
+    if (refreshToken) {
+      await AuthService.revokeRefreshToken(refreshToken);
+    }
+
+    // Clear cookies
+    AuthService.clearAuthCookies(res);
+
+    res.json({ message: "Logged out successfully" });
+  } catch (error) {
+    // Still clear cookies even if revocation fails
+    AuthService.clearAuthCookies(res);
+    res.json({ message: "Logged out successfully" });
+  }
 });
 
 export default router;
