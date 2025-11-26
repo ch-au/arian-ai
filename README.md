@@ -28,8 +28,11 @@
 - **Cost Tracking** - Complete API cost visibility via Langfuse integration
 
 ### Security & Deployment
-- **JWT Authentication** - Self-hosted authentication with bcrypt password hashing
+- **JWT Authentication** - HttpOnly cookies with refresh tokens, 4-hour access token TTL
+- **API Security** - Helmet headers, CORS, rate limiting (100 req/15min general, 10 req/15min auth)
 - **User Isolation** - Complete data isolation via foreign keys and middleware
+- **LLM Reliability** - Circuit breaker pattern with exponential backoff retry
+- **Secret Scanning** - Pre-commit hooks and CI/CD secret detection (TruffleHog, Gitleaks)
 - **Azure Ready** - CI/CD with GitHub Actions, health monitoring, hybrid Python+Node runtime
 - **Full Observability** - Langfuse integration for AI tracing and debugging
 
@@ -159,6 +162,7 @@ For complete development guide, see [HANDOVER_SUMMARY.md](HANDOVER_SUMMARY.md).
 
 ### 🚀 Deployment & Operations
 - **[AZURE_DEPLOYMENT.md](AZURE_DEPLOYMENT.md)** - Azure App Service deployment guide
+- **[SECURITY_HARDENING_PLAN.md](SECURITY_HARDENING_PLAN.md)** - Security implementation checklist
 - **[docs/TESTING_GUIDE.md](docs/TESTING_GUIDE.md)** - Testing strategy and test suite
 
 ### 📦 Legacy Documentation
