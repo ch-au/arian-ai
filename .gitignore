@@ -5,7 +5,7 @@ server/public
 vite.config.ts.*
 *.tar.gz
 
-# Environment files
+# Environment files - NEVER commit secrets
 .env
 .env.local
 .env.development.local
@@ -13,6 +13,12 @@ vite.config.ts.*
 .env.production.local
 .env.*
 !.env.example
+
+# Additional sensitive files
+*.pem
+*.key
+credentials.json
+secrets.yaml
 
 # Database
 *.db

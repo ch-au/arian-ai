@@ -1,7 +1,7 @@
 # Arian AI Platform - Final Schema Documentation
 
-**Version**: 2.2 (Production Schema)
-**Datum**: 2025-11-21
+**Version**: 2.3 (Production Schema)
+**Datum**: 2025-11-26
 **Status**: ✅ Production Ready
 
 > 🧭 **Quelle der Wahrheit**
@@ -14,12 +14,12 @@ Das Datenbank-Schema wurde bereinigt und optimiert. **14 ungenutzte Tabellen** w
 ### Vorher vs. Nachher
 
 - **Vorher**: 29 Tabellen (viele ungenutzt/legacy)
-- **Nachher**: 16 Tabellen (alle aktiv genutzt)
+- **Nachher**: 17 Tabellen (alle aktiv genutzt)
 - **Entfernt**: 14 Tabellen + unnötige Foreign Keys
 
-## Aktive Tabellen (16)
+## Aktive Tabellen (17)
 
-### 1. Core Tables - Authentication & Organization (3)
+### 1. Core Tables - Authentication & Organization (4)
 
 #### `users`
 Benutzer für das System.
@@ -30,6 +30,22 @@ CREATE TABLE users (
   username TEXT NOT NULL UNIQUE,
   password TEXT NOT NULL
 );
+```
+
+#### `refresh_tokens`
+Refresh Tokens für sichere Authentifizierung. Ermöglicht automatische Token-Erneuerung ohne erneute Anmeldung.
+
+```sql
+CREATE TABLE refresh_tokens (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  token TEXT NOT NULL UNIQUE,           -- SHA-256 gehashter Token
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_refresh_tokens_user ON refresh_tokens(user_id);
+CREATE INDEX idx_refresh_tokens_expires ON refresh_tokens(expires_at);
 ```
 
 #### `registrations`
