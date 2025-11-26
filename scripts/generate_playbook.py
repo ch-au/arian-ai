@@ -115,11 +115,29 @@ def get_negotiation_metadata(negotiation_id: str) -> Dict[str, Any]:
             # Extract opponent name
             opponent_name = result['counterpart_name'] or "Verhandlungspartner"
 
+            # Extract user role from scenario (buyer or seller)
+            user_role = "seller"  # default
+            if result['scenario']:
+                scenario = result['scenario']
+                if isinstance(scenario, dict):
+                    user_role = scenario.get('userRole', 'seller')
+
+            # Determine role labels based on user role
+            if user_role == "buyer":
+                user_role_label = "Käufer"
+                opponent_role_label = "Verkäufer"
+            else:
+                user_role_label = "Verkäufer"
+                opponent_role_label = "Käufer"
+
             return {
                 "company_name": company_name,
                 "opponent_name": opponent_name,
                 "negotiation_title": result['title'] or "Verhandlung",
-                "description": result['description'] or ""
+                "description": result['description'] or "",
+                "user_role": user_role,
+                "user_role_label": user_role_label,
+                "opponent_role_label": opponent_role_label
             }
     finally:
         conn.close()
@@ -197,6 +215,8 @@ async def generate_playbook(negotiation_id: str) -> Dict[str, Any]:
                     "company_name": metadata["company_name"],
                     "opponent_name": metadata["opponent_name"],
                     "negotiation_title": metadata["negotiation_title"],
+                    "user_role": metadata["user_role"],
+                    "user_role_label": metadata["user_role_label"],
                     "total_runs": len(all_runs),
                     "top_runs": len(top_runs),
                 },
@@ -227,6 +247,9 @@ async def generate_playbook(negotiation_id: str) -> Dict[str, Any]:
                 company_name=metadata["company_name"],
                 opponent_name=metadata["opponent_name"],
                 negotiation_title=metadata["negotiation_title"],
+                user_role=metadata["user_role"],
+                user_role_label=metadata["user_role_label"],
+                opponent_role_label=metadata["opponent_role_label"],
                 logs=logs_json
             )
 
@@ -319,6 +342,9 @@ async def generate_playbook(negotiation_id: str) -> Dict[str, Any]:
                     "company_name": metadata["company_name"],
                     "opponent_name": metadata["opponent_name"],
                     "negotiation_title": metadata["negotiation_title"],
+                    "user_role": metadata["user_role"],
+                    "user_role_label": metadata["user_role_label"],
+                    "opponent_role_label": metadata["opponent_role_label"],
                     "model": model_name,
                     "prompt_version": prompt.version,
                     "total_runs": len(all_runs),

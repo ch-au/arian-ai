@@ -595,6 +595,7 @@ export default function MonitorPage() {
             runs={enrichedRuns}
             onRestartRun={handleRestartRun}
             restarting={restartingRuns}
+            userRole={scenario?.userRole}
           />
         )}
       </div>

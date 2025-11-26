@@ -50,6 +50,7 @@ interface ActiveRunsTableProps {
   onViewConversation?: (runId: string) => void;
   onRestartRun?: (runId: string) => void;
   restarting?: Record<string, boolean>;
+  userRole?: "buyer" | "seller";
 }
 
 function getStatusBadge(status: SimulationRun["status"]) {
@@ -96,11 +97,23 @@ function SimulationRunCard({
   run,
   onRestart,
   isRestarting,
+  userRole = "seller",
 }: {
   run: SimulationRun;
   onRestart?: (runId: string) => void;
   isRestarting?: boolean;
+  userRole?: "buyer" | "seller";
 }) {
+  // Determine labels based on user role
+  // Layout is always: Left = Seller (green), Right = Buyer (blue)
+  // But labels should show (User/AI) or (AI) based on who the user is
+  const userIsBuyer = userRole === "buyer";
+  // Left column is always Seller
+  const sellerLabel = userIsBuyer ? "Verkäufer (AI)" : "Verkäufer (User/AI)";
+  // Right column is always Buyer
+  const buyerLabel = userIsBuyer ? "Käufer (User/AI)" : "Käufer (AI)";
+  // For starts badge: user starts means their role starts
+  const userStarts = userIsBuyer ? true : false; // buyer typically starts if user is buyer
   const [isOpen, setIsOpen] = useState(false);
 
   const formatDealValue = (value: number | string | null | undefined) => {
@@ -166,8 +179,8 @@ function SimulationRunCard({
           <thead className="bg-slate-50/80 text-slate-500 font-medium border-b text-xs uppercase tracking-wider">
             <tr>
               <th className="px-4 py-3 w-1/3 font-semibold">Dimension</th>
-              <th className="px-4 py-3 w-1/3 text-emerald-700 font-semibold">Verkäufer</th>
-              <th className="px-4 py-3 w-1/3 text-blue-700 font-semibold">Käufer</th>
+              <th className="px-4 py-3 w-1/3 text-emerald-700 font-semibold">{userIsBuyer ? "Verkäufer" : "Verkäufer (Sie)"}</th>
+              <th className="px-4 py-3 w-1/3 text-blue-700 font-semibold">{userIsBuyer ? "Käufer (Sie)" : "Käufer"}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -306,12 +319,12 @@ function SimulationRunCard({
                     
                     <div className="border rounded-xl p-4 pt-6 bg-white shadow-sm">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
-                        {/* Seller Side (User) - Left */}
+                        {/* Seller Side - Left */}
                         <div className="flex flex-col h-full gap-3">
                           <div className="flex items-center justify-between shrink-0">
                             <span className="text-sm font-bold text-emerald-700 flex items-center gap-2">
                               <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
-                              Verkäufer (User/AI)
+                              {sellerLabel}
                             </span>
                             {!buyerStarts && (
                               <Badge variant="secondary" className="text-[10px] h-5">Startet</Badge>
@@ -323,12 +336,12 @@ function SimulationRunCard({
                           </div>
                         </div>
 
-                        {/* Buyer Side (AI) - Right */}
+                        {/* Buyer Side - Right */}
                         <div className="flex flex-col h-full gap-3">
                           <div className="flex items-center justify-between shrink-0">
                             <span className="text-sm font-bold text-blue-700 flex items-center gap-2">
                               <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-                              Käufer (AI)
+                              {buyerLabel}
                             </span>
                             {buyerStarts && (
                               <Badge variant="secondary" className="text-[10px] h-5">Startet</Badge>
@@ -372,7 +385,7 @@ function SimulationRunCard({
   );
 }
 
-export function ActiveRunsTable({ runs, onRestartRun, restarting = {} }: ActiveRunsTableProps) {
+export function ActiveRunsTable({ runs, onRestartRun, restarting = {}, userRole }: ActiveRunsTableProps) {
   const sortedRuns = [...runs].sort((a, b) => {
     // Sort by status: running > pending > completed > failed/timeout
     const statusOrder = { running: 0, pending: 1, completed: 2, failed: 3, timeout: 3 };
@@ -385,7 +398,7 @@ export function ActiveRunsTable({ runs, onRestartRun, restarting = {} }: ActiveR
         <h2 className="text-lg font-semibold text-slate-900">Simulationen</h2>
         <Badge variant="outline" className="bg-white">{runs.length} gesamt</Badge>
       </div>
-      
+
       {sortedRuns.length > 0 ? (
         <div className="grid grid-cols-1 gap-4">
           {sortedRuns.map((run) => (
@@ -394,6 +407,7 @@ export function ActiveRunsTable({ runs, onRestartRun, restarting = {} }: ActiveR
               run={run}
               onRestart={onRestartRun}
               isRestarting={Boolean(restarting[run.id])}
+              userRole={userRole}
             />
           ))}
         </div>

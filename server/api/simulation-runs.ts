@@ -61,6 +61,10 @@ router.get('/:id', requireAuth, async (req, res) => {
       });
     }
 
+    // Get negotiation to retrieve userRole
+    const negotiation = run.negotiationId ? await storage.getNegotiation(run.negotiationId) : null;
+    const userRole = (negotiation?.scenario as any)?.userRole || 'seller';
+
     // Get related technique
     let technique = null;
     if (run.techniqueId) {
@@ -102,6 +106,7 @@ router.get('/:id', requireAuth, async (req, res) => {
         tactic,
         productResults: products,
         dimensionResults: dimensions,
+        userRole,
       }
     });
 

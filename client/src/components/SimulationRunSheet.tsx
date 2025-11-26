@@ -76,6 +76,7 @@ interface SimulationRunData {
       achievedTarget: boolean;
       priorityScore: number;
     }>;
+    userRole?: "buyer" | "seller";
   };
   error?: string;
 }
@@ -137,6 +138,14 @@ export function SimulationRunSheet({
   };
 
   const priceEvolution = data?.data ? parsePriceEvolution() : {};
+
+  // Determine labels based on userRole
+  const userRole = data?.data?.userRole || 'seller';
+  const userIsBuyer = userRole === 'buyer';
+  // In the chart: seller line is blue, buyer line is red
+  // Labels should show "(Sie)" for the user's role
+  const sellerLabel = userIsBuyer ? "Verkäufer" : "Verkäufer (Sie)";
+  const buyerLabel = userIsBuyer ? "Käufer (Sie)" : "Käufer";
 
   const formatCurrency = (value: string | null) => {
     if (!value) return "N/A";
@@ -228,11 +237,11 @@ export function SimulationRunSheet({
                         <div className="flex items-center justify-center gap-6 text-sm">
                           <div className="flex items-center gap-2">
                             <div className="w-8 h-0.5 bg-[#3b82f6]"></div>
-                            <span>Seller (You)</span>
+                            <span>{sellerLabel}</span>
                           </div>
                           <div className="flex items-center gap-2">
                             <div className="w-8 h-0.5 bg-[#ef4444]"></div>
-                            <span>Buyer (Opponent)</span>
+                            <span>{buyerLabel}</span>
                           </div>
                         </div>
                       </CardContent>
@@ -596,13 +605,21 @@ export function SimulationRunSheet({
                             .join(', ')
                         : '';
 
+                      // Determine if this message is from the user's role
+                      const isUserMessage = (agent === 'BUYER' && userIsBuyer) || (agent === 'SELLER' && !userIsBuyer);
+                      const agentLabel = agent === 'BUYER'
+                        ? (userIsBuyer ? 'Käufer (Sie)' : 'Käufer')
+                        : agent === 'SELLER'
+                          ? (userIsBuyer ? 'Verkäufer' : 'Verkäufer (Sie)')
+                          : agent;
+
                       return (
                         <Card key={index} className={agent === 'BUYER' ? 'bg-blue-50/50 border-blue-200' : 'bg-green-50/50 border-green-200'}>
                           <CardHeader className="pb-3">
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-2">
                                 <Badge variant={agent === 'BUYER' ? 'default' : 'secondary'} className="text-xs">
-                                  {agent === 'BUYER' ? 'Käufer' : agent === 'SELLER' ? 'Verkäufer' : agent}
+                                  {agentLabel}
                                 </Badge>
                                 <span className="text-xs text-muted-foreground">Turn {turn}</span>
                                 {confidence && (
