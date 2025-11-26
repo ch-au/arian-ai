@@ -9,24 +9,31 @@ const corsOptions: cors.CorsOptions = {
     const allowedOrigins = [
       process.env.FRONTEND_URL || 'http://localhost:5173',
       'http://localhost:3000',
-      // Add production domains here
+      'http://localhost:5000',
     ];
 
-    // Allow requests with no origin (mobile apps, curl, Postman, etc.)
+    // Allow requests with no origin (mobile apps, curl, Postman, same-origin, etc.)
     if (!origin) return callback(null, true);
 
+    // Check explicit allowed origins
     if (allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else if (process.env.NODE_ENV === 'development') {
-      // In development, allow any localhost origin
-      if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
-      }
-    } else {
-      callback(new Error('Not allowed by CORS'));
+      return callback(null, true);
     }
+
+    // Allow Azure Web Apps domains
+    if (origin.includes('.azurewebsites.net')) {
+      return callback(null, true);
+    }
+
+    // In development, allow any localhost origin
+    if (process.env.NODE_ENV !== 'production') {
+      if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+        return callback(null, true);
+      }
+    }
+
+    // Reject all other origins
+    callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
@@ -35,35 +42,42 @@ const corsOptions: cors.CorsOptions = {
 };
 
 // Rate Limiting - General API
+// Disabled in development, active in production
+const isDevelopment = process.env.NODE_ENV !== 'production';
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // 100 requests per window
+  max: 500, // 500 requests per 15 minutes in production
   message: { error: 'Too many requests, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) => {
-    // Skip rate limiting for health checks
-    return req.path === '/health';
+    // Skip rate limiting entirely in development
+    if (isDevelopment) return true;
+    // Skip rate limiting for health checks and static assets
+    return req.path === '/health' || req.path.startsWith('/assets');
   },
 });
 
-// Rate Limiting - Auth endpoints (stricter)
+// Rate Limiting - Auth endpoints (stricter, but skipped in dev)
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // 10 attempts per window
+  max: 15, // 15 failed login attempts per 15 minutes in production
   message: { error: 'Too many login attempts, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
   skipSuccessfulRequests: true, // Don't count successful logins
+  skip: () => isDevelopment, // Skip in development
 });
 
-// Rate Limiting - Simulation endpoints (expensive operations)
+// Rate Limiting - Simulation endpoints (expensive operations, skipped in dev)
+// This limits queue creation/start actions, not individual runs
 const simulationLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 20, // 20 simulation batches per hour
+  max: 20, // 20 negotiation queue starts per hour in production (each can have many runs)
   message: { error: 'Simulation rate limit exceeded. Please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
+  skip: () => isDevelopment, // Skip in development
 });
 
 // Request size limiting middleware
@@ -124,9 +138,14 @@ export function applySecurityMiddleware(app: Express): void {
   app.use('/api/auth/login', authLimiter);
   app.use('/api/auth/register', authLimiter);
 
-  // Simulation rate limiting
-  app.use('/api/simulations/queue', simulationLimiter);
-  app.use('/api/simulations/execute', simulationLimiter);
+  // Simulation rate limiting - only for creating/starting simulations, not status polling
+  // POST to create queue or start execution (not GET for status checks)
+  app.use('/api/simulations/queue/:negotiationId', (req, res, next) => {
+    if (req.method === 'POST') return simulationLimiter(req, res, next);
+    next();
+  });
+  app.use('/api/simulations/queue/:queueId/start', simulationLimiter);
+  app.use('/api/simulations/queue/:queueId/execute', simulationLimiter);
 
   // Request size limits
   app.use('/api/', requestSizeLimiter('5mb'));
