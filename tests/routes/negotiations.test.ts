@@ -126,17 +126,13 @@ describe("Negotiation routes", () => {
       id: "neg-1",
       scenario: { selectedTechniques: ["tech-1"], selectedTactics: ["tactic-1"] },
       status: "planned",
-<<<<<<< HEAD
       userId: 1,
-=======
->>>>>>> 8fe86151161b58df539304235d325267cbb73a16
     });
     storage.startNegotiation.mockResolvedValue({
       id: "neg-1",
       status: "running",
     });
     (SimulationQueueService as any).findQueueByNegotiation.mockResolvedValue(null);
-<<<<<<< HEAD
     (SimulationQueueService as any).createQueue = vi.fn().mockResolvedValue("queue-1");
     (SimulationQueueService as any).startQueue = vi.fn().mockResolvedValue(undefined);
     // Mock getQueueStatus in case it's called (though it shouldn't be when findQueueByNegotiation returns null)
@@ -149,10 +145,6 @@ describe("Negotiation routes", () => {
     // Mock resumeQueue and restartFailedSimulations in case they're called
     (SimulationQueueService as any).resumeQueue = vi.fn().mockResolvedValue(undefined);
     (SimulationQueueService as any).restartFailedSimulations = vi.fn().mockResolvedValue(undefined);
-=======
-    (SimulationQueueService as any).createQueue.mockResolvedValue("queue-1");
-    (SimulationQueueService as any).startQueue.mockResolvedValue(undefined);
->>>>>>> 8fe86151161b58df539304235d325267cbb73a16
 
     const { invoke } = setupInvoker();
     const res = await invoke("post", "/:id/start", { params: { id: "neg-1" } });
@@ -160,10 +152,6 @@ describe("Negotiation routes", () => {
     expect(res.statusCode).toBe(200);
     expect(storage.startNegotiation).toHaveBeenCalledWith("neg-1");
     expect(SimulationQueueService.createQueue).toHaveBeenCalledWith({ negotiationId: "neg-1" });
-<<<<<<< HEAD
-=======
-    expect(SimulationQueueService.startQueue).toHaveBeenCalledWith("queue-1");
->>>>>>> 8fe86151161b58df539304235d325267cbb73a16
   });
 
   it("stops negotiation via engine", async () => {

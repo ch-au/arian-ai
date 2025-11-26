@@ -1,7 +1,9 @@
 import "dotenv/config";
 import express, { type Request, Response, NextFunction } from "express";
+import cookieParser from "cookie-parser";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { applySecurityMiddleware } from "./middleware/security";
 
 const app = express();
 
@@ -15,8 +17,15 @@ app.get("/health", (req, res) => {
   });
 });
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+// Apply security middleware FIRST (before body parsing)
+applySecurityMiddleware(app);
+
+// Cookie parser for auth tokens
+app.use(cookieParser());
+
+// Body parsing with size limits
+app.use(express.json({ limit: '5mb' }));
+app.use(express.urlencoded({ extended: false, limit: '5mb' }));
 
 app.use((req, res, next) => {
   const start = Date.now();
