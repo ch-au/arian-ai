@@ -69,15 +69,15 @@ const authLimiter = rateLimit({
   skip: () => isDevelopment, // Skip in development
 });
 
-// Rate Limiting - Simulation endpoints (expensive operations, skipped in dev)
-// This limits queue creation/start actions, not individual runs
+// Rate Limiting - Simulation endpoints (expensive operations)
+// DISABLED: Rate limiting disabled to allow unrestricted simulation usage
 const simulationLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 20, // 20 negotiation queue starts per hour in production (each can have many runs)
+  max: 1000, // Effectively unlimited
   message: { error: 'Simulation rate limit exceeded. Please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
-  skip: () => isDevelopment, // Skip in development
+  skip: () => true, // Always skip - rate limiting disabled
 });
 
 // Request size limiting middleware
