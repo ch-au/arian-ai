@@ -8,8 +8,8 @@ export async function fetchWithAuth(
 ): Promise<Response> {
   const token = localStorage.getItem("auth_token");
 
-  const headers: HeadersInit = {
-    ...options.headers,
+  const headers: Record<string, string> = {
+    ...(options.headers as Record<string, string>),
   };
 
   if (token) {

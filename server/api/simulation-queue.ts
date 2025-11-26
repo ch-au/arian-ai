@@ -33,7 +33,7 @@ async function verifyQueueAccess(queueId: string, userId: number): Promise<boole
 }
 
 // Helper to verify run access (via negotiation ownership)
-async function verifyRunAccess(runId: string, userId: string): Promise<boolean> {
+async function verifyRunAccess(runId: string, userId: number): Promise<boolean> {
   const [run] = await db
     .select({ negotiationId: simulationRuns.negotiationId })
     .from(simulationRuns)

@@ -686,6 +686,8 @@ export class SimulationQueueService {
           tacticId: simulationRuns.tacticId,
           personalityId: simulationRuns.personalityId,
           retryCount: simulationRuns.retryCount,
+          maxRetries: simulationRuns.maxRetries,
+          metadata: simulationRuns.metadata,
         });
 
       if (!claimedRun) {

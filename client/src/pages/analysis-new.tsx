@@ -1,6 +1,6 @@
 import { useRoute } from "wouter";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { NegotiationAnalysisView } from "@/pages/negotiation-analysis";
+import NegotiationAnalysisPage from "@/pages/negotiation-analysis";
 
 export default function AnalysisDashboard() {
   const [, params] = useRoute("/analysis/:negotiationId");
@@ -19,5 +19,5 @@ export default function AnalysisDashboard() {
     );
   }
 
-  return <NegotiationAnalysisView negotiationId={negotiationId} />;
+  return <NegotiationAnalysisPage />;
 }

@@ -6,10 +6,10 @@ import { db } from "../db";
 import { users, refreshTokens } from "@shared/schema";
 import { eq, and, lt } from "drizzle-orm";
 
-const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) {
+if (!process.env.JWT_SECRET) {
   throw new Error("JWT_SECRET environment variable must be set");
 }
+const JWT_SECRET: string = process.env.JWT_SECRET;
 const SALT_ROUNDS = 10;
 
 // Token configuration

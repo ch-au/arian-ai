@@ -10,9 +10,9 @@ export async function apiRequest(
 ): Promise<Response> {
   const token = localStorage.getItem(TOKEN_KEY);
 
-  const headers: HeadersInit = {
+  const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    ...options.headers,
+    ...(options.headers as Record<string, string>),
   };
 
   // Add Authorization header if token exists

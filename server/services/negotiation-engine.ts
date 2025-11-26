@@ -121,6 +121,9 @@ export class NegotiationEngine {
   }
 
   private async runSingleSimulation(run: SimulationRun) {
+    if (!run.negotiationId) {
+      throw new Error("Simulation run has no associated negotiation");
+    }
     const negotiation = await storage.getNegotiation(run.negotiationId);
     if (!negotiation) {
       throw new Error("Negotiation not found");
@@ -142,8 +145,8 @@ export class NegotiationEngine {
         {
           negotiationId: negotiation.id,
           simulationRunId: run.id,
-          techniqueId: run.techniqueId,
-          tacticId: run.tacticId,
+          techniqueId: run.techniqueId ?? undefined,
+          tacticId: run.tacticId ?? undefined,
           maxRounds: negotiation.scenario.maxRounds ?? 6,
         },
         (roundUpdate) => {

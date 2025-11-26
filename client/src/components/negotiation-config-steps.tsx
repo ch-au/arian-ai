@@ -795,7 +795,7 @@ export function CounterpartStep({ config, onChange }: CounterpartStepProps) {
             {simulationCount > 0 && simulationCount <= 1000 && (
               <div className="mt-4 p-3 bg-blue-100 rounded-lg">
                 <p className="text-sm text-blue-800">
-                  <strong>Combinatorial Testing:</strong> Each technique will be paired with each tactic across {personalityCount} personality type(s) and {zopaCount} ZOPA distance(s), 
+                  <strong>Combinatorial Testing:</strong> Each technique will be paired with each tactic across {personalityCount} personality type(s),
                   creating {simulationCount.toLocaleString()} unique simulation runs for comprehensive analysis.
                 </p>
               </div>

@@ -47,6 +47,9 @@ import {
   type InsertProductResult,
 } from "@shared/schema";
 
+// Re-export types that are imported from other modules by services
+export type { SimulationRun, SimulationQueue, Negotiation };
+
 // Placeholder types for missing schema definitions
 type PerformanceMetric = any;
 type InsertPerformanceMetric = any;
@@ -385,10 +388,10 @@ class DatabaseStorage implements IStorage {
   }
 
   async getAllNegotiations(userId?: string): Promise<NegotiationRecord[]> {
-    const userFilter = userId ? eq(negotiations.userId, Number(userId)) : null;
-    let query = db.select().from(negotiations).orderBy(desc(negotiations.startedAt));
+    const userFilter = userId ? eq(negotiations.userId, Number(userId)) : undefined;
+    const query = db.select().from(negotiations).orderBy(desc(negotiations.startedAt)).$dynamic();
     if (userFilter) {
-      query = query.where(userFilter);
+      query.where(userFilter);
     }
 
     const rows = await query;
@@ -409,10 +412,10 @@ class DatabaseStorage implements IStorage {
   }
 
   async getRecentNegotiations(limit = 10, userId?: string): Promise<NegotiationRecord[]> {
-    const userFilter = userId ? eq(negotiations.userId, Number(userId)) : null;
-    let query = db.select().from(negotiations).orderBy(desc(negotiations.startedAt)).limit(limit);
+    const userFilter = userId ? eq(negotiations.userId, Number(userId)) : undefined;
+    const query = db.select().from(negotiations).orderBy(desc(negotiations.startedAt)).limit(limit).$dynamic();
     if (userFilter) {
-      query = query.where(userFilter);
+      query.where(userFilter);
     }
 
     const rows = await query;
