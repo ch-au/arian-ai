@@ -63,7 +63,7 @@ type InsertProductDimensionValue = any;
 const offers: any = {};
 const events: any = {};
 import { db } from "./db";
-import { and, asc, avg, count, desc, eq, gte, sum } from "drizzle-orm";
+import { and, asc, avg, count, desc, eq, gte, lte, sum, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 
 export type NegotiationDimensionConfig = {
@@ -676,32 +676,53 @@ class DatabaseStorage implements IStorage {
   }
 
   async getSuccessRateTrends(days: number): Promise<Array<{ date: string; successRate: number }>> {
+    // Fixed N+1 query: Single aggregated query instead of one query per day
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+    startDate.setHours(0, 0, 0, 0);
+
+    // Get aggregated data with a single query
+    const results = await db
+      .select({
+        day: sql<string>`DATE(${simulationRuns.completedAt})`.as("day"),
+        total: count(),
+        successful: sql<number>`SUM(CASE WHEN ${simulationRuns.outcome} = 'deal_accepted' THEN 1 ELSE 0 END)`.as("successful"),
+      })
+      .from(simulationRuns)
+      .where(
+        and(
+          eq(simulationRuns.status, "completed"),
+          gte(simulationRuns.completedAt, startDate),
+        ),
+      )
+      .groupBy(sql`DATE(${simulationRuns.completedAt})`)
+      .orderBy(sql`DATE(${simulationRuns.completedAt})`);
+
+    // Build a map of dates to success rates
+    const trendsMap = new Map<string, { total: number; successful: number }>();
+    for (const row of results) {
+      if (row.day) {
+        trendsMap.set(row.day, {
+          total: Number(row.total) || 0,
+          successful: Number(row.successful) || 0,
+        });
+      }
+    }
+
+    // Fill in all days with data (including days with zero activity)
     const trend: Array<{ date: string; successRate: number }> = [];
-    const now = new Date();
-
-    for (let i = 0; i < days; i++) {
-      const date = new Date(now);
-      date.setDate(now.getDate() - i);
-
-      const [row] = await db
-        .select({
-          success: count(),
-        })
-        .from(simulationRuns)
-        .where(
-          and(
-            eq(simulationRuns.status, "completed"),
-            gte(simulationRuns.completedAt, date),
-          ),
-        );
-
+    for (let i = days - 1; i >= 0; i--) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      const dateKey = date.toISOString().split("T")[0];
+      const data = trendsMap.get(dateKey) || { total: 0, successful: 0 };
       trend.push({
-        date: date.toISOString().split("T")[0],
-        successRate: Number(row?.success || 0),
+        date: dateKey,
+        successRate: data.total > 0 ? (data.successful / data.total) * 100 : 0,
       });
     }
 
-    return trend.reverse();
+    return trend;
   }
 
   async getTopPerformingAgents(limit = 5): Promise<Array<{ agent: Agent; successRate: number }>> {

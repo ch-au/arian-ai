@@ -1227,23 +1227,23 @@ npx playwright install
 - [ ] Test CORS and rate limiting
 
 ### Phase 3: Authentication Hardening
-- [ ] Move JWT to httpOnly cookies
-- [ ] Reduce token TTL to 4 hours
-- [ ] Implement refresh tokens
-- [ ] Add refresh token table to schema
+- [x] Move JWT to httpOnly cookies ✅ (2025-11-26)
+- [x] Reduce token TTL to 4 hours ✅ (2025-11-26)
+- [x] Implement refresh tokens ✅ (2025-11-26)
+- [x] Add refresh token table to schema ✅ (2025-11-26)
 - [ ] Update frontend auth handling
 
 ### Phase 4: Database Optimization
-- [ ] Create index migration
+- [x] Create index migration ✅ (2025-11-26)
 - [ ] Run migration
-- [ ] Fix N+1 query in analytics
+- [x] Fix N+1 query in analytics ✅ (2025-11-26)
 - [ ] Add dashboard query caching
 
 ### Phase 5: LLM Reliability
-- [ ] Implement retry logic
-- [ ] Add circuit breaker
-- [ ] Configure backoff parameters
-- [ ] Add monitoring for circuit breaker events
+- [x] Implement retry logic ✅ (2025-11-26)
+- [x] Add circuit breaker ✅ (2025-11-26)
+- [x] Configure backoff parameters ✅ (2025-11-26)
+- [x] Add monitoring for circuit breaker events ✅ (2025-11-26)
 
 ### Phase 6: Architecture Refactoring
 - [ ] Create simulation service directory
@@ -1254,7 +1254,7 @@ npx playwright install
 - [ ] Migrate to job queue
 
 ### Phase 7: Testing & Monitoring
-- [ ] Enable integration tests in CI
+- [x] Enable integration tests in CI ✅ (2025-11-26)
 - [ ] Add E2E test suite
 - [ ] Configure OpenTelemetry
 - [ ] Set up monitoring dashboards

@@ -22,6 +22,17 @@ export const users = pgTable("users", {
   password: text("password").notNull(),
 });
 
+export const refreshTokens = pgTable("refresh_tokens", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  token: text("token").notNull().unique(), // Hashed token
+  userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  userIdIdx: index("idx_refresh_tokens_user").on(table.userId),
+  expiresAtIdx: index("idx_refresh_tokens_expires").on(table.expiresAt),
+}));
+
 export const registrations = pgTable("registrations", {
   id: uuid("id").primaryKey().defaultRandom(),
   organization: text("organization").notNull(),
@@ -290,6 +301,9 @@ export const personalityProfileSchema = z.object({
 // Type exports
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
+
+export type RefreshToken = typeof refreshTokens.$inferSelect;
+export type InsertRefreshToken = typeof refreshTokens.$inferInsert;
 
 export type Registration = typeof registrations.$inferSelect;
 export type InsertRegistration = typeof registrations.$inferInsert;
