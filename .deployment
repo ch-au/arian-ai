@@ -5,5 +5,5 @@ SCM_DO_BUILD_DURING_DEPLOYMENT=true
 POST_BUILD_COMMAND="npm run build:copy-python || echo 'Python copy skipped'"
 
 # Python runtime detection
-# Azure will automatically detect Python if requirements.txt is in root
-# Since we have it in scripts/, we'll handle it in startup.sh
+# requirements.txt is in root - Oryx will detect and install Python deps
+# Requires ENABLE_MULTIPLATFORM_BUILD=true in Azure App Settings

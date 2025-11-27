@@ -21,10 +21,10 @@ export function createStrategyRouter(): Router {
       const tactic = await storage.createNegotiationTactic(tacticData);
       res.status(201).json(tactic);
     } catch (error) {
-      log.error({ err: error }, "Failed to create tactic");
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: "Invalid tactic data", details: error.errors });
       }
+      log.error({ err: error }, "Failed to create tactic");
       res.status(500).json({ error: "Failed to create tactic" });
     }
   });
@@ -45,12 +45,12 @@ export function createStrategyRouter(): Router {
       const technique = await storage.createInfluencingTechnique(techniqueData);
       res.status(201).json(technique);
     } catch (error) {
-      log.error({ err: error }, "Failed to create influencing technique");
       if (error instanceof z.ZodError) {
         return res
           .status(400)
           .json({ error: "Invalid influencing technique data", details: error.errors });
       }
+      log.error({ err: error }, "Failed to create influencing technique");
       res.status(500).json({ error: "Failed to create influencing technique" });
     }
   });
@@ -122,6 +122,9 @@ export function createStrategyRouter(): Router {
       const tactic = await storage.createNegotiationTactic(tacticData);
       res.status(201).json(tactic);
     } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid negotiation tactic data", details: error.errors });
+      }
       log.error({ err: error }, "Failed to create negotiation tactic");
       res.status(500).json({ error: "Failed to create negotiation tactic" });
     }
