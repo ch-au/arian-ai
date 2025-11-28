@@ -48,23 +48,24 @@ validate:health:
     - ls -la
     - echo "✓ All core files present"
 
-# Build Docker image and push to registry
+# Build Docker image and push to registry using Kaniko (no privileged mode needed)
 build:image:
   stage: build
-  image: docker:24
-  services:
-    - docker:24-dind
-  variables:
-    DOCKER_TLS_CERTDIR: "/certs"
-  before_script:
-    - echo "Logging into container registry..."
-    - docker login "$REGISTRY" -u "$REGISTRY_USER" -p "$REGISTRY_PASSWORD"
+  image:
+    name: gcr.io/kaniko-project/executor:v1.23.2-debug
+    entrypoint: [""]
   script:
-    - echo "Building Docker image..."
-    - docker build -t "$REGISTRY/arian-ai:${CI_COMMIT_SHORT_SHA}" -t "$REGISTRY/arian-ai:latest" .
-    - echo "Pushing Docker image..."
-    - docker push "$REGISTRY/arian-ai:${CI_COMMIT_SHORT_SHA}"
-    - docker push "$REGISTRY/arian-ai:latest"
+    - echo "Building and pushing Docker image with Kaniko..."
+    - mkdir -p /kaniko/.docker
+    - |
+      echo "{\"auths\":{\"${REGISTRY}\":{\"auth\":\"$(printf "%s:%s" "${REGISTRY_USER}" "${REGISTRY_PASSWORD}" | base64 | tr -d '\n')\"}}}" > /kaniko/.docker/config.json
+    - |
+      /kaniko/executor \
+        --context "${CI_PROJECT_DIR}" \
+        --dockerfile "${CI_PROJECT_DIR}/Dockerfile" \
+        --destination "${REGISTRY}/arian-ai:${CI_COMMIT_SHORT_SHA}" \
+        --destination "${REGISTRY}/arian-ai:latest" \
+        --cache=true
     - echo "Image pushed successfully"
   only:
     - main
