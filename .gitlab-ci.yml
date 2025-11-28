@@ -6,7 +6,7 @@ stages:
 
 # Default settings
 default:
-  image: node:18
+  image: node:20
   cache:
     paths:
       - node_modules/
@@ -48,49 +48,34 @@ validate:health:
     - ls -la
     - echo "✓ All core files present"
 
-# Build application
-build:app:
+# Build Docker image and push to registry
+build:image:
   stage: build
-  image: node:20
-  cache:
-    paths:
-      - node_modules/
-      - .npm/
-  artifacts:
-    name: "build-${CI_COMMIT_SHORT_SHA}"
-    paths:
-      - dist/
-      - node_modules/
-      - package.json
-      - package-lock.json
-      - startup.sh
-      - scripts/
-    expire_in: 1 hour
+  image: docker:24
+  services:
+    - docker:24-dind
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+  before_script:
+    - echo "Logging into container registry..."
+    - docker login "$REGISTRY" -u "$REGISTRY_USER" -p "$REGISTRY_PASSWORD"
   script:
-    - echo "Installing dependencies..."
-    - npm ci --prefer-offline
-    - echo "Running type check..."
-    - npm run check || echo "Type errors present but continuing build"
-    - echo "Running tests..."
-    - npm run test || echo "Tests failed but continuing build"
-    - echo "Building frontend..."
-    - npm run build:frontend
-    - echo "Building backend..."
-    - npm run build:backend
-    - echo "Copying Python scripts..."
-    - npm run build:copy-python
-    - echo "Build completed successfully"
-    - ls -la dist/
+    - echo "Building Docker image..."
+    - docker build -t "$REGISTRY/arian-ai:${CI_COMMIT_SHORT_SHA}" -t "$REGISTRY/arian-ai:latest" .
+    - echo "Pushing Docker image..."
+    - docker push "$REGISTRY/arian-ai:${CI_COMMIT_SHORT_SHA}"
+    - docker push "$REGISTRY/arian-ai:latest"
+    - echo "Image pushed successfully"
   only:
     - main
 
-# Deploy to Azure App Service
+# Deploy Docker container to Azure App Service
 deploy:azure:
   stage: deploy
   image: mcr.microsoft.com/azure-cli:latest
-  dependencies:
-    - build:app
-  script:
+  needs:
+    - build:image
+  before_script:
     - echo "Verifying required environment variables..."
     - |
       if [ -z "$AZURE_CLIENT_ID" ]; then echo "ERROR: AZURE_CLIENT_ID not set"; exit 1; fi
@@ -98,33 +83,30 @@ deploy:azure:
       if [ -z "$AZURE_TENANT_ID" ]; then echo "ERROR: AZURE_TENANT_ID not set"; exit 1; fi
       if [ -z "$AZURE_RESOURCE_GROUP" ]; then echo "ERROR: AZURE_RESOURCE_GROUP not set"; exit 1; fi
       if [ -z "$AZURE_WEBAPP_NAME" ]; then echo "ERROR: AZURE_WEBAPP_NAME not set"; exit 1; fi
-      if [ -z "$AZURE_WEBAPP_HOSTNAME" ]; then echo "ERROR: AZURE_WEBAPP_HOSTNAME not set"; exit 1; fi
-    - echo "All required variables are set"
+      if [ -z "$REGISTRY" ]; then echo "ERROR: REGISTRY not set"; exit 1; fi
+      if [ -z "$REGISTRY_USER" ]; then echo "ERROR: REGISTRY_USER not set"; exit 1; fi
+      if [ -z "$REGISTRY_PASSWORD" ]; then echo "ERROR: REGISTRY_PASSWORD not set"; exit 1; fi
+  script:
     - echo "Logging into Azure..."
-    - az login --service-principal -u $AZURE_CLIENT_ID -p $AZURE_CLIENT_SECRET --tenant $AZURE_TENANT_ID
-    - echo "Preparing deployment package..."
-    - python3 -m zipfile -c deployment.zip dist/ node_modules/ scripts/ package.json package-lock.json startup.sh .deployment
-    - ls -lh deployment.zip
-    - echo "Getting deployment credentials..."
-    - PUBLISH_CREDS=$(az webapp deployment list-publishing-credentials --resource-group "$AZURE_RESOURCE_GROUP" --name "$AZURE_WEBAPP_NAME" --query "{username:publishingUserName, password:publishingPassword}" -o json)
-    - DEPLOY_USER=$(echo "$PUBLISH_CREDS" | python3 -c "import sys, json; print(json.load(sys.stdin)['username'])")
-    - DEPLOY_PASS=$(echo "$PUBLISH_CREDS" | python3 -c "import sys, json; print(json.load(sys.stdin)['password'])")
-    - echo "Building deployment URL..."
-    - KUDU_URL="https://${AZURE_WEBAPP_HOSTNAME}.scm.germanywestcentral-01.azurewebsites.net/api/zipdeploy"
-    - APP_URL="https://${AZURE_WEBAPP_HOSTNAME}.germanywestcentral-01.azurewebsites.net"
-    - echo "Testing DNS resolution and connectivity..."
-    - echo "Hostname - ${AZURE_WEBAPP_HOSTNAME}.scm.germanywestcentral-01.azurewebsites.net"
-    - getent hosts ${AZURE_WEBAPP_HOSTNAME}.scm.germanywestcentral-01.azurewebsites.net || echo "DNS lookup failed - hostname cannot be resolved"
-    - echo "Testing HTTPS connectivity..."
-    - curl -v --connect-timeout 10 --max-time 15 "https://${AZURE_WEBAPP_HOSTNAME}.scm.germanywestcentral-01.azurewebsites.net" 2>&1 | head -30 || echo "HTTPS connection test failed"
-    - echo "Deploying to Azure App Service via Kudu API..."
-    - curl -v -X POST "${KUDU_URL}" --user "${DEPLOY_USER}:${DEPLOY_PASS}" --data-binary "@deployment.zip" -H "Content-Type:application/zip"
+    - az login --service-principal -u "$AZURE_CLIENT_ID" -p "$AZURE_CLIENT_SECRET" --tenant "$AZURE_TENANT_ID"
+    - echo "Configuring container deployment..."
+    - |
+      az webapp config container set \
+        --resource-group "$AZURE_RESOURCE_GROUP" \
+        --name "$AZURE_WEBAPP_NAME" \
+        --docker-custom-image-name "$REGISTRY/arian-ai:${CI_COMMIT_SHORT_SHA}" \
+        --docker-registry-server-url "https://$REGISTRY" \
+        --docker-registry-server-user "$REGISTRY_USER" \
+        --docker-registry-server-password "$REGISTRY_PASSWORD"
+    - echo "Setting container port..."
+    - az webapp config appsettings set --resource-group "$AZURE_RESOURCE_GROUP" --name "$AZURE_WEBAPP_NAME" --settings WEBSITES_PORT=3000
+    - echo "Restarting app to pull new image..."
+    - az webapp restart --resource-group "$AZURE_RESOURCE_GROUP" --name "$AZURE_WEBAPP_NAME"
     - echo "Deployment completed successfully"
-    - echo "Application URL ${APP_URL}"
-    - echo "Waiting for app to start..."
-    - sleep 30
+    - echo "Waiting for container to start..."
+    - sleep 60
     - echo "Checking health endpoint..."
-    - curl -f "${APP_URL}/health" || echo "Health check failed, app may still be starting"
+    - curl -f "https://${AZURE_WEBAPP_NAME}.azurewebsites.net/health" || echo "Health check failed, container may still be starting"
   only:
     - main
   when: on_success

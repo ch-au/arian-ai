@@ -11,7 +11,7 @@
     "dev:debug": "NODE_ENV=development PYTHON_LOG_LEVEL=DEBUG concurrently \"npm:dev:server\" \"npm:dev:client\"",
     "build": "npm run build:frontend && npm run build:backend && npm run build:copy-python",
     "build:frontend": "vite build",
-    "build:backend": "esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
+    "build:backend": "esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist --external:./vite-dev",
     "build:copy-python": "node scripts/copy-python.js",
     "start": "NODE_ENV=production node dist/index.js",
     "postinstall": "echo 'Postinstall completed.'",
