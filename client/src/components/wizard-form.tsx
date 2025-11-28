@@ -1,9 +1,24 @@
-import { ReactNode, useState } from "react";
+import { ReactNode, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ChevronLeft, ChevronRight, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+// Find the closest scrollable parent element
+function getScrollableParent(element: HTMLElement | null): HTMLElement | null {
+  if (!element) return null;
+
+  let parent = element.parentElement;
+  while (parent) {
+    const { overflow, overflowY } = window.getComputedStyle(parent);
+    if (overflow === 'auto' || overflow === 'scroll' || overflowY === 'auto' || overflowY === 'scroll') {
+      return parent;
+    }
+    parent = parent.parentElement;
+  }
+  return null;
+}
 
 export interface WizardStep {
   id: string;
@@ -35,6 +50,17 @@ export function WizardForm({
 }: WizardFormProps) {
   const isLastStep = currentStep === steps.length - 1;
   const isFirstStep = currentStep === 0;
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Scroll to top when step changes
+  useEffect(() => {
+    const scrollableParent = getScrollableParent(containerRef.current);
+    if (scrollableParent) {
+      scrollableParent.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [currentStep]);
 
   const handleNext = () => {
     if (isLastStep) {
@@ -51,7 +77,7 @@ export function WizardForm({
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8">
+    <div ref={containerRef} className="max-w-4xl mx-auto space-y-8">
       {/* Step Progress Header */}
       <Card>
         <CardHeader className="pb-4">

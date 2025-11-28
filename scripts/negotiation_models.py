@@ -103,6 +103,9 @@ class NegotiationConfig:
     LANGFUSE_FLUSH_INTERVAL: float = 0.5
     LANGFUSE_MAX_RETRIES: int = 3
     LANGFUSE_TIMEOUT: int = 30
+
+    # LLM timeout settings (in seconds)
+    LLM_REQUEST_TIMEOUT: int = 120  # 2 minutes per LLM call
     
     @classmethod
     def validate_environment(cls) -> tuple[bool, list[str]]:

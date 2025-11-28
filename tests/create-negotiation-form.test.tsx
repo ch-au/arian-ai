@@ -80,13 +80,15 @@ describe("CreateNegotiationForm", () => {
     fireEvent.change(screen.getByLabelText("Marktname"), { target: { value: "DACH" } });
     fireEvent.click(screen.getByRole("button", { name: "Weiter" }));
 
-    const techniqueRow = screen.getByText("Technik A").closest("tr");
-    expect(techniqueRow).not.toBeNull();
-    fireEvent.click(within(techniqueRow as HTMLElement).getByRole("checkbox"));
+    // Find technique label and click its checkbox (new card-based UI)
+    const techniqueLabel = screen.getByText("Technik A").closest("label");
+    expect(techniqueLabel).not.toBeNull();
+    fireEvent.click(within(techniqueLabel as HTMLElement).getByRole("checkbox"));
 
-    const tacticRow = screen.getByText("Taktik A").closest("tr");
-    expect(tacticRow).not.toBeNull();
-    fireEvent.click(within(tacticRow as HTMLElement).getByRole("checkbox"));
+    // Find tactic label and click its checkbox
+    const tacticLabel = screen.getByText("Taktik A").closest("label");
+    expect(tacticLabel).not.toBeNull();
+    fireEvent.click(within(tacticLabel as HTMLElement).getByRole("checkbox"));
     fireEvent.click(screen.getByRole("button", { name: "Weiter" }));
 
     fireEvent.click(screen.getByRole("button", { name: /Verhandlung anlegen/i }));

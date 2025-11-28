@@ -24,6 +24,9 @@ export interface PlaybookResult {
   };
 }
 
+// Timeout for playbook generation (7 minutes - allows for 6 min LLM call + overhead)
+const PLAYBOOK_TIMEOUT_MS = 7 * 60 * 1000;
+
 export class PlaybookGeneratorService {
   /**
    * Generate a negotiation playbook for a completed negotiation
@@ -42,6 +45,19 @@ export class PlaybookGeneratorService {
         `--negotiation-id=${negotiationId}`,
       ]);
 
+      // Set timeout to kill process if it takes too long
+      const timeout = setTimeout(() => {
+        log.error(
+          { negotiationId: negotiationId.slice(0, 8), timeoutMs: PLAYBOOK_TIMEOUT_MS },
+          "[PLAYBOOK] Generation timeout - killing process"
+        );
+        pythonProcess.kill("SIGTERM");
+        resolve({
+          success: false,
+          error: `Playbook generation timeout after ${PLAYBOOK_TIMEOUT_MS / 1000} seconds`,
+        });
+      }, PLAYBOOK_TIMEOUT_MS);
+
       let stdoutData = "";
       let stderrData = "";
 
@@ -57,6 +73,7 @@ export class PlaybookGeneratorService {
       });
 
       pythonProcess.on("close", (code) => {
+        clearTimeout(timeout);
         const duration = Date.now() - startTime;
 
         if (code !== 0) {
@@ -118,6 +135,7 @@ export class PlaybookGeneratorService {
       });
 
       pythonProcess.on("error", (error) => {
+        clearTimeout(timeout);
         log.error(
           {
             negotiationId: negotiationId.slice(0, 8),

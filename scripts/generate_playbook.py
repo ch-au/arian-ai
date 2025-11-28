@@ -285,12 +285,14 @@ async def generate_playbook(negotiation_id: str) -> Dict[str, Any]:
                     "max_tokens": 16000,
                 }
             ) as generation:
-                # Use litellm.acompletion for async call
+                # Use litellm.acompletion for async call with timeout
+                # Playbook generation can be slow due to large prompts
                 response = await litellm.acompletion(
                     model=model_name,
                     messages=prompt_text,
                     temperature=0.7,
                     max_tokens=16000,
+                    timeout=360,  # 6 minutes timeout for LLM call (playbooks can take 5+ min)
                 )
 
                 # Extract response text

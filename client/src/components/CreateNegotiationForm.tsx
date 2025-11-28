@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useFieldArray, useForm, UseFieldArrayReturn, UseFormReturn } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -18,6 +18,21 @@ import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { VoiceInput, VoiceInputInfo } from "@/components/VoiceInput";
+
+// Find the closest scrollable parent element
+function getScrollableParent(element: HTMLElement | null): HTMLElement | null {
+  if (!element) return null;
+
+  let parent = element.parentElement;
+  while (parent) {
+    const { overflow, overflowY } = window.getComputedStyle(parent);
+    if (overflow === 'auto' || overflow === 'scroll' || overflowY === 'auto' || overflowY === 'scroll') {
+      return parent;
+    }
+    parent = parent.parentElement;
+  }
+  return null;
+}
 
 const productSchema = z.object({
   name: z.string().min(1, "Pflichtfeld"),
@@ -145,6 +160,17 @@ export default function CreateNegotiationForm({ techniques, tactics, onSuccess }
   const [marketInsights, setMarketInsights] = useState<MarketInsight[]>([]);
   const [isLoadingInsights, setIsLoadingInsights] = useState(false);
   const [marketInsightsError, setMarketInsightsError] = useState<string | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+
+  // Scroll to top when step changes
+  useEffect(() => {
+    const scrollableParent = getScrollableParent(formRef.current);
+    if (scrollableParent) {
+      scrollableParent.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [step]);
 
   const form = useForm<FormSchema>({
     resolver: zodResolver(formSchema),
@@ -448,7 +474,7 @@ export default function CreateNegotiationForm({ techniques, tactics, onSuccess }
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(values => mutation.mutate(values))} className="space-y-6">
+      <form ref={formRef} onSubmit={form.handleSubmit(values => mutation.mutate(values))} className="space-y-6">
         {/* Page Title */}
         <div className="flex items-center justify-between">
           <h1 className="text-3xl font-bold">Neue Verhandlung anlegen</h1>
@@ -464,7 +490,37 @@ export default function CreateNegotiationForm({ techniques, tactics, onSuccess }
               Weiter
             </Button>
           ) : (
-            <Button type="submit" disabled={mutation.isPending}>
+            <Button
+              type="button"
+              disabled={mutation.isPending}
+              onClick={async () => {
+                const isValid = await form.trigger();
+                if (!isValid) {
+                  const errors = form.formState.errors;
+                  const errorMessages: string[] = [];
+
+                  if (errors.title) errorMessages.push("Titel");
+                  if (errors.company) errorMessages.push("Unternehmen");
+                  if (errors.market) errorMessages.push("Markt");
+                  if (errors.counterpart) errorMessages.push("Verhandlungspartner");
+                  if (errors.products) errorMessages.push("Produkte");
+                  if (errors.strategy?.userRole) errorMessages.push("Rolle (Käufer/Verkäufer)");
+                  if (errors.strategy?.maxRounds) errorMessages.push("Max. Runden");
+                  if (errors.strategy?.selectedTechniques) errorMessages.push("Techniken");
+                  if (errors.strategy?.selectedTactics) errorMessages.push("Taktiken");
+
+                  toast({
+                    title: "Fehlende Pflichtfelder",
+                    description: errorMessages.length > 0
+                      ? `Bitte füllen Sie aus: ${errorMessages.join(", ")}`
+                      : "Bitte überprüfen Sie Ihre Eingaben",
+                    variant: "destructive",
+                  });
+                  return;
+                }
+                form.handleSubmit(values => mutation.mutate(values))();
+              }}
+            >
               {mutation.isPending ? "Wird gespeichert …" : "Verhandlung anlegen"}
             </Button>
           )}
@@ -1740,234 +1796,225 @@ function StrategyStep({
   techniques: Technique[];
   tactics: Tactic[];
 }) {
-  const [expandedTechniques, setExpandedTechniques] = useState<Set<string>>(new Set());
-  const [expandedTactics, setExpandedTactics] = useState<Set<string>>(new Set());
+  // Get current values for display
+  const selectedTechniqueIds = form.watch("strategy.selectedTechniques") || [];
+  const selectedTacticIds = form.watch("strategy.selectedTactics") || [];
 
-  const selectAllTechniques = (fieldOnChange: (value: string[]) => void) =>
-    fieldOnChange(techniques.map((tech) => tech.id));
-  const clearAllTechniques = (fieldOnChange: (value: string[]) => void) => fieldOnChange([]);
-  const selectAllTactics = (fieldOnChange: (value: string[]) => void) =>
-    fieldOnChange(tactics.map((tactic) => tactic.id));
-  const clearAllTactics = (fieldOnChange: (value: string[]) => void) => fieldOnChange([]);
+  // Toggle handlers
+  const toggleTechnique = (id: string, currentSelected: string[]) => {
+    const isSelected = currentSelected.includes(id);
+    if (isSelected) {
+      return currentSelected.filter(x => x !== id);
+    } else {
+      return [...currentSelected, id];
+    }
+  };
+
+  const toggleTactic = (id: string, currentSelected: string[]) => {
+    const isSelected = currentSelected.includes(id);
+    if (isSelected) {
+      return currentSelected.filter(x => x !== id);
+    } else {
+      return [...currentSelected, id];
+    }
+  };
 
   return (
-    <Section title="Strategie" description="Rundenlimit und Taktikauswahl.">
-      <div className="space-y-6">
-        {/* Configuration Fields */}
-        <FormField control={form.control} name="strategy.maxRounds" render={({ field }) => (
-          <FormItem className="max-w-xs">
-            <FormLabel>Maximale Runden</FormLabel>
-            <FormControl>
-              <Input
-                type="number"
-                min={1}
-                max={50}
-                value={field.value}
-                onChange={(event) => field.onChange(Number(event.target.value))}
-              />
-            </FormControl>
-            <FormMessage />
-          </FormItem>
-        )} />
-
-        {/* Techniques and Tactics in Two Columns */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Column 1: Techniques */}
-          <FormField control={form.control} name="strategy.selectedTechniques" render={({ field }) => (
-            <FormItem>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <FormLabel>Einfluss-Techniken</FormLabel>
-                  <p className="text-xs text-muted-foreground">{field.value?.length ?? 0} ausgewählt</p>
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => selectAllTechniques(field.onChange)}
-                    disabled={field.value?.length === techniques.length}
-                  >
-                    Alle
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => clearAllTechniques(field.onChange)}
-                    disabled={!field.value || field.value.length === 0}
-                  >
-                    Keine
-                  </Button>
-                </div>
-              </div>
-              <div className="border rounded-md overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead className="bg-muted/50">
-                    <tr>
-                      <th className="w-12 p-2"></th>
-                      <th className="text-left p-2 font-medium">Technik</th>
-                      <th className="w-12 p-2"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {techniques.map((technique) => {
-                      const checked = field.value?.includes(technique.id);
-                      const expanded = expandedTechniques.has(technique.id);
-                      return (
-                        <React.Fragment key={technique.id}>
-                          <tr className="border-t hover:bg-muted/30 transition-colors">
-                            <td className="p-2 text-center">
-                              <Checkbox
-                                checked={checked}
-                                onCheckedChange={() =>
-                                  checked
-                                    ? field.onChange(field.value.filter((id: string) => id !== technique.id))
-                                    : field.onChange([...(field.value ?? []), technique.id])
-                                }
-                              />
-                            </td>
-                            <td className="p-2 font-medium">{technique.name}</td>
-                            <td className="p-2 text-center">
-                              {technique.beschreibung && (
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-8 w-8 p-0"
-                                  onClick={() => {
-                                    const newExpanded = new Set(expandedTechniques);
-                                    if (expanded) {
-                                      newExpanded.delete(technique.id);
-                                    } else {
-                                      newExpanded.add(technique.id);
-                                    }
-                                    setExpandedTechniques(newExpanded);
-                                  }}
-                                >
-                                  {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                                </Button>
-                              )}
-                            </td>
-                          </tr>
-                          {expanded && technique.beschreibung && (
-                            <tr className="border-t bg-muted/20">
-                              <td colSpan={3} className="p-3">
-                                <p className="text-sm text-muted-foreground">{technique.beschreibung}</p>
-                              </td>
-                            </tr>
-                          )}
-                        </React.Fragment>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+    <div className="space-y-6">
+      {/* Header Card with Max Rounds */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-semibold">Verhandlungsstrategie</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                Wählen Sie Techniken und Taktiken für die Simulation
+              </p>
             </div>
-            <FormMessage />
-          </FormItem>
-        )} />
+            <FormField control={form.control} name="strategy.maxRounds" render={({ field }) => (
+              <FormItem className="flex items-center gap-3 space-y-0">
+                <FormLabel className="text-sm whitespace-nowrap">Max. Runden:</FormLabel>
+                <FormControl>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={50}
+                    className="w-20 h-9"
+                    value={field.value}
+                    onChange={(event) => field.onChange(Number(event.target.value))}
+                  />
+                </FormControl>
+              </FormItem>
+            )} />
+          </div>
+        </CardContent>
+      </Card>
 
-          {/* Column 2: Tactics */}
-          <FormField control={form.control} name="strategy.selectedTactics" render={({ field }) => (
-            <FormItem>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <FormLabel>Taktiken</FormLabel>
-                  <p className="text-xs text-muted-foreground">{field.value?.length ?? 0} ausgewählt</p>
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => selectAllTactics(field.onChange)}
-                    disabled={field.value?.length === tactics.length}
-                  >
-                    Alle
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => clearAllTactics(field.onChange)}
-                    disabled={!field.value || field.value.length === 0}
-                  >
-                    Keine
-                  </Button>
-                </div>
-              </div>
-              <div className="border rounded-md overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead className="bg-muted/50">
-                    <tr>
-                      <th className="w-12 p-2"></th>
-                      <th className="text-left p-2 font-medium">Taktik</th>
-                      <th className="w-12 p-2"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {tactics.map((tactic) => {
-                      const checked = field.value?.includes(tactic.id);
-                      const expanded = expandedTactics.has(tactic.id);
-                      return (
-                        <React.Fragment key={tactic.id}>
-                          <tr className="border-t hover:bg-muted/30 transition-colors">
-                            <td className="p-2 text-center">
-                              <Checkbox
-                                checked={checked}
-                                onCheckedChange={() =>
-                                  checked
-                                    ? field.onChange(field.value.filter((id: string) => id !== tactic.id))
-                                    : field.onChange([...(field.value ?? []), tactic.id])
-                                }
-                              />
-                            </td>
-                            <td className="p-2 font-medium">{tactic.name}</td>
-                            <td className="p-2 text-center">
-                              {tactic.beschreibung && (
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-8 w-8 p-0"
-                                  onClick={() => {
-                                    const newExpanded = new Set(expandedTactics);
-                                    if (expanded) {
-                                      newExpanded.delete(tactic.id);
-                                    } else {
-                                      newExpanded.add(tactic.id);
-                                    }
-                                    setExpandedTactics(newExpanded);
-                                  }}
-                                >
-                                  {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                                </Button>
-                              )}
-                            </td>
-                          </tr>
-                          {expanded && tactic.beschreibung && (
-                            <tr className="border-t bg-muted/20">
-                              <td colSpan={3} className="p-3">
-                                <p className="text-sm text-muted-foreground">{tactic.beschreibung}</p>
-                              </td>
-                            </tr>
-                          )}
-                        </React.Fragment>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-            <FormMessage />
-          </FormItem>
-        )} />
+      {/* Selection Stats */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="rounded-lg border bg-card p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium">Einfluss-Techniken</span>
+            <Badge variant={selectedTechniqueIds.length > 0 ? "default" : "secondary"}>
+              {selectedTechniqueIds.length} / {techniques.length}
+            </Badge>
+          </div>
+        </div>
+        <div className="rounded-lg border bg-card p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium">Taktiken</span>
+            <Badge variant={selectedTacticIds.length > 0 ? "default" : "secondary"}>
+              {selectedTacticIds.length} / {tactics.length}
+            </Badge>
+          </div>
         </div>
       </div>
-    </Section>
+
+      {/* Two Column Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Techniques Column */}
+        <Card>
+          <CardContent className="pt-6 space-y-4">
+            <FormField control={form.control} name="strategy.selectedTechniques" render={({ field }) => (
+              <>
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold">Einfluss-Techniken</h3>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs"
+                      onClick={() => {
+                        const allIds = techniques.map(t => t.id);
+                        field.onChange(allIds);
+                      }}
+                    >
+                      Alle
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs"
+                      onClick={() => field.onChange([])}
+                    >
+                      Keine
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  {techniques.map((technique) => {
+                    const isChecked = (field.value || []).includes(technique.id);
+                    return (
+                      <div
+                        key={technique.id}
+                        className={`rounded-lg border transition-colors ${
+                          isChecked
+                            ? "border-primary/50 bg-primary/5"
+                            : "border-border hover:bg-muted/50"
+                        }`}
+                      >
+                        <label className="flex items-center gap-3 p-3 cursor-pointer">
+                          <Checkbox
+                            checked={isChecked}
+                            onCheckedChange={() => {
+                              const newValue = toggleTechnique(technique.id, field.value || []);
+                              field.onChange(newValue);
+                            }}
+                          />
+                          <span className={`text-sm ${isChecked ? "font-medium" : "text-muted-foreground"}`}>
+                            {technique.name}
+                          </span>
+                        </label>
+                        {technique.beschreibung && (
+                          <p className="px-3 pb-3 text-xs text-muted-foreground leading-relaxed pl-9">
+                            {technique.beschreibung}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <FormMessage />
+              </>
+            )} />
+          </CardContent>
+        </Card>
+
+        {/* Tactics Column */}
+        <Card>
+          <CardContent className="pt-6 space-y-4">
+            <FormField control={form.control} name="strategy.selectedTactics" render={({ field }) => (
+              <>
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold">Taktiken</h3>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs"
+                      onClick={() => {
+                        const allIds = tactics.map(t => t.id);
+                        field.onChange(allIds);
+                      }}
+                    >
+                      Alle
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs"
+                      onClick={() => field.onChange([])}
+                    >
+                      Keine
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  {tactics.map((tactic) => {
+                    const isChecked = (field.value || []).includes(tactic.id);
+                    return (
+                      <div
+                        key={tactic.id}
+                        className={`rounded-lg border transition-colors ${
+                          isChecked
+                            ? "border-primary/50 bg-primary/5"
+                            : "border-border hover:bg-muted/50"
+                        }`}
+                      >
+                        <label className="flex items-center gap-3 p-3 cursor-pointer">
+                          <Checkbox
+                            checked={isChecked}
+                            onCheckedChange={() => {
+                              const newValue = toggleTactic(tactic.id, field.value || []);
+                              field.onChange(newValue);
+                            }}
+                          />
+                          <span className={`text-sm ${isChecked ? "font-medium" : "text-muted-foreground"}`}>
+                            {tactic.name}
+                          </span>
+                        </label>
+                        {tactic.beschreibung && (
+                          <p className="px-3 pb-3 text-xs text-muted-foreground leading-relaxed pl-9">
+                            {tactic.beschreibung}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <FormMessage />
+              </>
+            )} />
+          </CardContent>
+        </Card>
+      </div>
+    </div>
   );
 }
 
