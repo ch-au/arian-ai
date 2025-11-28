@@ -48,7 +48,7 @@ validate:health:
     - ls -la
     - echo "✓ All core files present"
 
-# Build Docker image and push to registry using Kaniko (no privileged mode needed)
+# Build Docker image and push to GitLab Container Registry using Kaniko
 build:image:
   stage: build
   image:
@@ -58,15 +58,15 @@ build:image:
     - echo "Building and pushing Docker image with Kaniko..."
     - mkdir -p /kaniko/.docker
     - |
-      echo "{\"auths\":{\"${REGISTRY}\":{\"auth\":\"$(printf "%s:%s" "${REGISTRY_USER}" "${REGISTRY_PASSWORD}" | base64 | tr -d '\n')\"}}}" > /kaniko/.docker/config.json
+      echo "{\"auths\":{\"${CI_REGISTRY}\":{\"auth\":\"$(printf "%s:%s" "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64 | tr -d '\n')\"}}}" > /kaniko/.docker/config.json
     - |
       /kaniko/executor \
         --context "${CI_PROJECT_DIR}" \
         --dockerfile "${CI_PROJECT_DIR}/Dockerfile" \
-        --destination "${REGISTRY}/arian-ai:${CI_COMMIT_SHORT_SHA}" \
-        --destination "${REGISTRY}/arian-ai:latest" \
+        --destination "${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA}" \
+        --destination "${CI_REGISTRY_IMAGE}:latest" \
         --cache=true
-    - echo "Image pushed successfully"
+    - echo "Image pushed to ${CI_REGISTRY_IMAGE}"
   only:
     - main
 
@@ -84,9 +84,6 @@ deploy:azure:
       if [ -z "$AZURE_TENANT_ID" ]; then echo "ERROR: AZURE_TENANT_ID not set"; exit 1; fi
       if [ -z "$AZURE_RESOURCE_GROUP" ]; then echo "ERROR: AZURE_RESOURCE_GROUP not set"; exit 1; fi
       if [ -z "$AZURE_WEBAPP_NAME" ]; then echo "ERROR: AZURE_WEBAPP_NAME not set"; exit 1; fi
-      if [ -z "$REGISTRY" ]; then echo "ERROR: REGISTRY not set"; exit 1; fi
-      if [ -z "$REGISTRY_USER" ]; then echo "ERROR: REGISTRY_USER not set"; exit 1; fi
-      if [ -z "$REGISTRY_PASSWORD" ]; then echo "ERROR: REGISTRY_PASSWORD not set"; exit 1; fi
   script:
     - echo "Logging into Azure..."
     - az login --service-principal -u "$AZURE_CLIENT_ID" -p "$AZURE_CLIENT_SECRET" --tenant "$AZURE_TENANT_ID"
@@ -95,10 +92,10 @@ deploy:azure:
       az webapp config container set \
         --resource-group "$AZURE_RESOURCE_GROUP" \
         --name "$AZURE_WEBAPP_NAME" \
-        --docker-custom-image-name "$REGISTRY/arian-ai:${CI_COMMIT_SHORT_SHA}" \
-        --docker-registry-server-url "https://$REGISTRY" \
-        --docker-registry-server-user "$REGISTRY_USER" \
-        --docker-registry-server-password "$REGISTRY_PASSWORD"
+        --docker-custom-image-name "${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA}" \
+        --docker-registry-server-url "https://${CI_REGISTRY}" \
+        --docker-registry-server-user "${CI_REGISTRY_USER}" \
+        --docker-registry-server-password "${CI_REGISTRY_PASSWORD}"
     - echo "Setting container port..."
     - az webapp config appsettings set --resource-group "$AZURE_RESOURCE_GROUP" --name "$AZURE_WEBAPP_NAME" --settings WEBSITES_PORT=3000
     - echo "Restarting app to pull new image..."
