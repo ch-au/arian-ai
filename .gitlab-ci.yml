@@ -96,8 +96,8 @@ deploy:azure:
         --docker-registry-server-url "https://${CI_REGISTRY}" \
         --docker-registry-server-user "${GITLAB_ACCESS_USERNAME}" \
         --docker-registry-server-password "${GITLAB_ACCESS_TOKEN}"
-    - echo "Setting container port..."
-    - az webapp config appsettings set --resource-group "$AZURE_RESOURCE_GROUP" --name "$AZURE_WEBAPP_NAME" --settings WEBSITES_PORT=3000
+    - echo "Setting container port and request timeout..."
+    - az webapp config appsettings set --resource-group "$AZURE_RESOURCE_GROUP" --name "$AZURE_WEBAPP_NAME" --settings WEBSITES_PORT=3000 WEBSITES_CONTAINER_START_TIME_LIMIT=600 SCM_COMMAND_IDLE_TIMEOUT=600
     - echo "Restarting app to pull new image..."
     - az webapp restart --resource-group "$AZURE_RESOURCE_GROUP" --name "$AZURE_WEBAPP_NAME"
     - echo "Deployment completed successfully"

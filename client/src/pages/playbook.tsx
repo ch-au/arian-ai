@@ -99,36 +99,86 @@ export default function PlaybookPage() {
     return (
       <div className="container mx-auto p-6">
         <div className="flex items-center justify-center min-h-[400px]">
-          <div className="text-center space-y-4">
-            <Loader2 className="h-12 w-12 animate-spin mx-auto text-primary" />
-            <p className="text-muted-foreground">Generating playbook...</p>
-            <p className="text-sm text-muted-foreground">This may take up to 2 minutes</p>
-          </div>
+          <Card className="w-full max-w-md">
+            <CardContent className="pt-6">
+              <div className="text-center space-y-4">
+                <Loader2 className="h-12 w-12 animate-spin mx-auto text-primary" />
+                <div>
+                  <p className="text-lg font-medium">Playbook wird generiert...</p>
+                  <p className="text-sm text-muted-foreground mt-2">
+                    Die KI analysiert alle Simulationsergebnisse und erstellt strategische Empfehlungen.
+                  </p>
+                </div>
+                <div className="bg-muted/50 rounded-lg p-4 text-left text-sm space-y-2">
+                  <p className="flex items-center gap-2">
+                    <span className="text-primary">✓</span>
+                    Simulationsdaten werden geladen
+                  </p>
+                  <p className="flex items-center gap-2">
+                    <span className="animate-pulse text-primary">●</span>
+                    KI-Analyse läuft (bis zu 5 Minuten)
+                  </p>
+                  <p className="flex items-center gap-2 text-muted-foreground">
+                    <span>○</span>
+                    Playbook wird formatiert
+                  </p>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Bitte schließen Sie dieses Fenster nicht.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
     );
   }
 
   if (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Failed to load playbook';
+    const is504 = errorMessage.includes('504');
+    const isTimeout = is504 || errorMessage.toLowerCase().includes('timeout');
+
     return (
       <div className="container mx-auto p-6">
         <Card className="border-destructive">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-destructive">
               <AlertCircle className="h-5 w-5" />
-              Error Loading Playbook
+              {isTimeout ? 'Zeitüberschreitung bei der Playbook-Generierung' : 'Fehler beim Laden des Playbooks'}
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground mb-4">
-              {error instanceof Error ? error.message : 'Failed to load playbook'}
-            </p>
-            <Link href={`/analysis/${negotiationId}`}>
-              <Button variant="outline">
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Back to Analysis
+          <CardContent className="space-y-4">
+            {isTimeout ? (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Die Playbook-Generierung hat länger gedauert als erwartet. Das kann bei großen Verhandlungen mit vielen Simulationen vorkommen.
+                </p>
+                <div className="bg-muted/50 rounded-lg p-4 text-sm space-y-2">
+                  <p className="font-medium">Was Sie tun können:</p>
+                  <ul className="list-disc list-inside space-y-1 text-muted-foreground">
+                    <li>Warten Sie einen Moment und laden Sie die Seite neu</li>
+                    <li>Das Playbook wird möglicherweise im Hintergrund generiert</li>
+                    <li>Prüfen Sie die Langfuse-Traces für den Generierungsstatus</li>
+                  </ul>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                {errorMessage}
+              </p>
+            )}
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => window.location.reload()}>
+                Seite neu laden
               </Button>
-            </Link>
+              <Link href={`/analysis/${negotiationId}`}>
+                <Button variant="ghost">
+                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  Zurück zur Analyse
+                </Button>
+              </Link>
+            </div>
           </CardContent>
         </Card>
       </div>

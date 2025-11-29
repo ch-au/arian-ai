@@ -4,6 +4,7 @@ import { storage, type NegotiationDimensionConfig, type NegotiationScenarioConfi
 import { createRequestLogger } from "../services/logger";
 import type { NegotiationEngine } from "../services/negotiation-engine";
 import { SimulationQueueService } from "../services/simulation-queue";
+import { PlaybookGeneratorService } from "../services/playbook-generator";
 import { type Negotiation, registrations, counterparts } from "@shared/schema";
 import { requireAuth } from "../middleware/auth";
 import { db } from "../db";
@@ -641,96 +642,60 @@ export function createNegotiationRouter(negotiationEngine: NegotiationEngine): R
     }
   });
 
-  // Shared playbook generation logic
+  // Shared playbook generation logic using PlaybookGeneratorService
   const generatePlaybookForNegotiation = async (negotiationId: string, res: any) => {
-    log.info({ negotiationId }, "Generating playbook");
+    log.info({ negotiationId }, "Generating playbook via service");
 
-    // Call Python script to generate playbook
-    const { spawn } = await import("child_process");
-    const pythonPath = process.env.PYTHON_PATH || "python";
-    const scriptPath = "./scripts/generate_playbook.py";
+    // Set a longer timeout for this response (8 minutes to exceed the 7-minute service timeout)
+    res.setTimeout(8 * 60 * 1000);
 
-    const pythonProcess = spawn(pythonPath, [
-      scriptPath,
-      `--negotiation-id=${negotiationId}`,
-    ]);
+    // Set headers to prevent proxy/load balancer timeouts
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("Keep-Alive", "timeout=600");
+    res.setHeader("X-Accel-Buffering", "no"); // Disable nginx buffering if present
 
-    let stdoutData = "";
-    let stderrData = "";
+    try {
+      // Use the PlaybookGeneratorService which has proper timeout handling
+      const result = await PlaybookGeneratorService.generatePlaybook(negotiationId);
 
-    pythonProcess.stdout.on("data", (data) => {
-      stdoutData += data.toString();
-    });
-
-    pythonProcess.stderr.on("data", (data) => {
-      stderrData += data.toString();
-      log.debug({ stderr: data.toString() }, "Python stderr");
-    });
-
-    pythonProcess.on("close", async (code) => {
-      if (code !== 0) {
-        log.error(
-          { negotiationId, code, stderr: stderrData },
-          "Playbook generation failed"
-        );
+      if (!result.success) {
+        log.error({ negotiationId, error: result.error }, "Playbook generation error");
         return res.status(500).json({
           error: "Playbook generation failed",
-          details: stderrData,
+          details: result.error,
         });
       }
 
+      // Save playbook to database
       try {
-        const result = JSON.parse(stdoutData);
-
-        if (!result.success) {
-          log.error({ negotiationId, error: result.error }, "Playbook generation error");
-          return res.status(500).json({
-            error: "Playbook generation failed",
-            details: result.error,
-          });
-        }
-
-        // Save playbook to database
-        try {
-          await storage.updateNegotiation(negotiationId, {
-            playbook: result.playbook,
-            playbookGeneratedAt: new Date(),
-          });
-          log.info({ negotiationId }, "Playbook saved to database");
-        } catch (dbError) {
-          log.error({ negotiationId, dbError }, "Failed to save playbook to database");
-          // Continue anyway - we can still return the result
-        }
-
-        // Enrich metadata with reliable DB data
-        try {
-          result.metadata = await getEnrichedMetadata(negotiationId, result.metadata);
-        } catch (enrichError) {
-          log.error({ negotiationId, enrichError }, "Failed to enrich metadata");
-          // Continue with original metadata
-        }
-
-        log.info({ negotiationId, playbookLength: result.playbook?.length }, "Playbook generated successfully");
-        res.json(result);
-      } catch (parseError) {
-        log.error(
-          { negotiationId, parseError, stdout: stdoutData },
-          "Failed to parse playbook result"
-        );
-        res.status(500).json({
-          error: "Failed to parse playbook result",
-          details: String(parseError),
+        await storage.updateNegotiation(negotiationId, {
+          playbook: result.playbook,
+          playbookGeneratedAt: new Date(),
         });
+        log.info({ negotiationId }, "Playbook saved to database");
+      } catch (dbError) {
+        log.error({ negotiationId, dbError }, "Failed to save playbook to database");
+        // Continue anyway - we can still return the result
       }
-    });
 
-    pythonProcess.on("error", (error) => {
-      log.error({ negotiationId, error }, "Failed to spawn Python process");
+      // Enrich metadata with reliable DB data
+      try {
+        const enrichedMetadata = await getEnrichedMetadata(negotiationId, result.metadata);
+        result.metadata = enrichedMetadata;
+      } catch (enrichError) {
+        log.error({ negotiationId, enrichError }, "Failed to enrich metadata");
+        // Continue with original metadata
+      }
+
+      log.info({ negotiationId, playbookLength: result.playbook?.length }, "Playbook generated successfully");
+      res.json(result);
+    } catch (error: any) {
+      log.error({ negotiationId, error: error.message }, "Failed to generate playbook");
       res.status(500).json({
-        error: "Failed to start playbook generation",
-        details: error.message,
+        error: "Failed to generate playbook",
+        details: error.message || String(error),
       });
-    });
+    }
   };
 
   // GET endpoint to retrieve/generate playbook
