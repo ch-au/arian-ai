@@ -79,11 +79,18 @@ deploy:azure:
   before_script:
     - echo "Verifying required environment variables..."
     - |
+      # Azure credentials
       if [ -z "$AZURE_CLIENT_ID" ]; then echo "ERROR: AZURE_CLIENT_ID not set"; exit 1; fi
       if [ -z "$AZURE_CLIENT_SECRET" ]; then echo "ERROR: AZURE_CLIENT_SECRET not set"; exit 1; fi
       if [ -z "$AZURE_TENANT_ID" ]; then echo "ERROR: AZURE_TENANT_ID not set"; exit 1; fi
       if [ -z "$AZURE_RESOURCE_GROUP" ]; then echo "ERROR: AZURE_RESOURCE_GROUP not set"; exit 1; fi
       if [ -z "$AZURE_WEBAPP_NAME" ]; then echo "ERROR: AZURE_WEBAPP_NAME not set"; exit 1; fi
+      # GitLab registry credentials
+      if [ -z "$GITLAB_ACCESS_USERNAME" ]; then echo "ERROR: GITLAB_ACCESS_USERNAME not set"; exit 1; fi
+      if [ -z "$GITLAB_ACCESS_TOKEN" ]; then echo "ERROR: GITLAB_ACCESS_TOKEN not set"; exit 1; fi
+      # Application secrets
+      if [ -z "$DATABASE_URL" ]; then echo "WARNING: DATABASE_URL not set"; fi
+      if [ -z "$JWT_SECRET" ]; then echo "WARNING: JWT_SECRET not set"; fi
   script:
     - echo "Logging into Azure..."
     - az login --service-principal -u "$AZURE_CLIENT_ID" -p "$AZURE_CLIENT_SECRET" --tenant "$AZURE_TENANT_ID"
@@ -96,15 +103,37 @@ deploy:azure:
         --docker-registry-server-url "https://${CI_REGISTRY}" \
         --docker-registry-server-user "${GITLAB_ACCESS_USERNAME}" \
         --docker-registry-server-password "${GITLAB_ACCESS_TOKEN}"
-    - echo "Setting container port and request timeout..."
-    - az webapp config appsettings set --resource-group "$AZURE_RESOURCE_GROUP" --name "$AZURE_WEBAPP_NAME" --settings WEBSITES_PORT=3000 WEBSITES_CONTAINER_START_TIME_LIMIT=600 SCM_COMMAND_IDLE_TIMEOUT=600
+    - echo "Setting application environment variables..."
+    - |
+      az webapp config appsettings set \
+        --resource-group "$AZURE_RESOURCE_GROUP" \
+        --name "$AZURE_WEBAPP_NAME" \
+        --settings \
+          WEBSITES_PORT=3000 \
+          WEBSITES_CONTAINER_START_TIME_LIMIT=600 \
+          SCM_COMMAND_IDLE_TIMEOUT=600 \
+          NODE_ENV=production \
+          DATABASE_URL="$DATABASE_URL" \
+          JWT_SECRET="$JWT_SECRET" \
+          LANGFUSE_HOST="$LANGFUSE_HOST" \
+          LANGFUSE_PUBLIC_KEY="$LANGFUSE_PUBLIC_KEY" \
+          LANGFUSE_SECRET_KEY="$LANGFUSE_SECRET_KEY" \
+          OPENAI_API_KEY="$OPENAI_API_KEY" \
+          OPENROUTER_API_KEY="$OPENROUTER_API_KEY" \
+          GEMINI_API_KEY="$GEMINI_API_KEY" \
+          LITELLM_MODEL="$LITELLM_MODEL"
     - echo "Restarting app to pull new image..."
     - az webapp restart --resource-group "$AZURE_RESOURCE_GROUP" --name "$AZURE_WEBAPP_NAME"
     - echo "Deployment completed successfully"
     - echo "Waiting for container to start..."
     - sleep 60
     - echo "Checking health endpoint..."
-    - curl -f "https://${AZURE_WEBAPP_NAME}.azurewebsites.net/health" || echo "Health check failed, container may still be starting"
+    - |
+      if [ -n "$AZURE_WEBAPP_HOSTNAME" ]; then
+        curl -f "https://${AZURE_WEBAPP_HOSTNAME}/health" || echo "Health check failed, container may still be starting"
+      else
+        echo "AZURE_WEBAPP_HOSTNAME not set, skipping health check"
+      fi
   only:
     - main
   when: on_success
