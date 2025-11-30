@@ -103,7 +103,7 @@ deploy:azure:
         --docker-registry-server-url "https://${CI_REGISTRY}" \
         --docker-registry-server-user "${GITLAB_ACCESS_USERNAME}" \
         --docker-registry-server-password "${GITLAB_ACCESS_TOKEN}"
-    - echo "Setting application environment variables..."
+    - echo "Setting deployment-specific settings..."
     - |
       az webapp config appsettings set \
         --resource-group "$AZURE_RESOURCE_GROUP" \
@@ -111,16 +111,7 @@ deploy:azure:
         --settings \
           WEBSITES_PORT=3000 \
           WEBSITES_CONTAINER_START_TIME_LIMIT=600 \
-          SCM_COMMAND_IDLE_TIMEOUT=600 \
-          NODE_ENV=production \
-          DATABASE_URL="$DATABASE_URL" \
-          JWT_SECRET="$JWT_SECRET" \
-          LANGFUSE_HOST="$LANGFUSE_HOST" \
-          LANGFUSE_PUBLIC_KEY="$LANGFUSE_PUBLIC_KEY" \
-          LANGFUSE_SECRET_KEY="$LANGFUSE_SECRET_KEY" \
-          OPENAI_API_KEY="$OPENAI_API_KEY" \
-          OPENROUTER_API_KEY="$OPENROUTER_API_KEY" \
-          GEMINI_API_KEY="$GEMINI_API_KEY"
+          NODE_ENV=production
     - echo "Restarting app to pull new image..."
     - az webapp restart --resource-group "$AZURE_RESOURCE_GROUP" --name "$AZURE_WEBAPP_NAME"
     - echo "Deployment completed successfully"
