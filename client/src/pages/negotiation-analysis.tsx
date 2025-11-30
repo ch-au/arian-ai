@@ -10,6 +10,7 @@ import { OutcomeBadgeMini } from "@/components/ui/outcome-badge";
 import { SimulationRunSheet } from "@/components/SimulationRunSheet";
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
 import { AnalysisVisualizations } from "@/components/analytics/AnalysisVisualizations";
+import { useToast } from "@/hooks/use-toast";
 
 interface NegotiationAnalysis {
   negotiation: {
@@ -96,6 +97,7 @@ export default function NegotiationAnalysisPage() {
   const [matchWithId, paramsWithId] = useRoute("/analysis/:id");
   const [matchWithoutId] = useRoute("/analysis");
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
   const negotiationId = paramsWithId?.id;
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [isGeneratingPlaybook, setIsGeneratingPlaybook] = useState(false);
@@ -146,6 +148,20 @@ export default function NegotiationAnalysisPage() {
       });
 
       if (!response.ok) {
+        // Check for timeout errors (502, 503, 504)
+        if (response.status === 504 || response.status === 503 || response.status === 502) {
+          // Timeout - but playbook might still be generated in background
+          toast({
+            title: "Zeitüberschreitung",
+            description: "Die Anfrage hat zu lange gedauert, aber das Playbook wird möglicherweise im Hintergrund generiert. Wir prüfen den Status...",
+          });
+
+          // Wait a moment and then navigate to playbook page to check if it exists
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          setLocation(`/playbook/${negotiationId}`);
+          return;
+        }
+
         const errorData = await response.json().catch(() => ({ error: response.statusText }));
         throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
       }
@@ -156,11 +172,32 @@ export default function NegotiationAnalysisPage() {
         // Navigate to playbook page
         setLocation(`/playbook/${negotiationId}`);
       } else {
-        alert(`Fehler beim Generieren des Playbooks: ${result.error || 'Unbekannter Fehler'}`);
+        toast({
+          title: "Fehler beim Generieren",
+          description: result.error || "Unbekannter Fehler",
+          variant: "destructive",
+        });
       }
     } catch (error: any) {
       console.error("Playbook generation failed:", error);
-      alert(`Fehler beim Generieren des Playbooks: ${error.message || error}`);
+
+      // Check if it's a timeout error in the message
+      const errorMsg = error.message || String(error);
+      if (errorMsg.includes("504") || errorMsg.includes("503") || errorMsg.includes("timeout")) {
+        toast({
+          title: "Zeitüberschreitung",
+          description: "Die Generierung läuft möglicherweise noch. Wir öffnen die Playbook-Seite...",
+        });
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        setLocation(`/playbook/${negotiationId}`);
+        return;
+      }
+
+      toast({
+        title: "Fehler beim Generieren des Playbooks",
+        description: errorMsg,
+        variant: "destructive",
+      });
     } finally {
       setIsGeneratingPlaybook(false);
     }
