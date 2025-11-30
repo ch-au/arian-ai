@@ -120,8 +120,7 @@ deploy:azure:
           LANGFUSE_SECRET_KEY="$LANGFUSE_SECRET_KEY" \
           OPENAI_API_KEY="$OPENAI_API_KEY" \
           OPENROUTER_API_KEY="$OPENROUTER_API_KEY" \
-          GEMINI_API_KEY="$GEMINI_API_KEY" \
-          LITELLM_MODEL="$LITELLM_MODEL"
+          GEMINI_API_KEY="$GEMINI_API_KEY"
     - echo "Restarting app to pull new image..."
     - az webapp restart --resource-group "$AZURE_RESOURCE_GROUP" --name "$AZURE_WEBAPP_NAME"
     - echo "Deployment completed successfully"
