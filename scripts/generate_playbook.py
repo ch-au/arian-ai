@@ -163,7 +163,7 @@ async def generate_playbook_from_data(input_data: Dict[str, Any]) -> Dict[str, A
                 model_name = model_config["model"]
                 logger.info(f"Using model from Langfuse config: {model_name}")
             else:
-                model_name = os.getenv("LITELLM_MODEL", "gemini/gemini-2.0-flash")
+                model_name = os.getenv("LITELLM_MODEL", "gemini/gemini-3-pro-preview")
                 logger.info(f"Using default model: {model_name}")
 
             # Compile prompt with variables

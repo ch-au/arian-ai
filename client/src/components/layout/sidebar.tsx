@@ -115,7 +115,7 @@ export default function Sidebar() {
             <div className="overflow-hidden whitespace-nowrap transition-all duration-300 animate-in fade-in slide-in-from-left-5">
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-bold tracking-tight">ARIA-N</h1>
-                <span className="text-[10px] text-primary-foreground/50 font-medium">v0.91</span>
+                <span className="text-[10px] text-primary-foreground/50 font-medium">v0.92</span>
               </div>
               <p className="text-[10px] text-primary-foreground/70 uppercase tracking-wider font-medium">
                 AI Negotiation Platform
