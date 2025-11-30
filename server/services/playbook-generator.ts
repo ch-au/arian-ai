@@ -40,10 +40,25 @@ export class PlaybookGeneratorService {
     const startTime = Date.now();
 
     return new Promise((resolve, reject) => {
+      // Explicitly pass environment variables to Python subprocess
       const pythonProcess = spawn(pythonPath, [
         scriptPath,
         `--negotiation-id=${negotiationId}`,
-      ]);
+      ], {
+        env: {
+          ...process.env,
+          // Ensure these are explicitly passed
+          DATABASE_URL: process.env.DATABASE_URL,
+          LANGFUSE_HOST: process.env.LANGFUSE_HOST,
+          LANGFUSE_PUBLIC_KEY: process.env.LANGFUSE_PUBLIC_KEY,
+          LANGFUSE_SECRET_KEY: process.env.LANGFUSE_SECRET_KEY,
+        },
+      });
+
+      log.debug(
+        { negotiationId: negotiationId.slice(0, 8), hasDbUrl: !!process.env.DATABASE_URL },
+        "[PLAYBOOK] Starting Python process with env vars"
+      );
 
       // Set timeout to kill process if it takes too long
       const timeout = setTimeout(() => {

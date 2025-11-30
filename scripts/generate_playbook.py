@@ -66,7 +66,20 @@ def get_db_connection():
     database_url = os.getenv('DATABASE_URL')
     if not database_url:
         raise ValueError("DATABASE_URL environment variable not set")
-    return psycopg2.connect(database_url)
+
+    # Log connection attempt (mask password)
+    safe_url = database_url.split('@')[-1] if '@' in database_url else 'unknown'
+    logger.info(f"Connecting to database: ...@{safe_url}")
+
+    try:
+        # Add connection timeout
+        conn = psycopg2.connect(database_url, connect_timeout=30)
+        logger.info("Database connection successful")
+        return conn
+    except Exception as e:
+        logger.error(f"Database connection failed: {e}")
+        logger.error(f"DATABASE_URL host: {safe_url}")
+        raise
 
 
 def get_negotiation_metadata(negotiation_id: str) -> Dict[str, Any]:
