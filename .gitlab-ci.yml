@@ -128,12 +128,7 @@ deploy:azure:
     - echo "Waiting for container to start..."
     - sleep 60
     - echo "Checking health endpoint..."
-    - |
-      if [ -n "$AZURE_WEBAPP_HOSTNAME" ]; then
-        curl -f "https://${AZURE_WEBAPP_HOSTNAME}/health" || echo "Health check failed, container may still be starting"
-      else
-        echo "AZURE_WEBAPP_HOSTNAME not set, skipping health check"
-      fi
+    - curl -f "https://arian.dev.markhub.markant.services/health" || echo "Health check failed, container may still be starting"
   only:
     - main
   when: on_success
