@@ -1,6 +1,6 @@
 # OpenAI Agents SDK + Langfuse tracing deps
 openai-agents[litellm]==0.3.1  # Includes LiteLLM support for multi-model
-langfuse>=2.47.0
+langfuse>=3.10.0  # v3.x fixes URL encoding for prompt names with slashes
 nest_asyncio>=1.6.0
 python-dotenv>=1.0.1
 

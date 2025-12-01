@@ -291,11 +291,8 @@ class NegotiationService:
             model_name = model_config.get('model', NegotiationConfig.DEFAULT_MODEL)
 
             # Use LiteLLM for all models (including OpenAI)
-            # Configure timeout to prevent hanging on slow LLM responses
-            model_obj = LitellmModel(
-                model=model_name,
-                timeout=NegotiationConfig.LLM_REQUEST_TIMEOUT
-            )
+            # Note: timeout is configured via LITELLM_REQUEST_TIMEOUT env var
+            model_obj = LitellmModel(model=model_name)
 
             # Gemini has strict schema validation - doesn't accept Dict[str, Any] (empty object)
             # Our NegotiationOffer.dimension_values is Dict[str, Any] which causes Gemini errors
