@@ -103,7 +103,7 @@ VITE_STACK_PROJECT_ID=your-project-id
 STACK_SECRET_SERVER_KEY=ssk_your-key
 
 # Model Configuration
-NEGOTIATION_MODEL=gemini/gemini-flash-lite-latest
+NEGOTIATION_MODEL=gemini/gemini-3-flash-preview
 LITELLM_MODEL=gpt-4o-mini
 
 # Logging

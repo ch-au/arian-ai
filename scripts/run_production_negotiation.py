@@ -246,7 +246,7 @@ class NegotiationService:
                 logger.debug(f"Using model from Langfuse config: {config.get('model')}")
                 return config
         env_override = os.getenv("NEGOTIATION_MODEL") or os.getenv("LITELLM_MODEL")
-        fallback_model = env_override or "gemini/gemini-flash-lite-latest"
+        fallback_model = env_override or "gemini/gemini-3-flash-preview"
         logger.debug(f"Using fallback model: {fallback_model} (env: {'yes' if env_override else 'no'})")
         return {"model": fallback_model}
 

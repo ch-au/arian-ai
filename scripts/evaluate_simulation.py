@@ -89,7 +89,7 @@ def evaluate_simulation(
     Model selection (same fallback logic as simulations):
     1. Check Langfuse prompt config for 'model' field
     2. Check environment variables (NEGOTIATION_MODEL or LITELLM_MODEL)
-    3. Fallback to default: gemini/gemini-flash-lite-latest
+    3. Fallback to default: gemini/gemini-3-flash-preview
 
     Args:
         conversation_log: List of conversation rounds
@@ -177,7 +177,7 @@ def evaluate_simulation(
             print(f"Using model from environment variable: {model_name}", file=sys.stderr)
         else:
             # 3. Fallback to default (same as simulations)
-            model_name = "gpt-5.1"
+            model_name = "gemini/gemini-3-flash-preview"
             print(f"Using fallback model: {model_name}", file=sys.stderr)
 
     # Use Langfuse-wrapped OpenAI client for automatic tracing
